@@ -1,0 +1,16 @@
+{
+  "name": "fau-mens-soccer-dashboard",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev:server": "npm run dev --workspace=server",
+    "dev:web": "npm run dev --workspace=web",
+    "import:titan": "npm run import:titan --workspace=server",
+    "import:minutes": "npm run import:minutes --workspace=server",
+    "db:migrate": "npm run db:migrate --workspace=server"
+  }
+}
