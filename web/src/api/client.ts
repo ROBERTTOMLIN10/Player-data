@@ -55,3 +55,42 @@ export function useCompare(playerIds: number[]) {
 export function useMetrics() {
   return useQuery({ queryKey: ["metrics"], queryFn: () => fetchJson<MetricDef[]>("/api/metrics") });
 }
+
+export interface UploadTitanResult {
+  status: "imported" | "skipped" | "error";
+  filename: string;
+  gameId?: number;
+  gameDate?: string;
+  opponent?: string | null;
+  playerCount?: number;
+  message: string;
+  warnings: string[];
+}
+
+export async function uploadTitanFile(file: File): Promise<UploadTitanResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch("/api/admin/upload-titan", { method: "POST", body: formData });
+  const body = await res.json();
+  if (!res.ok && res.status !== 422 && res.status !== 409) {
+    throw new Error(body?.message ?? `Upload failed (${res.status})`);
+  }
+  return body;
+}
+
+export interface SyncMinutesResult {
+  status: "ok" | "error";
+  message: string;
+  gamesMatched: number;
+  gamesSkippedNoBoxscore: number;
+  rowsUpserted: number;
+  anomalies: string[];
+  unmatchedPlayers: string[];
+}
+
+export async function syncMinutesFromSidearm(): Promise<SyncMinutesResult> {
+  const res = await fetch("/api/admin/sync-minutes", { method: "POST" });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body?.message ?? `Sync failed (${res.status})`);
+  return body;
+}

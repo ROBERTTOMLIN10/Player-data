@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: fau-mens-soccer-dashboard
+    env: node
+    plan: starter
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.10.5
+      - key: DB_PATH
+        value: /var/data/app.db
+      - key: TITAN_DATA_DIR
+        value: /var/data/titan
+      - key: ADMIN_USER
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+    disk:
+      name: data
+      mountPath: /var/data
+      sizeGB: 1

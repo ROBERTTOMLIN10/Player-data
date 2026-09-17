@@ -7,7 +7,9 @@ import { normalizePlayerName } from "./nameNormalization.js";
 import { CORE_FIELD_MAP, DATE_HEADER_CANDIDATES, matchZoneColumn, NAME_HEADER_CANDIDATES } from "./columnMapping.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.join(__dirname, "..", "..", "..", "data", "titan");
+export const DATA_DIR = process.env.TITAN_DATA_DIR
+  ? path.resolve(process.env.TITAN_DATA_DIR)
+  : path.join(__dirname, "..", "..", "..", "data", "titan");
 
 const FILENAME_PATTERN = /^(?:(\d{4}-\d{2}-\d{2})_)?(.+)\.xlsx$/i;
 
@@ -73,16 +75,29 @@ function findOrCreatePlayer(db: ReturnType<typeof getDb>, rawName: string): numb
   return playerId;
 }
 
-function importFile(filePath: string) {
+export interface ImportTitanResult {
+  status: "imported" | "skipped" | "error";
+  filename: string;
+  gameId?: number;
+  gameDate?: string;
+  opponent?: string | null;
+  playerCount?: number;
+  message: string;
+  warnings: string[];
+}
+
+export function importTitanFile(filePath: string): ImportTitanResult {
   const filename = path.basename(filePath);
   console.log(`\nImporting ${filename}...`);
+  const warnings: string[] = [];
 
   const db = getDb();
 
   const existing = db.prepare("SELECT id FROM games WHERE source_file = ?").get(filename);
   if (existing) {
-    console.log(`  already imported (source_file matches), skipping. Delete the game row to re-import.`);
-    return;
+    const message = `already imported (source_file matches). Delete the game row to re-import.`;
+    console.log(`  ${message}`);
+    return { status: "skipped", filename, message, warnings };
   }
 
   const workbook = XLSX.readFile(filePath, { cellDates: true });
@@ -91,8 +106,9 @@ function importFile(filePath: string) {
   const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(sheet, { defval: null });
 
   if (rows.length === 0) {
-    console.warn(`  no data rows found in sheet "${sheetName}", skipping.`);
-    return;
+    const message = `no data rows found in sheet "${sheetName}".`;
+    console.warn(`  ${message}`);
+    return { status: "error", filename, message, warnings };
   }
 
   const headers = Object.keys(rows[0]);
@@ -100,8 +116,9 @@ function importFile(filePath: string) {
   const dateKey = findHeaderKey(headers, DATE_HEADER_CANDIDATES);
 
   if (!nameKey || !dateKey) {
-    console.error(`  could not find name/date columns in headers: ${headers.join(", ")}`);
-    return;
+    const message = `could not find name/date columns in headers: ${headers.join(", ")}`;
+    console.error(`  ${message}`);
+    return { status: "error", filename, message, warnings };
   }
 
   const unmappedHeaders = new Set<string>();
@@ -112,7 +129,9 @@ function importFile(filePath: string) {
     unmappedHeaders.add(header);
   }
   if (unmappedHeaders.size > 0) {
-    console.warn(`  unmapped columns (preserved in raw_json only): ${[...unmappedHeaders].join(", ")}`);
+    const message = `unmapped columns (preserved in raw_json only): ${[...unmappedHeaders].join(", ")}`;
+    console.warn(`  ${message}`);
+    warnings.push(message);
   }
 
   let gameDate: string | null = null;
@@ -124,8 +143,9 @@ function importFile(filePath: string) {
     }
   }
   if (!gameDate) {
-    console.error(`  could not parse a valid date from column "${dateKey}", skipping file.`);
-    return;
+    const message = `could not parse a valid date from column "${dateKey}".`;
+    console.error(`  ${message}`);
+    return { status: "error", filename, message, warnings };
   }
 
   const { opponent } = parseFilename(filename);
@@ -157,7 +177,9 @@ function importFile(filePath: string) {
     for (const row of rows) {
       const rawName = row[nameKey];
       if (!rawName || typeof rawName !== "string" || !rawName.trim()) {
-        console.warn(`  skipping row with missing player name: ${JSON.stringify(row)}`);
+        const message = `skipping row with missing player name: ${JSON.stringify(row)}`;
+        console.warn(`  ${message}`);
+        warnings.push(message);
         continue;
       }
       const playerId = findOrCreatePlayer(db, rawName);
@@ -200,7 +222,9 @@ function importFile(filePath: string) {
   });
 
   const playerCount = runImport(rows);
-  console.log(`  imported ${playerCount} player sessions for game_date=${gameDate} opponent=${opponent ?? "(unset)"}`);
+  const message = `imported ${playerCount} player sessions for game_date=${gameDate} opponent=${opponent ?? "(unset)"}`;
+  console.log(`  ${message}`);
+  return { status: "imported", filename, gameId, gameDate, opponent, playerCount, message, warnings };
 }
 
 function main() {
@@ -218,8 +242,11 @@ function main() {
   }
 
   for (const file of files) {
-    importFile(path.join(DATA_DIR, file));
+    importTitanFile(path.join(DATA_DIR, file));
   }
 }
 
-main();
+const isMainModule = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+if (isMainModule) {
+  main();
+}

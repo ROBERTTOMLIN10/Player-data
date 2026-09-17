@@ -5,7 +5,7 @@ import { getDb } from "./connection.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-function migrate() {
+export function migrate() {
   const schemaPath = path.join(__dirname, "schema.sql");
   const schema = fs.readFileSync(schemaPath, "utf-8");
   const db = getDb();
@@ -13,4 +13,7 @@ function migrate() {
   console.log(`Migration applied against ${db.name}`);
 }
 
-migrate();
+const isMainModule = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+if (isMainModule) {
+  migrate();
+}
