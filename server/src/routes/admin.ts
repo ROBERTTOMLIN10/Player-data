@@ -5,6 +5,7 @@ import multer from "multer";
 import { DATA_DIR, importTitanFile } from "../import/importTitan.js";
 import { syncMinutes } from "../import/importMinutes.js";
 import { syncSchedule } from "../import/syncSchedule.js";
+import { getAutoSyncStatus } from "../jobs/autoSync.js";
 
 export const adminRouter = Router();
 
@@ -74,4 +75,8 @@ adminRouter.post("/sync-schedule", async (_req, res) => {
   } catch (err) {
     res.status(500).json({ status: "error", message: (err as Error).message });
   }
+});
+
+adminRouter.get("/sync-status", (_req, res) => {
+  res.json(getAutoSyncStatus());
 });

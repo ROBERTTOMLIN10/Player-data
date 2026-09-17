@@ -4,6 +4,7 @@ import {
   syncMinutesFromSidearm,
   syncScheduleFromSidearm,
   uploadTitanFile,
+  useAutoSyncStatus,
   type SyncMinutesResult,
   type SyncScheduleResult,
   type UploadTitanResult,
@@ -13,6 +14,7 @@ import { Card, SectionHeading } from "../components/Card";
 export default function AdminView() {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { data: autoSyncStatus } = useAutoSyncStatus();
 
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<UploadTitanResult | null>(null);
@@ -78,6 +80,25 @@ export default function AdminView() {
     <div className="flex flex-col gap-8">
       <SectionHeading title="Data" subtitle="Add a new game's GPS file or refresh minutes played — no terminal needed" />
 
+      <Card className="flex flex-col gap-1 text-sm">
+        <div className="flex items-center gap-2 font-medium text-text">
+          <span className={`h-2 w-2 rounded-full ${autoSyncStatus?.enabled ? "bg-teal" : "bg-text-dim"}`} />
+          Auto-sync {autoSyncStatus?.enabled ? "active" : "starting…"}
+        </div>
+        <div className="text-text-dim">
+          {autoSyncStatus
+            ? `Checks fausports.com every ${autoSyncStatus.intervalMinutes} minutes for schedule updates, game stats, and minutes played — no action needed.`
+            : "Loading status…"}
+          {autoSyncStatus?.lastRunAt && (
+            <> Last checked {new Date(autoSyncStatus.lastRunAt).toLocaleString(undefined, { hour: "numeric", minute: "2-digit", month: "short", day: "numeric" })}.</>
+          )}
+          {autoSyncStatus?.running && <> Running now…</>}
+        </div>
+        {autoSyncStatus?.lastError && (
+          <div className="mt-1 text-xs text-yellow-300/90">Last background run had an issue: {autoSyncStatus.lastError}</div>
+        )}
+      </Card>
+
       <section>
         <SectionHeading
           title="Upload GPS File"
@@ -124,7 +145,7 @@ export default function AdminView() {
       <section>
         <SectionHeading
           title="Sync Minutes Played"
-          subtitle="Pulls the latest box scores from fausports.com and links minutes/starts to existing games"
+          subtitle="Runs automatically in the background. Use this button to force an immediate refresh instead of waiting for the next check."
         />
         <Card className="flex flex-col gap-4">
           <button
@@ -132,7 +153,7 @@ export default function AdminView() {
             disabled={syncing}
             className="w-fit rounded-md bg-owl-red px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-owl-red/90 disabled:opacity-50"
           >
-            {syncing ? "Syncing…" : "Sync from fausports.com"}
+            {syncing ? "Syncing…" : "Sync now"}
           </button>
           {syncError && (
             <div className="rounded-lg border border-red-900/50 bg-red-950/30 p-3 text-sm text-red-300">{syncError}</div>
@@ -168,7 +189,7 @@ export default function AdminView() {
       <section>
         <SectionHeading
           title="Sync Schedule & Game Stats"
-          subtitle="Pulls the full season schedule (upcoming + results) plus goals/assists/points/cards for completed games from fausports.com"
+          subtitle="Runs automatically in the background. Use this button to force an immediate refresh instead of waiting for the next check."
         />
         <Card className="flex flex-col gap-4">
           <button
@@ -176,7 +197,7 @@ export default function AdminView() {
             disabled={syncingSchedule}
             className="w-fit rounded-md bg-owl-red px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-owl-red/90 disabled:opacity-50"
           >
-            {syncingSchedule ? "Syncing…" : "Sync from fausports.com"}
+            {syncingSchedule ? "Syncing…" : "Sync now"}
           </button>
           {syncScheduleError && (
             <div className="rounded-lg border border-red-900/50 bg-red-950/30 p-3 text-sm text-red-300">{syncScheduleError}</div>

@@ -11,6 +11,7 @@ import { scheduleRouter } from "./routes/schedule.js";
 import { compareRouter } from "./routes/compare.js";
 import { metricsRouter } from "./routes/metrics.js";
 import { adminRouter } from "./routes/admin.js";
+import { startAutoSync } from "./jobs/autoSync.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -46,4 +47,5 @@ app.get(/^(?!\/api).*/, (_req, res) => {
 
 app.listen(PORT, () => {
   console.log(`API listening on http://localhost:${PORT}`);
+  startAutoSync();
 });

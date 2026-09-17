@@ -139,3 +139,21 @@ export async function syncScheduleFromSidearm(): Promise<SyncScheduleResult> {
   if (!res.ok) throw new Error(body?.message ?? `Sync failed (${res.status})`);
   return body;
 }
+
+export interface AutoSyncStatus {
+  enabled: boolean;
+  intervalMinutes: number;
+  running: boolean;
+  lastRunAt: string | null;
+  lastResult: { schedule: SyncScheduleResult | null; minutes: SyncMinutesResult | null } | null;
+  lastError: string | null;
+  nextRunAt: string | null;
+}
+
+export function useAutoSyncStatus() {
+  return useQuery({
+    queryKey: ["autoSyncStatus"],
+    queryFn: () => fetchJson<AutoSyncStatus>("/api/admin/sync-status"),
+    refetchInterval: 60_000,
+  });
+}
