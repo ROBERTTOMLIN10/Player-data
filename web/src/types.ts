@@ -56,6 +56,7 @@ export interface Player {
   id: number;
   canonical_name: string;
   games_played: number;
+  position: string | null; // 'fwd' | 'mid' | 'def' | 'gk' | null (not yet known)
 }
 
 export interface PlayerGameStat {
@@ -96,7 +97,7 @@ export interface PlayerStatTotals {
 }
 
 export interface PlayerDetail {
-  player: { id: number; canonical_name: string; created_at: string };
+  player: { id: number; canonical_name: string; created_at: string; position: string | null };
   sessions: GpsSession[];
   seasonTotals: Record<string, number | null>;
   gameStats: PlayerGameStat[];

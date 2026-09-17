@@ -5,6 +5,8 @@ import { Card, SectionHeading } from "../components/Card";
 import { TrendChart } from "../components/TrendChart";
 import { colorForIndex } from "../lib/colors";
 import { formatDate, formatMetricValue } from "../lib/format";
+import { POSITION_GROUP_ORDER, positionGroup } from "../lib/positions";
+import type { Player } from "../types";
 
 export default function CompareView() {
   const { data: players } = usePlayers();
@@ -34,6 +36,15 @@ export default function CompareView() {
 
   const selectedPlayers = players?.filter((p) => selectedPlayerIds.includes(p.id)) ?? [];
 
+  const groupedPlayers = useMemo(() => {
+    const groups = new Map<string, Player[]>();
+    for (const g of POSITION_GROUP_ORDER) groups.set(g, []);
+    for (const p of players ?? []) {
+      groups.get(positionGroup(p.position))!.push(p);
+    }
+    return groups;
+  }, [players]);
+
   const barData = useMemo(() => {
     const rows = (compareData?.seasonAverages ?? []).map((row) => ({
       name: row.player_name,
@@ -49,24 +60,31 @@ export default function CompareView() {
     <div className="flex flex-col gap-8">
       <section>
         <SectionHeading title="Compare Players" subtitle="Select up to 5 players and a metric to overlay" />
-        <div className="flex flex-wrap gap-2">
-          {players?.map((p) => {
-            const active = selectedPlayerIds.includes(p.id);
-            return (
-              <button
-                key={p.id}
-                onClick={() => togglePlayer(p.id)}
-                disabled={!active && selectedPlayerIds.length >= 5}
-                className={`rounded-full border px-3 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-                  active
-                    ? "border-owl-red bg-owl-red/15 text-text"
-                    : "border-border bg-surface-raised text-text-dim hover:border-text-dim"
-                }`}
-              >
-                {p.canonical_name}
-              </button>
-            );
-          })}
+        <div className="flex flex-col gap-4">
+          {POSITION_GROUP_ORDER.filter((g) => (groupedPlayers.get(g)?.length ?? 0) > 0).map((group) => (
+            <div key={group}>
+              <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-text-dim">{group}</div>
+              <div className="flex flex-wrap gap-2">
+                {groupedPlayers.get(group)!.map((p) => {
+                  const active = selectedPlayerIds.includes(p.id);
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => togglePlayer(p.id)}
+                      disabled={!active && selectedPlayerIds.length >= 5}
+                      className={`rounded-full border px-3 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                        active
+                          ? "border-owl-red bg-owl-red/15 text-text"
+                          : "border-border bg-surface-raised text-text-dim hover:border-text-dim"
+                      }`}
+                    >
+                      {p.canonical_name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       </section>
 

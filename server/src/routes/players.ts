@@ -7,13 +7,36 @@ export const playersRouter = Router();
 const avgSelects = CORE_METRIC_KEYS.map((k) => `AVG(${k}) AS avg_${k}`).join(", ");
 const sumSelects = CORE_METRIC_KEYS.map((k) => `SUM(${k}) AS sum_${k}`).join(", ");
 
+// Position is scraped per-game from Sidearm box scores (values like "fwd",
+// "mid", "def", "gk") and can vary game to game (subs, formation changes), so
+// we take each player's most frequently recorded non-blank position across
+// both player_game_stats (schedule sync) and minutes_played (legacy minutes
+// sync) as their season "primary" position for grouping purposes.
+const POSITION_SUBQUERY = `
+  LEFT JOIN (
+    SELECT player_id, position
+    FROM (
+      SELECT player_id, position,
+             ROW_NUMBER() OVER (PARTITION BY player_id ORDER BY COUNT(*) DESC) AS rn
+      FROM (
+        SELECT player_id, position FROM player_game_stats WHERE position IS NOT NULL AND position <> ''
+        UNION ALL
+        SELECT player_id, position FROM minutes_played WHERE position IS NOT NULL AND position <> ''
+      )
+      GROUP BY player_id, position
+    )
+    WHERE rn = 1
+  ) pos ON pos.player_id = p.id
+`;
+
 playersRouter.get("/", (_req, res) => {
   const db = getDb();
   const players = db
     .prepare(
-      `SELECT p.id, p.canonical_name, COUNT(s.id) AS games_played
+      `SELECT p.id, p.canonical_name, COUNT(s.id) AS games_played, pos.position
        FROM players p
        LEFT JOIN gps_sessions s ON s.player_id = p.id
+       ${POSITION_SUBQUERY}
        GROUP BY p.id
        ORDER BY p.canonical_name ASC`,
     )
@@ -26,7 +49,9 @@ playersRouter.get("/:id", (req, res) => {
   const playerId = Number(req.params.id);
   if (!Number.isInteger(playerId)) return res.status(400).json({ error: "invalid player id" });
 
-  const player = db.prepare("SELECT * FROM players WHERE id = ?").get(playerId);
+  const player = db
+    .prepare(`SELECT p.*, pos.position FROM players p ${POSITION_SUBQUERY} WHERE p.id = ?`)
+    .get(playerId);
   if (!player) return res.status(404).json({ error: "player not found" });
 
   const sessions = db
