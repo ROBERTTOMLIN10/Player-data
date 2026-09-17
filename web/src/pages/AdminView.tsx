@@ -1,6 +1,13 @@
 import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { syncMinutesFromSidearm, uploadTitanFile, type SyncMinutesResult, type UploadTitanResult } from "../api/client";
+import {
+  syncMinutesFromSidearm,
+  syncScheduleFromSidearm,
+  uploadTitanFile,
+  type SyncMinutesResult,
+  type SyncScheduleResult,
+  type UploadTitanResult,
+} from "../api/client";
 import { Card, SectionHeading } from "../components/Card";
 
 export default function AdminView() {
@@ -14,6 +21,10 @@ export default function AdminView() {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<SyncMinutesResult | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
+
+  const [syncingSchedule, setSyncingSchedule] = useState(false);
+  const [syncScheduleResult, setSyncScheduleResult] = useState<SyncScheduleResult | null>(null);
+  const [syncScheduleError, setSyncScheduleError] = useState<string | null>(null);
 
   async function handleUpload(file: File) {
     setUploading(true);
@@ -45,6 +56,21 @@ export default function AdminView() {
       setSyncError((err as Error).message);
     } finally {
       setSyncing(false);
+    }
+  }
+
+  async function handleSyncSchedule() {
+    setSyncingSchedule(true);
+    setSyncScheduleResult(null);
+    setSyncScheduleError(null);
+    try {
+      const result = await syncScheduleFromSidearm();
+      setSyncScheduleResult(result);
+      queryClient.invalidateQueries();
+    } catch (err) {
+      setSyncScheduleError((err as Error).message);
+    } finally {
+      setSyncingSchedule(false);
     }
   }
 
@@ -129,6 +155,50 @@ export default function AdminView() {
                   <div className="font-medium text-yellow-300">Unmatched players:</div>
                   <ul className="mt-1 list-inside list-disc text-xs text-yellow-300/90">
                     {syncResult.unmatchedPlayers.map((u, i) => (
+                      <li key={i}>{u}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </Card>
+      </section>
+
+      <section>
+        <SectionHeading
+          title="Sync Schedule & Game Stats"
+          subtitle="Pulls the full season schedule (upcoming + results) plus goals/assists/points/cards for completed games from fausports.com"
+        />
+        <Card className="flex flex-col gap-4">
+          <button
+            onClick={handleSyncSchedule}
+            disabled={syncingSchedule}
+            className="w-fit rounded-md bg-owl-red px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-owl-red/90 disabled:opacity-50"
+          >
+            {syncingSchedule ? "Syncing…" : "Sync from fausports.com"}
+          </button>
+          {syncScheduleError && (
+            <div className="rounded-lg border border-red-900/50 bg-red-950/30 p-3 text-sm text-red-300">{syncScheduleError}</div>
+          )}
+          {syncScheduleResult && (
+            <div className="rounded-lg border border-teal/40 bg-teal/10 p-3 text-sm text-teal">
+              <div>{syncScheduleResult.message}</div>
+              {syncScheduleResult.anomalies.length > 0 && (
+                <div className="mt-2">
+                  <div className="font-medium text-yellow-300">Data anomalies (auto-resolved, worth a sanity check):</div>
+                  <ul className="mt-1 list-inside list-disc text-xs text-yellow-300/90">
+                    {syncScheduleResult.anomalies.map((a, i) => (
+                      <li key={i}>{a}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {syncScheduleResult.unmatchedPlayers.length > 0 && (
+                <div className="mt-2">
+                  <div className="font-medium text-yellow-300">Unmatched players:</div>
+                  <ul className="mt-1 list-inside list-disc text-xs text-yellow-300/90">
+                    {syncScheduleResult.unmatchedPlayers.map((u, i) => (
                       <li key={i}>{u}</li>
                     ))}
                   </ul>

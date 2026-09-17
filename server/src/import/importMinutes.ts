@@ -50,7 +50,7 @@ export async function syncMinutes(): Promise<SyncMinutesSummary> {
     console.error(message);
     return { status: "error", message, gamesMatched: 0, gamesSkippedNoBoxscore: 0, rowsUpserted: 0, anomalies: [], unmatchedPlayers: [] };
   }
-  console.log(`Found ${scheduleGames.length} completed game(s) with a published box score.\n`);
+  console.log(`Found ${scheduleGames.length} schedule entr${scheduleGames.length === 1 ? "y" : "ies"} for the season.\n`);
 
   const upsertMinutes = db.prepare(`
     INSERT INTO minutes_played (game_id, player_id, minutes, started, position, source_url)
@@ -70,23 +70,24 @@ export async function syncMinutes(): Promise<SyncMinutesSummary> {
 
   for (const game of localGames) {
     const scheduleMatch = scheduleGames.find((sg) => sg.gameDate === game.game_date);
-    if (!scheduleMatch) {
+    if (!scheduleMatch || !scheduleMatch.boxscoreUrl) {
       console.log(
-        `- ${game.game_date} vs ${game.opponent ?? "?"}: no official box score found (likely an exhibition/scrimmage not on the published schedule). Skipping.`,
+        `- ${game.game_date} vs ${game.opponent ?? "?"}: no official box score found (likely an exhibition/scrimmage, or the game hasn't been played/published yet). Skipping.`,
       );
       gamesSkippedNoBoxscore++;
       continue;
     }
+    const boxscoreUrl: string = scheduleMatch.boxscoreUrl;
     if (!opponentsLookRelated(game.opponent, scheduleMatch.opponent)) {
       console.warn(
         `  [warn] date matched (${game.game_date}) but opponent names differ: local="${game.opponent}" vs schedule="${scheduleMatch.opponent}". Proceeding with the date match, but double-check this pairing.`,
       );
     }
 
-    console.log(`- ${game.game_date} vs ${scheduleMatch.opponent}: fetching ${scheduleMatch.boxscoreUrl}`);
+    console.log(`- ${game.game_date} vs ${scheduleMatch.opponent}: fetching ${boxscoreUrl}`);
     let rows;
     try {
-      rows = await fetchBoxscoreMinutes(scheduleMatch.boxscoreUrl);
+      rows = await fetchBoxscoreMinutes(boxscoreUrl);
     } catch (err) {
       console.error(`  failed to fetch/parse box score: ${(err as Error).message}`);
       continue;
@@ -111,7 +112,7 @@ export async function syncMinutes(): Promise<SyncMinutesSummary> {
           minutes: row.minutes,
           started: row.started ? 1 : 0,
           position: row.position,
-          source_url: scheduleMatch.boxscoreUrl,
+          source_url: boxscoreUrl,
         });
         rowsUpserted++;
       }

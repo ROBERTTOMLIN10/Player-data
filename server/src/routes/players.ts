@@ -44,5 +44,25 @@ playersRouter.get("/:id", (req, res) => {
     .prepare(`SELECT ${avgSelects}, ${sumSelects}, COUNT(*) AS games_played FROM gps_sessions WHERE player_id = ?`)
     .get(playerId);
 
-  res.json({ player, sessions, seasonTotals });
+  const gameStats = db
+    .prepare(
+      `SELECT pgs.*, sg.game_date, sg.opponent, sg.status, sg.team_score, sg.opponent_score
+       FROM player_game_stats pgs
+       JOIN schedule_games sg ON sg.id = pgs.schedule_game_id
+       WHERE pgs.player_id = ?
+       ORDER BY sg.game_date ASC`,
+    )
+    .all(playerId);
+
+  const statTotals = db
+    .prepare(
+      `SELECT COALESCE(SUM(goals), 0) AS goals, COALESCE(SUM(assists), 0) AS assists,
+              COALESCE(SUM(points), 0) AS points, COALESCE(SUM(shots), 0) AS shots,
+              COALESCE(SUM(shots_on_goal), 0) AS shots_on_goal, COALESCE(SUM(yellow_cards), 0) AS yellow_cards,
+              COALESCE(SUM(red_cards), 0) AS red_cards, COUNT(*) AS games_with_stats
+       FROM player_game_stats WHERE player_id = ?`,
+    )
+    .get(playerId);
+
+  res.json({ player, sessions, seasonTotals, gameStats, statTotals });
 });

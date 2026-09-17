@@ -1,5 +1,7 @@
 import { NavLink, Route, Routes } from "react-router-dom";
+import HomeView from "./pages/HomeView";
 import TeamView from "./pages/TeamView";
+import TeamStatsView from "./pages/TeamStatsView";
 import PlayerView from "./pages/PlayerView";
 import CompareView from "./pages/CompareView";
 import AdminView from "./pages/AdminView";
@@ -24,7 +26,13 @@ export default function App() {
           </div>
           <nav className="-mx-1 flex gap-1 sm:mx-0 sm:gap-2">
             <NavLink to="/" end className={navLinkClass}>
-              Team
+              Home
+            </NavLink>
+            <NavLink to="/gps" className={navLinkClass}>
+              GPS
+            </NavLink>
+            <NavLink to="/team-stats" className={navLinkClass}>
+              Team Stats
             </NavLink>
             <NavLink to="/players" className={navLinkClass}>
               Players
@@ -40,7 +48,9 @@ export default function App() {
       </header>
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
         <Routes>
-          <Route path="/" element={<TeamView />} />
+          <Route path="/" element={<HomeView />} />
+          <Route path="/gps" element={<TeamView />} />
+          <Route path="/team-stats" element={<TeamStatsView />} />
           <Route path="/players" element={<PlayerView />} />
           <Route path="/players/:playerId" element={<PlayerView />} />
           <Route path="/compare" element={<CompareView />} />

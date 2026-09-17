@@ -58,10 +58,136 @@ export interface Player {
   games_played: number;
 }
 
+export interface PlayerGameStat {
+  id: number;
+  schedule_game_id: number;
+  player_id: number;
+  minutes: number | null;
+  started: number;
+  position: string | null;
+  goals: number;
+  assists: number;
+  points: number;
+  shots: number;
+  shots_on_goal: number;
+  fouls: number;
+  yellow_cards: number;
+  red_cards: number;
+  is_goalie: number;
+  saves: number | null;
+  goals_allowed: number | null;
+  shutout: number;
+  game_date: string;
+  opponent: string;
+  status: string | null;
+  team_score: number | null;
+  opponent_score: number | null;
+}
+
+export interface PlayerStatTotals {
+  goals: number;
+  assists: number;
+  points: number;
+  shots: number;
+  shots_on_goal: number;
+  yellow_cards: number;
+  red_cards: number;
+  games_with_stats: number;
+}
+
 export interface PlayerDetail {
   player: { id: number; canonical_name: string; created_at: string };
   sessions: GpsSession[];
   seasonTotals: Record<string, number | null>;
+  gameStats: PlayerGameStat[];
+  statTotals: PlayerStatTotals;
+}
+
+export interface ScheduleGame {
+  id: number;
+  game_date: string;
+  game_time: string | null;
+  opponent: string;
+  opponent_logo_url: string | null;
+  location: string | null;
+  home_away: string | null;
+  is_conference: number;
+  status: string | null;
+  team_score: number | null;
+  opponent_score: number | null;
+  boxscore_url: string | null;
+  recap_url: string | null;
+}
+
+export interface GameTeamTotals {
+  id: number;
+  schedule_game_id: number;
+  side: "FAU" | "opponent";
+  team_name: string | null;
+  goals: number | null;
+  assists: number | null;
+  points: number | null;
+  shots: number | null;
+  shots_on_goal: number | null;
+  saves: number | null;
+  corners: number | null;
+  fouls: number | null;
+  offsides: number | null;
+  yellow_cards: number | null;
+  red_cards: number | null;
+}
+
+export interface ScheduleGameDetail {
+  game: ScheduleGame & { raw_json: string | null; updated_at: string };
+  teamTotals: GameTeamTotals[];
+  playerStats: (PlayerGameStat & { player_name: string })[];
+}
+
+export interface TeamStatsGameLog {
+  schedule_game_id: number;
+  game_date: string;
+  opponent: string;
+  status: string | null;
+  team_score: number | null;
+  opponent_score: number | null;
+  goals: number;
+  assists: number;
+  points: number;
+  shots: number;
+  shots_on_goal: number;
+  saves: number | null;
+  corners: number;
+  fouls: number;
+  offsides: number;
+  yellow_cards: number;
+  red_cards: number;
+}
+
+export interface TeamStatsTopScorer {
+  player_id: number;
+  player_name: string;
+  goals: number;
+  assists: number;
+  points: number;
+  yellow_cards: number;
+  red_cards: number;
+  games_played: number;
+}
+
+export interface TeamStats {
+  seasonTotals: {
+    goals: number;
+    assists: number;
+    points: number;
+    shots: number;
+    shots_on_goal: number;
+    yellow_cards: number;
+    red_cards: number;
+    fouls: number;
+  };
+  record: { wins: number | null; losses: number | null; ties: number | null };
+  gameLog: TeamStatsGameLog[];
+  topScorers: TeamStatsTopScorer[];
 }
 
 export interface ZoneMetric {

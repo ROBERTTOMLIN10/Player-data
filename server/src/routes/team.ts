@@ -37,3 +37,55 @@ teamRouter.get("/summary", (_req, res) => {
 
   res.json({ seasonAverages, trend, highs });
 });
+
+// Season stat totals (goals/assists/points/cards) + per-game log, sourced from
+// player_game_stats/game_team_totals (independent of GPS import status).
+teamRouter.get("/stats", (_req, res) => {
+  const db = getDb();
+
+  const seasonTotals = db
+    .prepare(
+      `SELECT COALESCE(SUM(goals), 0) AS goals, COALESCE(SUM(assists), 0) AS assists,
+              COALESCE(SUM(points), 0) AS points, COALESCE(SUM(shots), 0) AS shots,
+              COALESCE(SUM(shots_on_goal), 0) AS shots_on_goal, COALESCE(SUM(yellow_cards), 0) AS yellow_cards,
+              COALESCE(SUM(red_cards), 0) AS red_cards, COALESCE(SUM(fouls), 0) AS fouls
+       FROM game_team_totals WHERE side = 'FAU'`,
+    )
+    .get();
+
+  const record = db
+    .prepare(
+      `SELECT
+         SUM(CASE WHEN status = 'W' THEN 1 ELSE 0 END) AS wins,
+         SUM(CASE WHEN status = 'L' THEN 1 ELSE 0 END) AS losses,
+         SUM(CASE WHEN status = 'T' THEN 1 ELSE 0 END) AS ties
+       FROM schedule_games WHERE status IS NOT NULL`,
+    )
+    .get();
+
+  const gameLog = db
+    .prepare(
+      `SELECT sg.id AS schedule_game_id, sg.game_date, sg.opponent, sg.status, sg.team_score, sg.opponent_score,
+              fau.goals, fau.assists, fau.points, fau.shots, fau.shots_on_goal, fau.saves, fau.corners,
+              fau.fouls, fau.offsides, fau.yellow_cards, fau.red_cards
+       FROM schedule_games sg
+       JOIN game_team_totals fau ON fau.schedule_game_id = sg.id AND fau.side = 'FAU'
+       ORDER BY sg.game_date ASC`,
+    )
+    .all();
+
+  const topScorers = db
+    .prepare(
+      `SELECT p.id AS player_id, p.canonical_name AS player_name,
+              SUM(pgs.goals) AS goals, SUM(pgs.assists) AS assists, SUM(pgs.points) AS points,
+              SUM(pgs.yellow_cards) AS yellow_cards, SUM(pgs.red_cards) AS red_cards,
+              COUNT(*) AS games_played
+       FROM player_game_stats pgs
+       JOIN players p ON p.id = pgs.player_id
+       GROUP BY p.id
+       ORDER BY points DESC, goals DESC`,
+    )
+    .all();
+
+  res.json({ seasonTotals, record, gameLog, topScorers });
+});

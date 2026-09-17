@@ -1,5 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
-import type { CompareResult, GameDetail, GameSummary, MetricDef, PlayerDetail, TeamSummary, ZoneMetric, Player } from "../types";
+import type {
+  CompareResult,
+  GameDetail,
+  GameSummary,
+  MetricDef,
+  PlayerDetail,
+  ScheduleGame,
+  ScheduleGameDetail,
+  TeamStats,
+  TeamSummary,
+  ZoneMetric,
+  Player,
+} from "../types";
 
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url);
@@ -42,6 +54,22 @@ export function usePlayerDetail(playerId: number | null) {
 
 export function useTeamSummary() {
   return useQuery({ queryKey: ["teamSummary"], queryFn: () => fetchJson<TeamSummary>("/api/team/summary") });
+}
+
+export function useTeamStats() {
+  return useQuery({ queryKey: ["teamStats"], queryFn: () => fetchJson<TeamStats>("/api/team/stats") });
+}
+
+export function useSchedule() {
+  return useQuery({ queryKey: ["schedule"], queryFn: () => fetchJson<ScheduleGame[]>("/api/schedule") });
+}
+
+export function useScheduleGame(id: number | null) {
+  return useQuery({
+    queryKey: ["scheduleGame", id],
+    queryFn: () => fetchJson<ScheduleGameDetail>(`/api/schedule/${id}`),
+    enabled: id !== null,
+  });
 }
 
 export function useCompare(playerIds: number[]) {
@@ -90,6 +118,23 @@ export interface SyncMinutesResult {
 
 export async function syncMinutesFromSidearm(): Promise<SyncMinutesResult> {
   const res = await fetch("/api/admin/sync-minutes", { method: "POST" });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body?.message ?? `Sync failed (${res.status})`);
+  return body;
+}
+
+export interface SyncScheduleResult {
+  status: "ok" | "error";
+  message: string;
+  gamesUpserted: number;
+  gamesWithStatsSynced: number;
+  playerRowsUpserted: number;
+  anomalies: string[];
+  unmatchedPlayers: string[];
+}
+
+export async function syncScheduleFromSidearm(): Promise<SyncScheduleResult> {
+  const res = await fetch("/api/admin/sync-schedule", { method: "POST" });
   const body = await res.json();
   if (!res.ok) throw new Error(body?.message ?? `Sync failed (${res.status})`);
   return body;

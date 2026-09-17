@@ -4,6 +4,7 @@ import { Router, type Request, type Response } from "express";
 import multer from "multer";
 import { DATA_DIR, importTitanFile } from "../import/importTitan.js";
 import { syncMinutes } from "../import/importMinutes.js";
+import { syncSchedule } from "../import/syncSchedule.js";
 
 export const adminRouter = Router();
 
@@ -60,6 +61,15 @@ function handleUpload(req: Request, res: Response) {
 adminRouter.post("/sync-minutes", async (_req, res) => {
   try {
     const summary = await syncMinutes();
+    res.json(summary);
+  } catch (err) {
+    res.status(500).json({ status: "error", message: (err as Error).message });
+  }
+});
+
+adminRouter.post("/sync-schedule", async (_req, res) => {
+  try {
+    const summary = await syncSchedule();
     res.json(summary);
   } catch (err) {
     res.status(500).json({ status: "error", message: (err as Error).message });

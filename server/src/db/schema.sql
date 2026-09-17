@@ -117,3 +117,84 @@ CREATE TABLE IF NOT EXISTS minutes_played (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(game_id, player_id)
 );
+
+-- ---------------------------------------------------------------------------
+-- Schedule + game stats: the full season schedule scraped from fausports.com
+-- (past AND future games — future games simply have NULL result/score fields
+-- until they're played), plus full per-player and per-team box score stats
+-- for completed games. Deliberately independent of `games`/`gps_sessions`
+-- (which only exist for games we have a Titan GPS export for) so the schedule
+-- and results can show a full season even for games with no GPS file.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS schedule_games (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  game_date TEXT NOT NULL, -- YYYY-MM-DD
+  game_time TEXT, -- e.g. "7 p.m." (free text from Sidearm, kickoff local time)
+  opponent TEXT NOT NULL,
+  opponent_logo_url TEXT,
+  location TEXT,
+  home_away TEXT, -- 'H' | 'A' | 'N'
+  is_conference INTEGER NOT NULL DEFAULT 0,
+  status TEXT, -- 'W' | 'L' | 'T' | NULL (not yet played)
+  team_score INTEGER,
+  opponent_score INTEGER,
+  boxscore_url TEXT,
+  recap_url TEXT,
+  raw_json TEXT,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(game_date, opponent)
+);
+
+CREATE INDEX IF NOT EXISTS idx_schedule_games_date ON schedule_games(game_date);
+
+-- One row per FAU player per completed schedule game: full box score stats.
+-- points = goals*2 + assists (NCAA soccer convention, verified against live data).
+CREATE TABLE IF NOT EXISTS player_game_stats (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  schedule_game_id INTEGER NOT NULL REFERENCES schedule_games(id) ON DELETE CASCADE,
+  player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  minutes REAL,
+  started INTEGER NOT NULL DEFAULT 0,
+  position TEXT,
+  goals INTEGER NOT NULL DEFAULT 0,
+  assists INTEGER NOT NULL DEFAULT 0,
+  points INTEGER NOT NULL DEFAULT 0,
+  shots INTEGER NOT NULL DEFAULT 0,
+  shots_on_goal INTEGER NOT NULL DEFAULT 0,
+  fouls INTEGER NOT NULL DEFAULT 0,
+  yellow_cards INTEGER NOT NULL DEFAULT 0,
+  red_cards INTEGER NOT NULL DEFAULT 0,
+  is_goalie INTEGER NOT NULL DEFAULT 0,
+  saves INTEGER,
+  goals_allowed INTEGER,
+  shutout INTEGER NOT NULL DEFAULT 0,
+  source_url TEXT,
+  raw_json TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(schedule_game_id, player_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_player_game_stats_player ON player_game_stats(player_id);
+CREATE INDEX IF NOT EXISTS idx_player_game_stats_game ON player_game_stats(schedule_game_id);
+
+-- Team-level totals for both sides of a completed schedule game (FAU + opponent),
+-- for the team stats page's game-by-game box scores.
+CREATE TABLE IF NOT EXISTS game_team_totals (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  schedule_game_id INTEGER NOT NULL REFERENCES schedule_games(id) ON DELETE CASCADE,
+  side TEXT NOT NULL, -- 'FAU' | 'opponent'
+  team_name TEXT,
+  goals INTEGER,
+  assists INTEGER,
+  points INTEGER,
+  shots INTEGER,
+  shots_on_goal INTEGER,
+  saves INTEGER,
+  corners INTEGER,
+  fouls INTEGER,
+  offsides INTEGER,
+  yellow_cards INTEGER,
+  red_cards INTEGER,
+  raw_json TEXT,
+  UNIQUE(schedule_game_id, side)
+);
