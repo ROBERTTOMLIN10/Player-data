@@ -62,9 +62,7 @@ export function RemindersPanel() {
             <div className={`flex flex-col gap-3 border-l-2 border-border pl-4 ${data.enabled ? "" : "opacity-50"}`}>
               <div className="flex flex-wrap items-center gap-2">
                 <TimeInput value={data.time} disabled={!data.enabled} onChange={(time) => save({ time })} />
-                <span>
-                  to <span className="text-text">every player</span>
-                </span>
+                <span>first reminder</span>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <input
@@ -81,11 +79,12 @@ export function RemindersPanel() {
                   onChange={(followupTime) => save({ followupTime })}
                 />
                 <span>
-                  follow-up to players who <span className="text-text">still haven&rsquo;t checked in</span>
+                  follow-up
                 </span>
               </div>
               <div className="text-xs text-text-dim">
-                Times are {data.timezone === "America/New_York" ? "Eastern" : data.timezone}.
+                Only sent to players who <span className="text-text">haven&rsquo;t checked in yet</span>. Times are{" "}
+                {data.timezone === "America/New_York" ? "Eastern" : data.timezone}.
               </div>
             </div>
             <div className="text-text-dim">

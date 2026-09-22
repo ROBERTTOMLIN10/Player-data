@@ -4,9 +4,10 @@ import { gameOnDate, teamClock } from "../lib/readiness.js";
 import { getSetting, setSetting } from "../lib/settings.js";
 
 /**
- * Morning check-in notifications, at team-local times:
- * - Reminder (default 7:30am): every player with notifications on.
- * - Follow-up (default 8:00am): only players who still haven't checked in.
+ * Morning check-in notifications, at team-local times, only ever sent to
+ * players who haven't checked in yet that day:
+ * - Reminder (default 7:30am)
+ * - Follow-up (default 8:00am), for anyone who still hasn't.
  *
  * Checks the clock every minute and records the date each one was last sent,
  * so a restart never double-sends. If the server was down at send time it
@@ -54,23 +55,23 @@ function toMinutes(hhmm: string): number {
   return h * 60 + m;
 }
 
-/** Player logins with a phone subscribed; optionally only those with no check-in for `date`. */
-function playersToNotify(date: string, onlyMissing: boolean): number[] {
+/** Player logins with a phone subscribed but no check-in for `date`. */
+function playersToNotify(date: string): number[] {
   const rows = getDb()
     .prepare(
       `SELECT DISTINCT u.id FROM users u
        JOIN push_subscriptions ps ON ps.user_id = u.id
        WHERE u.role = 'player'
-         ${onlyMissing ? "AND NOT EXISTS (SELECT 1 FROM readiness_checkins rc WHERE rc.player_id = u.player_id AND rc.entry_date = ?)" : ""}`,
+         AND NOT EXISTS (SELECT 1 FROM readiness_checkins rc WHERE rc.player_id = u.player_id AND rc.entry_date = ?)`,
     )
-    .all(...(onlyMissing ? [date] : [])) as { id: number }[];
+    .all(date) as { id: number }[];
   return rows.map((r) => r.id);
 }
 
-/** 7:30-style reminder to every subscribed player. */
+/** 7:30-style first reminder. */
 export async function sendMorningReminder(date: string) {
   const game = gameOnDate(date);
-  const userIds = playersToNotify(date, false);
+  const userIds = playersToNotify(date);
   const result = await sendToUsers(userIds, {
     title: game ? `Game day vs ${game.opponent}` : "Morning check-in",
     body: game
@@ -78,14 +79,14 @@ export async function sendMorningReminder(date: string) {
       : "How are you feeling today? Log your readiness before training. Takes 30 seconds.",
     url: "/",
   });
-  console.log(`[reminder] ${date}: reminder to ${userIds.length} player(s), ${result.sent} notification(s) sent.`);
+  console.log(`[reminder] ${date}: reminder to ${userIds.length} player(s) not checked in, ${result.sent} notification(s) sent.`);
   return { players: userIds.length, ...result };
 }
 
-/** 8:00-style nudge to players who still haven't checked in (also the coach's "send now"). */
+/** 8:00-style second nudge (also the coach's "send now"). */
 export async function sendFollowup(date: string) {
   const game = gameOnDate(date);
-  const userIds = playersToNotify(date, true);
+  const userIds = playersToNotify(date);
   const result = await sendToUsers(userIds, {
     title: "Still need your check-in",
     body: game
