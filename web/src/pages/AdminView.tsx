@@ -10,6 +10,7 @@ import {
   type UploadTitanResult,
 } from "../api/client";
 import { AccountsPanel } from "../components/AccountsPanel";
+import { RemindersPanel } from "../components/RemindersPanel";
 import { Card, SectionHeading } from "../components/Card";
 
 export default function AdminView() {
@@ -230,6 +231,8 @@ export default function AdminView() {
           )}
         </Card>
       </section>
+
+      <RemindersPanel />
 
       <AccountsPanel />
     </div>

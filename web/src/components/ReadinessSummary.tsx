@@ -15,7 +15,9 @@ export function ReadinessSummary({ entry, showBodyMap = true }: { entry: Readine
       <div className="flex items-center gap-4">
         <ScoreRing score={entry.readiness_score} color={STATUS_STYLE[band].hex} />
         <div className="min-w-0">
-          <div className="text-xs uppercase tracking-wide text-text-dim">Readiness</div>
+          <div className="text-xs uppercase tracking-wide text-text-dim">
+            Readiness{entry.readiness_rating !== null && ` · ${entry.readiness_rating}/10`}
+          </div>
           <div className="font-display text-lg font-semibold">
             {band === "green" ? "Good to go" : band === "amber" ? "A bit flat" : "Not feeling great"}
           </div>

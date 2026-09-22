@@ -3,6 +3,8 @@ import { z } from "zod";
 import { getDb } from "../db/connection.js";
 import { BODY_REGION_IDS, SEVERITIES } from "../lib/bodyRegions.js";
 import { CORE_METRIC_KEYS } from "../lib/metrics.js";
+import { getReminderSettings } from "../jobs/morningReminder.js";
+import { removeSubscription, saveSubscription, vapidPublicKey } from "../lib/push.js";
 import { gameOnDate, getCheckins, readinessScore, shiftDate, teamToday } from "../lib/readiness.js";
 import { getPlayerDetail } from "./players.js";
 
@@ -78,6 +80,7 @@ const sorenessSchema = z.object({
 });
 
 const checkinSchema = z.object({
+  readiness_rating: z.number().int().min(1).max(10),
   sleep_hours: z.number().min(0).max(16).optional().nullable(),
   sleep_quality: z.number().int().min(1).max(5),
   energy: z.number().int().min(1).max(5),
@@ -107,17 +110,17 @@ meRouter.put("/readiness/today", (req, res) => {
   const playerId = req.user!.playerId!;
   const date = teamToday();
   const isGameDay = gameOnDate(date) ? 1 : 0;
-  const score = readinessScore(input);
+  const score = readinessScore(input.readiness_rating);
 
   const db = getDb();
   db.transaction(() => {
     const { id } = db
       .prepare(
         `INSERT INTO readiness_checkins
-           (player_id, entry_date, is_game_day, sleep_hours, sleep_quality, energy, muscle_soreness, stress, mood, readiness_score, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           (player_id, entry_date, is_game_day, readiness_rating, sleep_hours, sleep_quality, energy, muscle_soreness, stress, mood, readiness_score, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(player_id, entry_date) DO UPDATE SET
-           is_game_day = excluded.is_game_day, sleep_hours = excluded.sleep_hours,
+           is_game_day = excluded.is_game_day, readiness_rating = excluded.readiness_rating, sleep_hours = excluded.sleep_hours,
            sleep_quality = excluded.sleep_quality, energy = excluded.energy,
            muscle_soreness = excluded.muscle_soreness, stress = excluded.stress, mood = excluded.mood,
            readiness_score = excluded.readiness_score, notes = excluded.notes, updated_at = datetime('now')
@@ -127,6 +130,7 @@ meRouter.put("/readiness/today", (req, res) => {
         playerId,
         date,
         isGameDay,
+        input.readiness_rating,
         input.sleep_hours ?? null,
         input.sleep_quality,
         input.energy,
@@ -151,4 +155,30 @@ meRouter.get("/readiness/history", (req, res) => {
   const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 365);
   const today = teamToday();
   res.json({ today, entries: getCheckins(playerId, shiftDate(today, -(days - 1)), today) });
+});
+
+// --- Morning reminder notifications ------------------------------------------
+
+meRouter.get("/push/config", (_req, res) => {
+  const { enabled, time } = getReminderSettings();
+  res.json({ publicKey: vapidPublicKey(), reminderEnabled: enabled, reminderTime: time });
+});
+
+const subscriptionSchema = z.object({
+  endpoint: z.string().url().max(2000),
+  keys: z.object({ p256dh: z.string().min(1).max(500), auth: z.string().min(1).max(500) }),
+});
+
+meRouter.post("/push/subscribe", (req, res) => {
+  const parsed = subscriptionSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid notification subscription." });
+  saveSubscription(req.user!.userId!, parsed.data);
+  res.json({ ok: true });
+});
+
+meRouter.post("/push/unsubscribe", (req, res) => {
+  const endpoint = typeof req.body?.endpoint === "string" ? req.body.endpoint : null;
+  if (!endpoint) return res.status(400).json({ error: "endpoint required" });
+  removeSubscription(req.user!.userId!, endpoint);
+  res.json({ ok: true });
 });

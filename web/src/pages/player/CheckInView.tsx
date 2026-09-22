@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { saveMyReadiness, useMyReadinessToday } from "../../api/client";
 import { BodyMap, SeverityLegend } from "../../components/BodyMap";
 import { Card } from "../../components/Card";
+import { PhoneSetupCard, ReminderStatus } from "../../components/PhoneSetupCard";
 import { ReadinessSummary } from "../../components/ReadinessSummary";
 import { regionLabel, SEVERITY_ORDER, SEVERITY_STYLE } from "../../lib/bodyRegions";
 import { formatDateLong } from "../../lib/format";
@@ -43,6 +44,8 @@ export default function CheckInView({ me }: { me: Me }) {
         </div>
       </div>
 
+      <PhoneSetupCard />
+
       {showForm ? (
         <CheckInForm
           existing={data.entry}
@@ -59,6 +62,7 @@ export default function CheckInView({ me }: { me: Me }) {
           >
             Edit today&rsquo;s check-in
           </button>
+          <ReminderStatus />
         </>
       )}
     </div>
@@ -77,6 +81,7 @@ function CheckInForm({
   onCancel?: () => void;
 }) {
   const queryClient = useQueryClient();
+  const [rating, setRating] = useState<number | null>(existing?.readiness_rating ?? null);
   const [sleepHours, setSleepHours] = useState<number | null>(existing?.sleep_hours ?? null);
   const [answers, setAnswers] = useState<Answers>(() =>
     existing
@@ -97,8 +102,8 @@ function CheckInForm({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const missing = WELLNESS_QUESTIONS.filter((q) => answers[q.key] === undefined);
-  const score = missing.length === 0 ? readinessScore(answers as Record<WellnessKey, number>) : null;
+  const missingCount = WELLNESS_QUESTIONS.filter((q) => answers[q.key] === undefined).length + (rating === null ? 1 : 0);
+  const score = rating === null ? null : readinessScore(rating);
 
   const severities = useMemo(
     () => Object.fromEntries(Object.values(soreness).map((s) => [s.region, s.severity])) as Record<string, Severity>,
@@ -126,11 +131,12 @@ function CheckInForm({
   }
 
   async function handleSubmit() {
-    if (missing.length > 0) return;
+    if (missingCount > 0 || rating === null) return;
     setSaving(true);
     setSaveError(null);
     try {
       const result = await saveMyReadiness({
+        readiness_rating: rating,
         sleep_hours: sleepHours,
         ...(answers as Record<WellnessKey, number>),
         notes: notes.trim() || null,
@@ -153,8 +159,13 @@ function CheckInForm({
 
   return (
     <div className="flex flex-col gap-5 pb-28">
+      <Card className="flex flex-col gap-4">
+        <SectionTitle step={1} title="How ready do you feel?" subtitle="10 = 100%, fully ready to train or play." />
+        <ReadinessRating value={rating} onChange={setRating} />
+      </Card>
+
       <Card className="flex flex-col gap-5">
-        <SectionTitle step={1} title="Sleep" />
+        <SectionTitle step={2} title="Sleep" />
         <SleepHoursInput value={sleepHours} onChange={setSleepHours} />
         {WELLNESS_QUESTIONS.slice(0, 1).map((q) => (
           <ScaleQuestion key={q.key} question={q} value={answers[q.key]} onChange={(v) => setAnswers((a) => ({ ...a, [q.key]: v }))} />
@@ -162,7 +173,7 @@ function CheckInForm({
       </Card>
 
       <Card className="flex flex-col gap-5">
-        <SectionTitle step={2} title="How are you feeling?" />
+        <SectionTitle step={3} title="How are you feeling?" />
         {WELLNESS_QUESTIONS.slice(1).map((q) => (
           <ScaleQuestion key={q.key} question={q} value={answers[q.key]} onChange={(v) => setAnswers((a) => ({ ...a, [q.key]: v }))} />
         ))}
@@ -170,52 +181,56 @@ function CheckInForm({
 
       <Card className="flex flex-col gap-4">
         <SectionTitle
-          step={3}
+          step={4}
           title="Anything bothering you?"
           subtitle={
             isGameDay
-              ? "Game day: tap anywhere that's sore or tight so coaches know before warm-up."
-              : "Tap anywhere that's sore or tight. Leave it blank if you feel good."
+              ? "Game day: tap the exact muscle that's sore or tight so coaches know before warm-up. Switch to Back for hamstrings, calves and glutes."
+              : "Tap the exact muscle that's sore or tight. Switch to Back for hamstrings, calves and glutes. Leave it blank if you feel good."
           }
         />
-        <BodyMap severities={severities} onRegionClick={handleRegionClick} activeRegion={activeRegion} />
+        <BodyMap severities={severities} onRegionClick={handleRegionClick} activeRegion={activeRegion} layout="toggle" />
         <SeverityLegend />
 
+        {/* Severity picker slides up above the submit bar, so it's visible
+            right after tapping a muscle without scrolling past the figure. */}
         {activeRegion && soreness[activeRegion] && (
-          <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface-raised p-3">
-            <div className="flex items-center justify-between">
-              <span className="font-medium">{regionLabel(activeRegion)}</span>
-              <button onClick={() => setActiveRegion(null)} className="text-xs text-text-dim hover:text-text">
-                Done
+          <div className="fixed inset-x-0 bottom-[68px] z-30 px-3">
+            <div className="mx-auto flex max-w-xl flex-col gap-3 rounded-xl border border-border bg-surface-raised p-3 shadow-[0_-8px_30px_rgba(0,0,0,0.6)]">
+              <div className="flex items-center justify-between">
+                <span className="font-medium">{regionLabel(activeRegion)}</span>
+                <button onClick={() => setActiveRegion(null)} className="text-xs text-text-dim hover:text-text">
+                  Done
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {SEVERITY_ORDER.map((sev) => {
+                  const selected = soreness[activeRegion].severity === sev;
+                  return (
+                    <button
+                      key={sev}
+                      onClick={() => setSeverity(activeRegion, sev)}
+                      className={`rounded-lg border px-2 py-2 text-sm font-medium transition-colors ${
+                        selected ? SEVERITY_STYLE[sev].chip : "border-border text-text-dim hover:text-text"
+                      }`}
+                    >
+                      {SEVERITY_STYLE[sev].label}
+                    </button>
+                  );
+                })}
+              </div>
+              <input
+                type="text"
+                value={soreness[activeRegion].note ?? ""}
+                onChange={(e) => setRegionNote(activeRegion, e.target.value)}
+                maxLength={300}
+                placeholder="Optional: where exactly, what it feels like"
+                className="rounded-lg border border-border bg-surface px-3 py-2 text-base text-text outline-none placeholder:text-text-dim/70 focus:border-owl-red sm:text-sm"
+              />
+              <button onClick={() => setSeverity(activeRegion, null)} className="self-start text-xs text-owl-red-light hover:underline">
+                Remove {regionLabel(activeRegion).toLowerCase()}
               </button>
             </div>
-            <div className="grid grid-cols-3 gap-2">
-              {SEVERITY_ORDER.map((sev) => {
-                const selected = soreness[activeRegion].severity === sev;
-                return (
-                  <button
-                    key={sev}
-                    onClick={() => setSeverity(activeRegion, sev)}
-                    className={`rounded-lg border px-2 py-2 text-sm font-medium transition-colors ${
-                      selected ? SEVERITY_STYLE[sev].chip : "border-border text-text-dim hover:text-text"
-                    }`}
-                  >
-                    {SEVERITY_STYLE[sev].label}
-                  </button>
-                );
-              })}
-            </div>
-            <input
-              type="text"
-              value={soreness[activeRegion].note ?? ""}
-              onChange={(e) => setRegionNote(activeRegion, e.target.value)}
-              maxLength={300}
-              placeholder="Optional: where exactly, what it feels like"
-              className="rounded-lg border border-border bg-surface px-3 py-2 text-base text-text outline-none placeholder:text-text-dim/70 focus:border-owl-red sm:text-sm"
-            />
-            <button onClick={() => setSeverity(activeRegion, null)} className="self-start text-xs text-owl-red-light hover:underline">
-              Remove {regionLabel(activeRegion).toLowerCase()}
-            </button>
           </div>
         )}
 
@@ -235,7 +250,7 @@ function CheckInForm({
       </Card>
 
       <Card className="flex flex-col gap-3">
-        <SectionTitle step={4} title="Notes for coaches" subtitle="Optional: illness, knocks, anything else we should know." />
+        <SectionTitle step={5} title="Notes for coaches" subtitle="Optional: illness, knocks, anything else we should know." />
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
@@ -255,9 +270,10 @@ function CheckInForm({
                 Readiness{" "}
                 <span className={`font-display text-lg font-semibold ${bandText(score)}`}>{score}%</span>
               </span>
-            ) : (
-              <span className="text-text-dim">
-                {missing.length} question{missing.length === 1 ? "" : "s"} left
+            ) : null}
+            {missingCount > 0 && (
+              <span className={`text-text-dim ${score !== null ? "ml-2 text-xs" : ""}`}>
+                {missingCount} question{missingCount === 1 ? "" : "s"} left
               </span>
             )}
           </div>
@@ -268,7 +284,7 @@ function CheckInForm({
           )}
           <button
             onClick={handleSubmit}
-            disabled={saving || missing.length > 0}
+            disabled={saving || missingCount > 0}
             className="rounded-lg bg-owl-red px-5 py-2.5 font-medium text-white transition-colors hover:bg-owl-red/90 disabled:opacity-40"
           >
             {saving ? "Saving…" : existing ? "Save changes" : "Submit"}
@@ -282,6 +298,62 @@ function CheckInForm({
 function bandText(score: number) {
   const band = scoreBand(score);
   return band === "red" ? "text-owl-red-light" : band === "amber" ? "text-gold" : "text-teal";
+}
+
+const RATING_WORDS: Record<number, string> = {
+  1: "Can't train",
+  2: "Very poor",
+  3: "Poor",
+  4: "Below par",
+  5: "So-so",
+  6: "OK",
+  7: "Good",
+  8: "Very good",
+  9: "Sharp",
+  10: "100%",
+};
+
+function ReadinessRating({ value, onChange }: { value: number | null; onChange: (v: number) => void }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-baseline justify-between">
+        <span className={`font-display text-3xl font-semibold ${value ? bandText(value * 10) : "text-text-dim"}`}>
+          {value ? `${value * 10}%` : "—"}
+        </span>
+        <span className="text-sm text-text-dim">{value ? RATING_WORDS[value] : "Tap a number"}</span>
+      </div>
+      <div className="grid grid-cols-5 gap-1.5 sm:grid-cols-10" role="radiogroup" aria-label="Overall readiness">
+        {Array.from({ length: 10 }, (_, i) => i + 1).map((v) => {
+          const selected = value === v;
+          const band = scoreBand(v * 10);
+          return (
+            <button
+              key={v}
+              role="radio"
+              aria-checked={selected}
+              aria-label={`${v} out of 10`}
+              onClick={() => onChange(v)}
+              className={`rounded-lg border py-2.5 font-display text-base font-semibold transition-colors ${
+                selected
+                  ? band === "red"
+                    ? SCALE_SELECTED[1]
+                    : band === "amber"
+                      ? SCALE_SELECTED[3]
+                      : SCALE_SELECTED[5]
+                  : "border-border bg-surface-raised text-text-dim hover:text-text"
+              }`}
+            >
+              {v}
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex justify-between text-[11px] text-text-dim">
+        <span>1 · Can&rsquo;t train</span>
+        <span>10 · 100%</span>
+      </div>
+    </div>
+  );
 }
 
 function SectionTitle({ step, title, subtitle }: { step: number; title: string; subtitle?: string }) {

@@ -16,12 +16,12 @@ export const WELLNESS_QUESTIONS: { key: WellnessKey; label: string; short: strin
   { key: "mood", label: "Mood", short: "Mood", options: ["Very low", "Low", "OK", "Good", "Great"] },
 ];
 
-export function readinessScore(values: Record<WellnessKey, number>): number {
-  const sum = WELLNESS_QUESTIONS.reduce((acc, q) => acc + values[q.key], 0);
-  return Math.round((sum / 25) * 100);
+/** Overall readiness is the player's own 1–10 answer; 10 = 100%. */
+export function readinessScore(rating: number): number {
+  return rating * 10;
 }
 
-/** Same bands the server uses for flags: <60 red, <75 amber, else green. */
+/** Same bands the server uses for flags: 1–5 red, 6–7 amber, 8–10 green. */
 export function scoreBand(score: number): "red" | "amber" | "green" {
   if (score < 60) return "red";
   if (score < 75) return "amber";

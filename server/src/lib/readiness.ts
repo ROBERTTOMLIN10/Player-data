@@ -14,6 +14,21 @@ export function teamToday(): string {
   }).format(new Date());
 }
 
+/** Team-local date plus minutes since midnight, for scheduling (e.g. the 7:30am reminder). */
+export function teamClock(): { date: string; minutes: number } {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TEAM_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+  const get = (type: string) => parts.find((p) => p.type === type)!.value;
+  return { date: `${get("year")}-${get("month")}-${get("day")}`, minutes: Number(get("hour")) * 60 + Number(get("minute")) };
+}
+
 export function isIsoDate(value: unknown): value is string {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
@@ -39,9 +54,9 @@ export interface WellnessInput {
   mood: number;
 }
 
-export function readinessScore(w: WellnessInput): number {
-  const sum = w.sleep_quality + w.energy + w.muscle_soreness + w.stress + w.mood;
-  return Math.round((sum / 25) * 100);
+/** The player's overall 1–10 readiness as a percentage (10 = 100%). */
+export function readinessScore(rating: number): number {
+  return rating * 10;
 }
 
 export interface SorenessRow {
@@ -55,6 +70,7 @@ export interface CheckinRow extends WellnessInput {
   player_id: number;
   entry_date: string;
   is_game_day: number;
+  readiness_rating: number | null; // null only on entries from before the 1–10 question
   sleep_hours: number | null;
   readiness_score: number;
   notes: string | null;
@@ -96,8 +112,8 @@ export function getCheckins(playerId: number, fromDate: string, toDate: string):
 
 /**
  * Coach-facing traffic light for a check-in:
- * - red: readiness under 60%, or any severe soreness
- * - amber: under 75%, moderate soreness, under 6h sleep, or 15+ points below
+ * - red: readiness 5/10 or lower, or any severe soreness
+ * - amber: 6–7/10, moderate soreness, under 6h sleep, or 15+ points below
  *   the player's own recent baseline
  * - green: everything else
  */

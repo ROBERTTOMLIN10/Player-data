@@ -160,8 +160,8 @@ export default function ReadinessView() {
             </table>
           </Card>
           <p className="mt-2 text-xs text-text-dim">
-            Watch: readiness under 60% or severe soreness. Monitor: under 75%, moderate soreness, under 6h sleep, or 15+
-            below their usual. Wellness answers are 1–5 where 5 is good.
+            Score is the player&rsquo;s own readiness out of 10, as a %. Watch: 5/10 or lower, or severe soreness. Monitor:
+            6–7/10, moderate soreness, under 6h sleep, or 15+ below their usual. Wellness answers are 1–5 where 5 is good.
           </p>
         </section>
 

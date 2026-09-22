@@ -229,15 +229,17 @@ CREATE TABLE IF NOT EXISTS auth_sessions (
 -- ---------------------------------------------------------------------------
 -- Daily pre-session readiness check-in, submitted by the player in the app.
 -- One per player per day (re-submitting the same day edits it). entry_date is
--- the team's local date (TEAM_TIMEZONE), not UTC. Wellness items are 1–5 where
--- 5 is always the good end (e.g. stress 5 = very relaxed, soreness 5 = none),
--- so readiness_score = sum / 25 as a 0–100 percentage.
+-- the team's local date (TEAM_TIMEZONE), not UTC. readiness_rating is the
+-- player's own overall 1–10 answer and readiness_score is that as a percentage
+-- (rating × 10). Wellness items are 1–5 where 5 is always the good end
+-- (e.g. stress 5 = very relaxed, soreness 5 = none).
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS readiness_checkins (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
   entry_date TEXT NOT NULL, -- YYYY-MM-DD
   is_game_day INTEGER NOT NULL DEFAULT 0,
+  readiness_rating INTEGER CHECK (readiness_rating BETWEEN 1 AND 10),
   sleep_hours REAL,
   sleep_quality INTEGER NOT NULL CHECK (sleep_quality BETWEEN 1 AND 5),
   energy INTEGER NOT NULL CHECK (energy BETWEEN 1 AND 5),
@@ -262,4 +264,24 @@ CREATE TABLE IF NOT EXISTS readiness_soreness (
   severity TEXT NOT NULL CHECK (severity IN ('light', 'moderate', 'severe')),
   note TEXT,
   UNIQUE(checkin_id, region)
+);
+
+-- Small key/value store for app-wide settings (morning reminder on/off + time,
+-- auto-generated push notification keys, last reminder sent date).
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+-- One row per phone/browser a player has allowed notifications on (a player
+-- can have several). Removed automatically when the push service says the
+-- subscription has expired.
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  last_success_at TEXT
 );

@@ -96,6 +96,16 @@ export function useMyReadinessHistory(days = 30) {
   });
 }
 
+export interface PushConfig {
+  publicKey: string;
+  reminderEnabled: boolean;
+  reminderTime: string;
+}
+
+export function usePushConfig() {
+  return useQuery({ queryKey: ["pushConfig"], queryFn: () => fetchJson<PushConfig>("/api/me/push/config"), staleTime: Infinity });
+}
+
 // --- Coach readiness + accounts ---------------------------------------------
 
 export function useSquadReadiness(date: string | null) {
@@ -112,6 +122,26 @@ export function usePlayerReadiness(playerId: number | null, days = 30) {
     queryFn: () => fetchJson<PlayerReadinessHistory>(`/api/readiness/player/${playerId}?days=${days}`),
     enabled: playerId !== null,
   });
+}
+
+export interface ReminderSettings {
+  enabled: boolean;
+  time: string;
+  lastSentDate: string | null;
+  playersWithNotifications: number;
+  timezone: string;
+}
+
+export function useReminderSettings() {
+  return useQuery({ queryKey: ["reminders"], queryFn: () => fetchJson<ReminderSettings>("/api/admin/reminders") });
+}
+
+export function updateReminderSettings(input: { enabled?: boolean; time?: string }) {
+  return sendJson<ReminderSettings>("/api/admin/reminders", "PUT", input);
+}
+
+export function sendRemindersNow() {
+  return sendJson<{ players: number; sent: number; failed: number }>("/api/admin/reminders/send-now", "POST");
 }
 
 export function useAccounts() {

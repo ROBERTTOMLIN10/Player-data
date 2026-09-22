@@ -16,6 +16,7 @@ import { compareRouter } from "./routes/compare.js";
 import { metricsRouter } from "./routes/metrics.js";
 import { adminRouter } from "./routes/admin.js";
 import { startAutoSync } from "./jobs/autoSync.js";
+import { startMorningReminder } from "./jobs/morningReminder.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -55,7 +56,15 @@ app.use("/api", (_req, res) => res.status(404).json({ error: "Not found." }));
 // In production, this server also hosts the built frontend as a single
 // deployable service (no separate static host needed).
 const webDist = path.join(__dirname, "..", "..", "web", "dist");
-app.use(express.static(webDist));
+app.use(
+  express.static(webDist, {
+    // The service worker and manifest must never be cached, or installed
+    // home-screen apps would keep running an old version.
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith("sw.js") || filePath.endsWith(".webmanifest")) res.setHeader("Cache-Control", "no-cache");
+    },
+  }),
+);
 app.get(/^(?!\/api).*/, (_req, res) => {
   res.sendFile(path.join(webDist, "index.html"), (err) => {
     if (err) res.status(404).send("Not found. Run `npm run build --workspace=web` to generate the frontend.");
@@ -65,4 +74,5 @@ app.get(/^(?!\/api).*/, (_req, res) => {
 app.listen(PORT, () => {
   console.log(`API listening on http://localhost:${PORT}`);
   startAutoSync();
+  startMorningReminder();
 });

@@ -6,6 +6,10 @@ import { DATA_DIR, importTitanFile } from "../import/importTitan.js";
 import { syncMinutes } from "../import/importMinutes.js";
 import { syncSchedule } from "../import/syncSchedule.js";
 import { getAutoSyncStatus } from "../jobs/autoSync.js";
+import { getReminderSettings, sendMorningReminders, updateReminderSettings } from "../jobs/morningReminder.js";
+import { getDb } from "../db/connection.js";
+import { teamToday } from "../lib/readiness.js";
+import { z } from "zod";
 
 export const adminRouter = Router();
 
@@ -79,4 +83,39 @@ adminRouter.post("/sync-schedule", async (_req, res) => {
 
 adminRouter.get("/sync-status", (_req, res) => {
   res.json(getAutoSyncStatus());
+});
+
+// --- Morning check-in reminder -------------------------------------------------
+
+adminRouter.get("/reminders", (_req, res) => {
+  const { n } = getDb()
+    .prepare(
+      `SELECT COUNT(DISTINCT u.id) AS n FROM users u JOIN push_subscriptions ps ON ps.user_id = u.id WHERE u.role = 'player'`,
+    )
+    .get() as { n: number };
+  res.json({ ...getReminderSettings(), playersWithNotifications: n, timezone: process.env.TEAM_TIMEZONE || "America/New_York" });
+});
+
+const reminderSchema = z.object({
+  enabled: z.boolean().optional(),
+  time: z
+    .string()
+    .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Time must be HH:MM")
+    .optional(),
+});
+
+adminRouter.put("/reminders", (req, res) => {
+  const parsed = reminderSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid settings." });
+  updateReminderSettings(parsed.data);
+  res.json(getReminderSettings());
+});
+
+// Sends the reminder right now to players who haven't checked in today.
+adminRouter.post("/reminders/send-now", async (_req, res) => {
+  try {
+    res.json(await sendMorningReminders(teamToday()));
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
 });

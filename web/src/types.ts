@@ -240,6 +240,7 @@ export interface ReadinessEntry {
   player_id: number;
   entry_date: string;
   is_game_day: number;
+  readiness_rating: number | null; // 1–10; null only on entries from before this question existed
   sleep_hours: number | null;
   sleep_quality: number;
   energy: number;
@@ -254,6 +255,7 @@ export interface ReadinessEntry {
 }
 
 export interface ReadinessInput {
+  readiness_rating: number;
   sleep_hours: number | null;
   sleep_quality: number;
   energy: number;
