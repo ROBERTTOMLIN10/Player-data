@@ -9,6 +9,8 @@ import {
   type SyncScheduleResult,
   type UploadTitanResult,
 } from "../api/client";
+import { AccountsPanel } from "../components/AccountsPanel";
+import { RemindersPanel } from "../components/RemindersPanel";
 import { Card, SectionHeading } from "../components/Card";
 
 export default function AdminView() {
@@ -78,7 +80,7 @@ export default function AdminView() {
 
   return (
     <div className="flex flex-col gap-8">
-      <SectionHeading title="Data" subtitle="Add a new game's GPS file or refresh minutes played — no terminal needed" />
+      <SectionHeading title="Data" subtitle="Add a new game's GPS file, refresh minutes played, and manage logins — no terminal needed" />
 
       <Card className="flex flex-col gap-1 text-sm">
         <div className="flex items-center gap-2 font-medium text-text">
@@ -229,6 +231,10 @@ export default function AdminView() {
           )}
         </Card>
       </section>
+
+      <RemindersPanel />
+
+      <AccountsPanel />
     </div>
   );
 }

@@ -40,3 +40,18 @@ body {
   background-color: var(--color-border);
   border-radius: 999px;
 }
+
+/* Interactive body-map regions (BodyMap.tsx) */
+.body-region {
+  cursor: pointer;
+  outline: none;
+  transition: opacity 120ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.body-region:hover {
+  opacity: 0.75;
+}
+.body-region:focus-visible {
+  stroke: #ffffff;
+  stroke-width: 2;
+}

@@ -12,7 +12,7 @@ const sumSelects = CORE_METRIC_KEYS.map((k) => `SUM(${k}) AS sum_${k}`).join(", 
 // we take each player's most frequently recorded non-blank position across
 // both player_game_stats (schedule sync) and minutes_played (legacy minutes
 // sync) as their season "primary" position for grouping purposes.
-const POSITION_SUBQUERY = `
+export const POSITION_SUBQUERY = `
   LEFT JOIN (
     SELECT player_id, position
     FROM (
@@ -45,14 +45,21 @@ playersRouter.get("/", (_req, res) => {
 });
 
 playersRouter.get("/:id", (req, res) => {
-  const db = getDb();
   const playerId = Number(req.params.id);
   if (!Number.isInteger(playerId)) return res.status(400).json({ error: "invalid player id" });
 
+  const detail = getPlayerDetail(playerId);
+  if (!detail) return res.status(404).json({ error: "player not found" });
+  res.json(detail);
+});
+
+/** Season profile for one player (GPS sessions, averages, box score stats). Shared with the player's own view. */
+export function getPlayerDetail(playerId: number) {
+  const db = getDb();
   const player = db
     .prepare(`SELECT p.*, pos.position FROM players p ${POSITION_SUBQUERY} WHERE p.id = ?`)
     .get(playerId);
-  if (!player) return res.status(404).json({ error: "player not found" });
+  if (!player) return null;
 
   const sessions = db
     .prepare(
@@ -89,5 +96,5 @@ playersRouter.get("/:id", (req, res) => {
     )
     .get(playerId);
 
-  res.json({ player, sessions, seasonTotals, gameStats, statTotals });
-});
+  return { player, sessions, seasonTotals, gameStats, statTotals };
+}

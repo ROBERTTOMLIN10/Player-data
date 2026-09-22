@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { usePlayerDetail, usePlayers, useMetrics } from "../api/client";
+import { usePlayerDetail, usePlayerReadiness, usePlayers, useMetrics } from "../api/client";
 import { Card, SectionHeading } from "../components/Card";
 import { MetricCard } from "../components/MetricCard";
+import { RangePicker, ReadinessHistory } from "../components/ReadinessHistory";
 import { TrendChart } from "../components/TrendChart";
 import { formatDate, formatMetricValue } from "../lib/format";
 
@@ -59,6 +60,8 @@ export default function PlayerView() {
           ← All players
         </button>
       </div>
+
+      <PlayerReadinessSection playerId={selectedId} />
 
       <section>
         <SectionHeading title="Season Averages" subtitle="Click a metric to chart its trend across games" />
@@ -189,5 +192,23 @@ export default function PlayerView() {
         </section>
       )}
     </div>
+  );
+}
+
+function PlayerReadinessSection({ playerId }: { playerId: number }) {
+  const [days, setDays] = useState(30);
+  const { data } = usePlayerReadiness(playerId, days);
+  return (
+    <section>
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <SectionHeading title="Readiness" subtitle="Daily check-ins: wellness score and anything sore" />
+        <RangePicker days={days} onChange={setDays} />
+      </div>
+      {data ? (
+        <ReadinessHistory history={data} emptyText="No check-ins in this period." />
+      ) : (
+        <div className="py-8 text-center text-text-dim">Loading…</div>
+      )}
+    </section>
   );
 }

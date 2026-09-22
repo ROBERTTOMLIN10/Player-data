@@ -11,13 +11,160 @@ import type {
   TeamSummary,
   ZoneMetric,
   Player,
+  AccountsList,
+  Me,
+  MyGameGps,
+  MyProfile,
+  PlayerReadinessHistory,
+  ReadinessInput,
+  ReadinessToday,
+  SquadReadiness,
 } from "../types";
+
+/** Thrown on 401 so the app can drop back to the sign-in screen. */
+export class AuthError extends Error {}
 
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url);
+  if (res.status === 401) throw new AuthError("Signed out");
   if (!res.ok) throw new Error(`Request failed: ${url} (${res.status})`);
   return res.json();
 }
+
+/** JSON write request; surfaces the server's { error } message on failure. */
+async function sendJson<T>(url: string, method: "POST" | "PUT" | "PATCH" | "DELETE", body?: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method,
+    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && !url.startsWith("/api/auth/login")) throw new AuthError("Signed out");
+  if (!res.ok) throw new Error(data?.error ?? `Request failed (${res.status})`);
+  return data as T;
+}
+
+// --- Auth -------------------------------------------------------------------
+
+export function useMe() {
+  return useQuery({
+    queryKey: ["me"],
+    queryFn: async (): Promise<Me | null> => {
+      const res = await fetch("/api/auth/me");
+      if (res.status === 401) return null;
+      if (!res.ok) throw new Error(`Couldn't reach the server (${res.status})`);
+      return res.json();
+    },
+    staleTime: Infinity,
+  });
+}
+
+export function login(email: string, password: string) {
+  return sendJson<Omit<Me, "authRequired">>("/api/auth/login", "POST", { email, password });
+}
+
+export function logout() {
+  return sendJson<{ ok: true }>("/api/auth/logout", "POST");
+}
+
+// --- Player's own view --------------------------------------------------------
+
+export function useMyProfile() {
+  return useQuery({ queryKey: ["myProfile"], queryFn: () => fetchJson<MyProfile>("/api/me/profile") });
+}
+
+export function useMyGameGps(gameId: number | null) {
+  return useQuery({
+    queryKey: ["myGameGps", gameId],
+    queryFn: () => fetchJson<MyGameGps>(`/api/me/gps/${gameId}`),
+    enabled: gameId !== null,
+  });
+}
+
+export function useMyReadinessToday() {
+  return useQuery({ queryKey: ["myReadinessToday"], queryFn: () => fetchJson<ReadinessToday>("/api/me/readiness/today") });
+}
+
+export function saveMyReadiness(input: ReadinessInput) {
+  return sendJson<ReadinessToday>("/api/me/readiness/today", "PUT", input);
+}
+
+export function useMyReadinessHistory(days = 30) {
+  return useQuery({
+    queryKey: ["myReadinessHistory", days],
+    queryFn: () => fetchJson<PlayerReadinessHistory>(`/api/me/readiness/history?days=${days}`),
+  });
+}
+
+export interface PushConfig {
+  publicKey: string;
+  reminderEnabled: boolean;
+  reminderTime: string;
+  followupTime: string | null; // null when the follow-up is off
+}
+
+export function usePushConfig() {
+  return useQuery({ queryKey: ["pushConfig"], queryFn: () => fetchJson<PushConfig>("/api/me/push/config"), staleTime: Infinity });
+}
+
+// --- Coach readiness + accounts ---------------------------------------------
+
+export function useSquadReadiness(date: string | null) {
+  return useQuery({
+    queryKey: ["squadReadiness", date],
+    queryFn: () => fetchJson<SquadReadiness>(`/api/readiness/squad${date ? `?date=${date}` : ""}`),
+    refetchInterval: 60_000,
+  });
+}
+
+export function usePlayerReadiness(playerId: number | null, days = 30) {
+  return useQuery({
+    queryKey: ["playerReadiness", playerId, days],
+    queryFn: () => fetchJson<PlayerReadinessHistory>(`/api/readiness/player/${playerId}?days=${days}`),
+    enabled: playerId !== null,
+  });
+}
+
+export interface ReminderSettings {
+  enabled: boolean;
+  time: string;
+  followupEnabled: boolean;
+  followupTime: string;
+  lastSentDate: string | null;
+  lastFollowupDate: string | null;
+  playersWithNotifications: number;
+  timezone: string;
+}
+
+export function useReminderSettings() {
+  return useQuery({ queryKey: ["reminders"], queryFn: () => fetchJson<ReminderSettings>("/api/admin/reminders") });
+}
+
+export function updateReminderSettings(input: { enabled?: boolean; time?: string; followupEnabled?: boolean; followupTime?: string }) {
+  return sendJson<ReminderSettings>("/api/admin/reminders", "PUT", input);
+}
+
+export function sendRemindersNow() {
+  return sendJson<{ players: number; sent: number; failed: number }>("/api/admin/reminders/send-now", "POST");
+}
+
+export function useAccounts() {
+  return useQuery({ queryKey: ["accounts"], queryFn: () => fetchJson<AccountsList>("/api/admin/accounts") });
+}
+
+export function createAccount(input: { role: "player" | "coach"; email: string; password: string; playerId?: number }) {
+  return sendJson<{ user_id: number }>("/api/admin/accounts", "POST", input);
+}
+
+export function updateAccount(userId: number, input: { email?: string; password?: string }) {
+  return sendJson<{ ok: true }>(`/api/admin/accounts/${userId}`, "PATCH", input);
+}
+
+export function deleteAccount(userId: number) {
+  return sendJson<{ ok: true }>(`/api/admin/accounts/${userId}`, "DELETE");
+}
+
+// --- Coach dashboard ----------------------------------------------------------
 
 export function useGames() {
   return useQuery({ queryKey: ["games"], queryFn: () => fetchJson<GameSummary[]>("/api/games") });

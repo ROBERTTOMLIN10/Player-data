@@ -13,6 +13,8 @@ services:
         value: /var/data/app.db
       - key: TITAN_DATA_DIR
         value: /var/data/titan
+      - key: TEAM_TIMEZONE # which calendar day a readiness check-in counts toward
+        value: America/New_York
       - key: ADMIN_USER
         sync: false
       - key: ADMIN_PASSWORD

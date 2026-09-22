@@ -216,3 +216,129 @@ export interface CompareResult {
   seasonAverages: Array<{ player_id: number; player_name: string } & Record<string, number>>;
   teamAverages: Record<string, number>;
 }
+
+export type Role = "coach" | "player";
+
+export interface Me {
+  role: Role;
+  email: string;
+  playerId: number | null;
+  playerName: string | null;
+  authRequired: boolean;
+}
+
+export type Severity = "light" | "moderate" | "severe";
+
+export interface SorenessEntry {
+  region: string;
+  severity: Severity;
+  note: string | null;
+}
+
+export interface ReadinessEntry {
+  id: number;
+  player_id: number;
+  entry_date: string;
+  is_game_day: number;
+  readiness_rating: number | null; // 1–10; null only on entries from before this question existed
+  sleep_hours: number | null;
+  sleep_quality: number;
+  energy: number;
+  muscle_soreness: number;
+  stress: number;
+  mood: number;
+  readiness_score: number;
+  notes: string | null;
+  submitted_at: string;
+  updated_at: string;
+  soreness: SorenessEntry[];
+}
+
+export interface ReadinessInput {
+  readiness_rating: number;
+  sleep_hours: number | null;
+  sleep_quality: number;
+  energy: number;
+  muscle_soreness: number;
+  stress: number;
+  mood: number;
+  notes: string | null;
+  soreness: SorenessEntry[];
+}
+
+export interface GameOnDate {
+  opponent: string;
+  game_time: string | null;
+  home_away: string | null;
+}
+
+export interface ReadinessToday {
+  date: string;
+  game: GameOnDate | null;
+  entry: ReadinessEntry | null;
+}
+
+export type ReadinessStatus = "red" | "amber" | "green" | "missing";
+
+export interface SquadReadinessPlayer {
+  player_id: number;
+  name: string;
+  position: string | null;
+  hasAccount: boolean;
+  entry: ReadinessEntry | null;
+  baseline: number | null;
+  status: ReadinessStatus;
+  flags: string[];
+}
+
+export type RegionCounts = Record<string, { light: number; moderate: number; severe: number }>;
+
+export interface SquadReadiness {
+  date: string;
+  today: string;
+  game: GameOnDate | null;
+  accountCount: number;
+  summary: {
+    expected: number;
+    submitted: number;
+    red: number;
+    amber: number;
+    green: number;
+    averageScore: number | null;
+  };
+  players: SquadReadinessPlayer[];
+  regionCounts: RegionCounts;
+}
+
+export interface PlayerReadinessHistory {
+  today: string;
+  entries: (ReadinessEntry & { status?: ReadinessStatus; flags?: string[] })[];
+}
+
+export type MetricValues = Record<string, number | null>;
+
+export interface MyProfile extends PlayerDetail {
+  teamAverages: Record<string, number | null>;
+  teamTrend: Array<{ game_id: number; game_date: string; opponent: string | null } & Record<string, number | null>>;
+  ranks: Record<string, { rank: number; outOf: number } | null>;
+}
+
+export interface MyGameGps {
+  game: { id: number; game_date: string; opponent: string | null };
+  you: MetricValues | null;
+  others: MetricValues[];
+  teamAverages: Record<string, number | null>;
+}
+
+export interface AccountsList {
+  players: Array<{
+    player_id: number;
+    name: string;
+    position: string | null;
+    user_id: number | null;
+    email: string | null;
+    last_login_at: string | null;
+  }>;
+  coaches: Array<{ user_id: number; email: string; last_login_at: string | null }>;
+  envCoach: string | null;
+}

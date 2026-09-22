@@ -1,32 +1,60 @@
 import type { NextFunction, Request, Response } from "express";
+import { authConfigured, lookupSession, parseCookies, SESSION_COOKIE, type AuthUser } from "../lib/auth.js";
 
-/**
- * Simple HTTP Basic Auth gate for the whole app. Intended for a small,
- * single-team deployment (not multi-user auth) — one shared username/password
- * pair set via env vars. If ADMIN_USER/ADMIN_PASSWORD aren't set (e.g. local
- * dev), auth is skipped entirely so `npm run dev` keeps working with no setup.
- */
-export function basicAuth(req: Request, res: Response, next: NextFunction) {
-  const user = process.env.ADMIN_USER;
-  const pass = process.env.ADMIN_PASSWORD;
-
-  if (!user || !pass) {
-    next();
-    return;
-  }
-
-  const header = req.headers.authorization;
-  if (header?.startsWith("Basic ")) {
-    const decoded = Buffer.from(header.slice(6), "base64").toString("utf-8");
-    const sepIndex = decoded.indexOf(":");
-    const reqUser = decoded.slice(0, sepIndex);
-    const reqPass = decoded.slice(sepIndex + 1);
-    if (reqUser === user && reqPass === pass) {
-      next();
-      return;
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Express {
+    interface Request {
+      user?: AuthUser;
     }
   }
+}
 
-  res.set("WWW-Authenticate", 'Basic realm="FAU Men\'s Soccer Performance"');
-  res.status(401).send("Authentication required.");
+/**
+ * Resolves the session cookie (if any) to req.user. If no coach login is
+ * configured via ADMIN_USER/ADMIN_PASSWORD (e.g. local dev / the Mac launcher),
+ * visitors without a session are treated as a coach so `npm run dev` keeps
+ * working with no setup. Players can still sign in to test their view.
+ */
+export function attachUser(req: Request, _res: Response, next: NextFunction) {
+  const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
+  const user = token ? lookupSession(token) : null;
+  if (user) {
+    req.user = user;
+  } else if (!authConfigured()) {
+    req.user = { userId: null, role: "coach", email: "local", playerId: null, playerName: null };
+  }
+  next();
+}
+
+export function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (!req.user) {
+    res.status(401).json({ error: "Sign in required." });
+    return;
+  }
+  next();
+}
+
+export function requireCoach(req: Request, res: Response, next: NextFunction) {
+  if (!req.user) {
+    res.status(401).json({ error: "Sign in required." });
+    return;
+  }
+  if (req.user.role !== "coach") {
+    res.status(403).json({ error: "Coaches only." });
+    return;
+  }
+  next();
+}
+
+export function requirePlayer(req: Request, res: Response, next: NextFunction) {
+  if (!req.user) {
+    res.status(401).json({ error: "Sign in required." });
+    return;
+  }
+  if (req.user.role !== "player" || req.user.playerId === null) {
+    res.status(403).json({ error: "This page is for player accounts." });
+    return;
+  }
+  next();
 }
