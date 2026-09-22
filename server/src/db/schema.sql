@@ -198,3 +198,68 @@ CREATE TABLE IF NOT EXISTS game_team_totals (
   raw_json TEXT,
   UNIQUE(schedule_game_id, side)
 );
+
+-- ---------------------------------------------------------------------------
+-- Logins. Coaches see everything; players see only their own data (plus
+-- anonymized squad GPS for context). Players sign in once with their email and
+-- stay signed in on that device via a long-lived session cookie.
+-- The ADMIN_USER/ADMIN_PASSWORD env pair always works as a coach login too, so
+-- there's no way to lock yourself out.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  password_hash TEXT NOT NULL, -- scrypt: "salt:hash" (hex)
+  role TEXT NOT NULL CHECK (role IN ('coach', 'player')),
+  player_id INTEGER UNIQUE REFERENCES players(id) ON DELETE CASCADE, -- required for role = 'player'
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  last_login_at TEXT
+);
+
+-- token_hash is sha256 of the cookie value, so a leaked DB can't be replayed as
+-- logins. user_id is NULL for the env-var coach login (no users row).
+CREATE TABLE IF NOT EXISTS auth_sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- ---------------------------------------------------------------------------
+-- Daily pre-session readiness check-in, submitted by the player in the app.
+-- One per player per day (re-submitting the same day edits it). entry_date is
+-- the team's local date (TEAM_TIMEZONE), not UTC. Wellness items are 1–5 where
+-- 5 is always the good end (e.g. stress 5 = very relaxed, soreness 5 = none),
+-- so readiness_score = sum / 25 as a 0–100 percentage.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS readiness_checkins (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  entry_date TEXT NOT NULL, -- YYYY-MM-DD
+  is_game_day INTEGER NOT NULL DEFAULT 0,
+  sleep_hours REAL,
+  sleep_quality INTEGER NOT NULL CHECK (sleep_quality BETWEEN 1 AND 5),
+  energy INTEGER NOT NULL CHECK (energy BETWEEN 1 AND 5),
+  muscle_soreness INTEGER NOT NULL CHECK (muscle_soreness BETWEEN 1 AND 5),
+  stress INTEGER NOT NULL CHECK (stress BETWEEN 1 AND 5),
+  mood INTEGER NOT NULL CHECK (mood BETWEEN 1 AND 5),
+  readiness_score INTEGER NOT NULL,
+  notes TEXT,
+  submitted_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(player_id, entry_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_readiness_checkins_date ON readiness_checkins(entry_date);
+
+-- Body-map selections for a check-in: one row per sore/bothered region.
+-- region ids match server/src/lib/bodyRegions.ts (e.g. 'quad_l').
+CREATE TABLE IF NOT EXISTS readiness_soreness (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  checkin_id INTEGER NOT NULL REFERENCES readiness_checkins(id) ON DELETE CASCADE,
+  region TEXT NOT NULL,
+  severity TEXT NOT NULL CHECK (severity IN ('light', 'moderate', 'severe')),
+  note TEXT,
+  UNIQUE(checkin_id, region)
+);
