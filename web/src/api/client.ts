@@ -100,6 +100,7 @@ export interface PushConfig {
   publicKey: string;
   reminderEnabled: boolean;
   reminderTime: string;
+  followupTime: string | null; // null when the follow-up is off
 }
 
 export function usePushConfig() {
@@ -127,7 +128,10 @@ export function usePlayerReadiness(playerId: number | null, days = 30) {
 export interface ReminderSettings {
   enabled: boolean;
   time: string;
+  followupEnabled: boolean;
+  followupTime: string;
   lastSentDate: string | null;
+  lastFollowupDate: string | null;
   playersWithNotifications: number;
   timezone: string;
 }
@@ -136,7 +140,7 @@ export function useReminderSettings() {
   return useQuery({ queryKey: ["reminders"], queryFn: () => fetchJson<ReminderSettings>("/api/admin/reminders") });
 }
 
-export function updateReminderSettings(input: { enabled?: boolean; time?: string }) {
+export function updateReminderSettings(input: { enabled?: boolean; time?: string; followupEnabled?: boolean; followupTime?: string }) {
   return sendJson<ReminderSettings>("/api/admin/reminders", "PUT", input);
 }
 

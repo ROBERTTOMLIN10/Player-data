@@ -160,8 +160,13 @@ meRouter.get("/readiness/history", (req, res) => {
 // --- Morning reminder notifications ------------------------------------------
 
 meRouter.get("/push/config", (_req, res) => {
-  const { enabled, time } = getReminderSettings();
-  res.json({ publicKey: vapidPublicKey(), reminderEnabled: enabled, reminderTime: time });
+  const { enabled, time, followupEnabled, followupTime } = getReminderSettings();
+  res.json({
+    publicKey: vapidPublicKey(),
+    reminderEnabled: enabled,
+    reminderTime: time,
+    followupTime: enabled && followupEnabled ? followupTime : null,
+  });
 });
 
 const subscriptionSchema = z.object({

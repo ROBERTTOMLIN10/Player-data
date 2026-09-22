@@ -118,7 +118,11 @@ export function PhoneSetupCard() {
             </p>
           ) : (
             <>
-              <p className="text-text-dim">Only sent if you haven&rsquo;t checked in yet that morning.</p>
+              <p className="text-text-dim">
+                {config?.followupTime
+                  ? `Plus a ${formatTime(config.followupTime)} nudge if you haven't checked in by then.`
+                  : "A quick nudge to log your readiness each morning."}
+              </p>
               <button
                 onClick={handleEnable}
                 disabled={busy || !config}
@@ -145,7 +149,10 @@ export function ReminderStatus() {
   if (push !== "on" || !config?.reminderEnabled) return null;
   return (
     <div className="flex items-center justify-between gap-2 text-xs text-text-dim">
-      <span>🔔 Reminder on for {formatTime(config.reminderTime)} if you haven&rsquo;t checked in</span>
+      <span>
+        🔔 Reminders on: {formatTime(config.reminderTime)}
+        {config.followupTime && <>, and {formatTime(config.followupTime)} if you haven&rsquo;t checked in</>}
+      </span>
       <button onClick={() => disablePush().then(setPush)} className="hover:text-text hover:underline">
         Turn off
       </button>
