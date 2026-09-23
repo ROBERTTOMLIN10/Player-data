@@ -1,0 +1,44 @@
+# Temporary: downloads sample NCAA.com / conference pages to the ncaa-samples
+# branch so their formats can be inspected (Claude's sessions can't reach them).
+name: NCAA data samples
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/friendly-dijkstra-s2fxp1]
+    paths: [.github/workflows/ncaa-samples.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  samples:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download samples
+        run: |
+          mkdir -p "$RUNNER_TEMP/out" && cd "$RUNNER_TEMP/out"
+          UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+          fetch() { # name url
+            code=$(curl -sS -L -m 30 -A "$UA" -o "$1" -w "%{http_code}" "$2" || echo "ERR")
+            echo "$code $(wc -c < "$1" 2>/dev/null || echo 0) $1 $2" | tee -a index.txt
+          }
+          fetch scoreboard-casablanca.json  "https://data.ncaa.com/casablanca/scoreboard/soccer-men/d1/2026/09/20/scoreboard.json"
+          fetch scoreboard-page.html        "https://www.ncaa.com/scoreboard/soccer-men/d1/2026/09/20/all-conf"
+          fetch schedule-casablanca.json    "https://data.ncaa.com/casablanca/schedule/soccer-men/d1/2026/09/schedule-all-conf.json"
+          fetch standings.html              "https://www.ncaa.com/standings/soccer-men/d1"
+          fetch stats-landing.html          "https://www.ncaa.com/stats/soccer-men/d1"
+          fetch stats-individual-1.html     "https://www.ncaa.com/stats/soccer-men/d1/current/individual/1"
+          fetch stats-team-1.html           "https://www.ncaa.com/stats/soccer-men/d1/current/team/1"
+          fetch rankings-usc.html           "https://www.ncaa.com/rankings/soccer-men/d1/united-soccer-coaches"
+          fetch rankings-rpi.html           "https://www.ncaa.com/rankings/soccer-men/d1/ncaa-mens-soccer-rpi"
+          fetch american-standings.html     "https://theamerican.org/standings.aspx?path=msoc"
+          fetch american-stats.html         "https://theamerican.org/stats.aspx?path=msoc"
+      - name: Save to the ncaa-samples branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd "$RUNNER_TEMP/out"
+          git init -q -b ncaa-samples && git add .
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -q -m "NCAA samples $(date -u +%F)"
+          git push -q -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" ncaa-samples
