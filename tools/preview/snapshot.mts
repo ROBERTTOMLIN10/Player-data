@@ -17,6 +17,9 @@ import { getDb } from "../../server/src/db/connection.js";
 import { migrate } from "../../server/src/db/migrate.js";
 import { syncSchedule } from "../../server/src/import/syncSchedule.js";
 import { syncMinutes } from "../../server/src/import/importMinutes.js";
+import { syncSeason, syncStatsAndRankings } from "../../server/src/jobs/ncaaSync.js";
+import { ncaaLogoUrl } from "../../server/src/ncaa/client.js";
+import { shiftDate, teamToday } from "../../server/src/lib/readiness.js";
 
 type Row = Record<string, unknown>;
 
@@ -26,7 +29,9 @@ interface Snapshot {
   teamTotals: Row[]; // _game = schedule key
   playerStats: Row[]; // _game = schedule key, _player = canonical name
   minutes: Row[]; // _game = games.source_file, _player = canonical name
-  logos?: Record<string, string>; // opponent logo URL -> data: URI (the preview can't load outside images)
+  logos?: Record<string, string>; // logo URL -> data: URI (the preview can't load outside images)
+  ncaaGames?: Row[]; // NCAA D1 scoreboard rows (all of this season)
+  ncaaCache?: Row[]; // NCAA stat / rankings tables
 }
 
 const [mode, file] = process.argv.slice(2);
@@ -90,9 +95,31 @@ if (mode === "export") {
       .all()
       .map((r) => strip(r as Row, "game_id", "player_id", "created_at")),
   };
-  // Download each opponent logo once, so the preview can embed it.
+  // NCAA D1 (NCAA.com): season results, stat leaders, rankings.
+  await syncStatsAndRankings();
+  await syncSeason();
+  snap.ncaaGames = db.prepare("SELECT * FROM ncaa_games").all() as Row[];
+  snap.ncaaCache = db.prepare("SELECT * FROM ncaa_cache").all() as Row[];
+  console.log(`ncaa: ${snap.ncaaGames.length} games, ${snap.ncaaCache.length} tables`);
+
+  // Logos to embed: our opponents, plus NCAA logos for American Conference teams,
+  // the Top 25 and this week's games (others fall back to initials in the preview).
+  const today = teamToday();
+  const week = new Set([...Array(11)].map((_, i) => shiftDate(today, i - 3)));
+  const ncaaSeos = new Set<string>();
+  for (const g of snap.ncaaGames) {
+    for (const side of ["home", "away"]) {
+      if (g[`${side}_conf`] === "american" || week.has(String(g.game_date))) ncaaSeos.add(String(g[`${side}_seo`]));
+      if (g[`${side}_rank`]) ncaaSeos.add(String(g[`${side}_seo`]));
+    }
+  }
   snap.logos = {};
-  const urls = [...new Set(snap.scheduleGames.map((g) => g.opponent_logo_url).filter(Boolean) as string[])];
+  const urls = [
+    ...new Set([
+      ...(snap.scheduleGames.map((g) => g.opponent_logo_url).filter(Boolean) as string[]),
+      ...[...ncaaSeos].map((seo) => ncaaLogoUrl(seo)),
+    ]),
+  ];
   for (const url of urls) {
     try {
       const res = await fetch(encodeURI(decodeURI(url)));
@@ -109,7 +136,8 @@ if (mode === "export") {
   fs.writeFileSync(file, JSON.stringify(snap, null, 1));
   console.log(
     `wrote ${file}: ${snap.scheduleGames.length} games, ${snap.playerStats.length} player stat lines, ` +
-      `${snap.teamTotals.length} team totals, ${snap.minutes.length} minutes rows, ${Object.keys(snap.logos).length} logos`,
+      `${snap.teamTotals.length} team totals, ${snap.minutes.length} minutes rows, ${Object.keys(snap.logos).length} logos ` +
+      `(${Math.round(JSON.stringify(snap.logos).length / 1024)} KB)`,
   );
 } else {
   const snap = JSON.parse(fs.readFileSync(file, "utf-8")) as Snapshot;
@@ -135,10 +163,15 @@ if (mode === "export") {
       const id = scheduleId(_game);
       if (id) insert("player_game_stats", { ...row, schedule_game_id: id, player_id: playerId(_player) }, "schedule_game_id, player_id");
     }
+    for (const row of snap.ncaaGames ?? []) insert("ncaa_games", row, "contest_id");
+    for (const row of snap.ncaaCache ?? []) insert("ncaa_cache", row, "key");
     for (const { _game, _player, ...row } of snap.minutes) {
       const game = db.prepare("SELECT id FROM games WHERE source_file = ?").get(_game) as { id: number } | undefined;
       if (game) insert("minutes_played", { ...row, game_id: game.id, player_id: playerId(_player) }, "game_id, player_id");
     }
   })();
-  console.log(`loaded snapshot from ${snap.syncedAt}: ${snap.scheduleGames.length} games, ${snap.playerStats.length} player stat lines`);
+  console.log(
+    `loaded snapshot from ${snap.syncedAt}: ${snap.scheduleGames.length} games, ${snap.playerStats.length} player stat lines, ` +
+      `${snap.ncaaGames?.length ?? 0} NCAA games, ${snap.ncaaCache?.length ?? 0} NCAA tables`,
+  );
 }

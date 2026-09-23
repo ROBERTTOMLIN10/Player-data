@@ -344,3 +344,93 @@ export interface AccountsList {
   coaches: Array<{ user_id: number; email: string; last_login_at: string | null }>;
   envCoach: string | null;
 }
+
+// ---- NCAA D1 (from NCAA.com) -------------------------------------------------
+
+export interface NcaaSide {
+  seo: string;
+  name: string;
+  rank: number | null;
+  score: number | null;
+  conf: string | null;
+  confName: string | null;
+  logo: string;
+}
+
+export interface NcaaGame {
+  id: number;
+  date: string;
+  startEpoch: number | null;
+  state: string; // P upcoming | I live | F final
+  period: string;
+  clock: string;
+  finalMessage: string;
+  isConference: boolean;
+  home: NcaaSide;
+  away: NcaaSide;
+}
+
+export interface NcaaScoreboard {
+  date: string;
+  today: string;
+  ourTeam: string;
+  updatedAt: string | null;
+  games: NcaaGame[];
+}
+
+export interface NcaaStandingRow {
+  seo: string;
+  name: string;
+  gp: number;
+  w: number;
+  l: number;
+  t: number;
+  gf: number;
+  ga: number;
+  gd: number;
+  pts: number;
+  overall: string;
+  logo: string;
+}
+
+export interface NcaaStandings {
+  ourTeam: string;
+  conferences: { seo: string; name: string; rows: NcaaStandingRow[] }[];
+}
+
+export interface NcaaTeamRef {
+  seo: string;
+  name: string;
+  conf: string | null;
+  logo: string;
+}
+
+export interface NcaaTable {
+  label: string;
+  updatedAt?: string;
+  columns: string[];
+  rows: string[][];
+  teams: (NcaaTeamRef | null)[];
+}
+
+export interface NcaaStatCategory {
+  key: string;
+  kind: "individual" | "team";
+  label: string;
+  group: string;
+  updatedAt: string | null;
+}
+
+export interface NcaaStatsIndex {
+  categories: NcaaStatCategory[];
+  conferences: { seo: string; name: string }[];
+}
+
+export interface NcaaConference {
+  seo: string;
+  name: string;
+  ourTeam: string;
+  standings: NcaaStandingRow[];
+  teamStats: NcaaTable[];
+  playerLeaders: NcaaTable[];
+}

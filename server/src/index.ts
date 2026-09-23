@@ -17,6 +17,8 @@ import { metricsRouter } from "./routes/metrics.js";
 import { adminRouter } from "./routes/admin.js";
 import { startAutoSync } from "./jobs/autoSync.js";
 import { startMorningReminder } from "./jobs/morningReminder.js";
+import { startNcaaSync } from "./jobs/ncaaSync.js";
+import { ncaaRouter } from "./routes/ncaa.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -49,6 +51,7 @@ app.use("/api/players", requireCoach, playersRouter);
 // (each router keeps its other endpoints coach-only).
 app.use("/api/team", requireAuth, teamRouter);
 app.use("/api/schedule", requireAuth, scheduleRouter);
+app.use("/api/ncaa", requireAuth, ncaaRouter); // NCAA D1 scores/standings/stats: players too
 app.use("/api/compare", requireCoach, compareRouter);
 app.use("/api/readiness", requireCoach, readinessRouter);
 app.use("/api/admin/accounts", requireCoach, accountsRouter);
@@ -77,4 +80,5 @@ app.listen(PORT, () => {
   console.log(`API listening on http://localhost:${PORT}`);
   startAutoSync();
   startMorningReminder();
+  startNcaaSync();
 });

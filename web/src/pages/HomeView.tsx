@@ -1,7 +1,8 @@
 import { useMemo } from "react";
-import { useSchedule, useTeamStats } from "../api/client";
+import { useNcaaConference, useSchedule, useTeamStats } from "../api/client";
 import { Card, SectionHeading } from "../components/Card";
 import { TeamLogo } from "../components/TeamLogo";
+import { NcaaStatTable, StandingsTable, updatedLabel } from "../components/ncaa";
 import { formatDateLong } from "../lib/format";
 import type { ScheduleGame } from "../types";
 
@@ -73,6 +74,8 @@ export default function HomeView() {
           )}
         </Card>
       </section>
+
+      <ConferenceSection />
 
       <section>
         <SectionHeading title="Upcoming Games" subtitle="Rest of the season schedule" />
@@ -162,5 +165,50 @@ export default function HomeView() {
         )}
       </section>
     </div>
+  );
+}
+
+/** American Conference standings (calculated from results) and stat leaders, from NCAA.com. */
+function ConferenceSection() {
+  const { data } = useNcaaConference("american");
+  if (!data) return null;
+  const hasStandings = data.standings.length > 0;
+  return (
+    <section className="flex flex-col gap-4">
+      <SectionHeading
+        title={data.name}
+        subtitle="Conference standings and stats across every team · from NCAA.com"
+      />
+      <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
+        <Card className="p-2 sm:p-3">
+          <div className="px-2 pb-1 pt-1 text-xs font-medium uppercase tracking-wide text-text-dim">Standings</div>
+          {hasStandings ? (
+            <StandingsTable rows={data.standings} ourTeam={data.ourTeam} compact />
+          ) : (
+            <div className="py-8 text-center text-sm text-text-dim">Standings appear once results have loaded.</div>
+          )}
+          <p className="px-2 pt-2 text-[11px] text-text-dim">Conference games only · 3 pts win, 1 pt tie</p>
+        </Card>
+        <div className="flex flex-col gap-4">
+          {data.playerLeaders.slice(0, 1).map((t) => (
+            <Card key={t.label} className="p-2 sm:p-3">
+              <div className="px-2 pb-1 pt-1 text-xs font-medium uppercase tracking-wide text-text-dim">{t.label} · conference</div>
+              <NcaaStatTable table={t} ourTeam={data.ourTeam} limit={8} hideColumns={["Rank", "Cl"]} />
+            </Card>
+          ))}
+        </div>
+      </div>
+      {(data.teamStats.length > 0 || data.playerLeaders.length > 1) && (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {[...data.playerLeaders.slice(1), ...data.teamStats].map((t) => (
+            <Card key={t.label} className="p-2 sm:p-3">
+              <div className="px-2 pb-1 pt-1 text-xs font-medium uppercase tracking-wide text-text-dim">{t.label}</div>
+              <NcaaStatTable table={t} ourTeam={data.ourTeam} limit={10} hideColumns={["Rank", "Cl"]} />
+            </Card>
+          ))}
+        </div>
+      )}
+      {data.teamStats[0]?.updatedAt && <p className="text-[11px] text-text-dim">{updatedLabel(data.teamStats[0].updatedAt)}</p>}
+    </section>
   );
 }
