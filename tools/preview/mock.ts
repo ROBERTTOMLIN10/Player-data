@@ -209,6 +209,12 @@ function route(method: string, path: string, q: URLSearchParams, body: any): Res
       unmatchedPlayers: [],
     });
 
+  if (path === "/api/ncaa/scoreboard" && data[key] === undefined) {
+    // Dates outside the captured week: show an empty day.
+    const base = data["/api/ncaa/scoreboard"];
+    return json({ ...base, date: q.get("date") ?? base.date, games: [], updatedAt: null });
+  }
+  if (path.startsWith("/api/ncaa/stats/") && data[key] === undefined) return json({ error: "Not loaded yet." }, 404);
   if (data[key] !== undefined) return json(data[key]);
   if (data[path] !== undefined) return json(data[path]);
   return json({ error: "Not found." }, 404);

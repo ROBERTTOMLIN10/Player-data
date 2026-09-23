@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { logout, useMe } from "./api/client";
 import type { Me } from "./types";
 import HomeView from "./pages/HomeView";
+import NcaaView from "./pages/NcaaView";
 import TeamView from "./pages/TeamView";
 import TeamStatsView from "./pages/TeamStatsView";
 import PlayerView from "./pages/PlayerView";
@@ -54,6 +55,9 @@ function CoachApp({ me }: { me: Me }) {
           <NavLink to="/team-stats" className={navLinkClass}>
             Team Stats
           </NavLink>
+          <NavLink to="/ncaa" className={navLinkClass}>
+            NCAA D1
+          </NavLink>
           <NavLink to="/players" className={navLinkClass}>
             Players
           </NavLink>
@@ -71,6 +75,7 @@ function CoachApp({ me }: { me: Me }) {
         <Route path="/readiness" element={<ReadinessView />} />
         <Route path="/gps" element={<TeamView />} />
         <Route path="/team-stats" element={<TeamStatsView />} />
+        <Route path="/ncaa" element={<NcaaView />} />
         <Route path="/players" element={<PlayerView />} />
         <Route path="/players/:playerId" element={<PlayerView />} />
         <Route path="/compare" element={<CompareView />} />
@@ -94,6 +99,9 @@ function PlayerApp({ me }: { me: Me }) {
           <NavLink to="/home" className={navLinkClass}>
             Home
           </NavLink>
+          <NavLink to="/ncaa" className={navLinkClass}>
+            NCAA D1
+          </NavLink>
           <NavLink to="/my-gps" className={navLinkClass}>
             My GPS
           </NavLink>
@@ -107,6 +115,7 @@ function PlayerApp({ me }: { me: Me }) {
         {/* Check-in stays the landing page: the morning reminder opens straight into it. */}
         <Route path="/" element={<CheckInView me={me} />} />
         <Route path="/home" element={<HomeView />} />
+        <Route path="/ncaa" element={<NcaaView />} />
         <Route path="/my-gps" element={<MyGpsView />} />
         <Route path="/history" element={<MyHistoryView />} />
         <Route path="*" element={<Navigate to="/" replace />} />

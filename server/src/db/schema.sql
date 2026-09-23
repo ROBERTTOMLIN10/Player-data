@@ -285,3 +285,35 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   last_success_at TEXT
 );
+
+-- ---------------------------------------------------------------------------
+-- NCAA Division I men's soccer, from NCAA.com: every D1 game (scoreboard,
+-- including live scores) plus cached stat leader / rankings tables. Used for
+-- the NCAA D1 tab and the conference section on Home. Conference standings are
+-- calculated from ncaa_games (both teams in the same conference = conference game).
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS ncaa_games (
+  contest_id INTEGER PRIMARY KEY,
+  game_date TEXT NOT NULL, -- YYYY-MM-DD (NCAA's listed date, Eastern)
+  start_epoch INTEGER,
+  start_time TEXT, -- "16:00" Eastern, when known
+  has_start_time INTEGER NOT NULL DEFAULT 0,
+  state TEXT, -- 'P' upcoming | 'I' live | 'F' final (NCAA gameState)
+  status TEXT, -- NCAA statusCodeDisplay, e.g. 'pre' | 'live' | 'final'
+  period TEXT, -- e.g. '1ST HALF', 'HALF', '2ND HALF', 'FINAL'
+  clock TEXT,
+  final_message TEXT, -- e.g. 'FINAL', 'FINAL (OT)'
+  home_seo TEXT, home_name TEXT, home_rank INTEGER, home_score INTEGER, home_conf TEXT,
+  away_seo TEXT, away_name TEXT, away_rank INTEGER, away_score INTEGER, away_conf TEXT,
+  is_conference INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_ncaa_games_date ON ncaa_games(game_date);
+
+-- Parsed NCAA.com tables (stat leaders, rankings, conference list), stored as JSON.
+CREATE TABLE IF NOT EXISTS ncaa_cache (
+  key TEXT PRIMARY KEY,
+  json TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);

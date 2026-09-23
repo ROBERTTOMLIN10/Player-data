@@ -19,6 +19,11 @@ import type {
   ReadinessInput,
   ReadinessToday,
   SquadReadiness,
+  NcaaConference,
+  NcaaScoreboard,
+  NcaaStandings,
+  NcaaStatsIndex,
+  NcaaTable,
 } from "../types";
 
 /** Thrown on 401 so the app can drop back to the sign-in screen. */
@@ -302,5 +307,47 @@ export function useAutoSyncStatus() {
     queryKey: ["autoSyncStatus"],
     queryFn: () => fetchJson<AutoSyncStatus>("/api/admin/sync-status"),
     refetchInterval: 60_000,
+  });
+}
+
+// --- NCAA D1 ------------------------------------------------------------------
+
+/** Scoreboard for a date; refreshes every minute when viewing today (live scores). */
+export function useNcaaScoreboard(date: string | null, live: boolean) {
+  return useQuery({
+    queryKey: ["ncaaScoreboard", date],
+    queryFn: () => fetchJson<NcaaScoreboard>(`/api/ncaa/scoreboard${date ? `?date=${date}` : ""}`),
+    refetchInterval: live ? 60_000 : false,
+  });
+}
+
+export function useNcaaStandings() {
+  return useQuery({ queryKey: ["ncaaStandings"], queryFn: () => fetchJson<NcaaStandings>("/api/ncaa/standings"), refetchInterval: 5 * 60_000 });
+}
+
+export function useNcaaStatsIndex() {
+  return useQuery({ queryKey: ["ncaaStatsIndex"], queryFn: () => fetchJson<NcaaStatsIndex>("/api/ncaa/stats") });
+}
+
+export function useNcaaStat(key: string | null) {
+  return useQuery({
+    queryKey: ["ncaaStat", key],
+    queryFn: () => fetchJson<NcaaTable & { ourTeam: string }>(`/api/ncaa/stats/${key}`),
+    enabled: key !== null,
+  });
+}
+
+export function useNcaaRankings() {
+  return useQuery({
+    queryKey: ["ncaaRankings"],
+    queryFn: () => fetchJson<{ ourTeam: string; tables: (NcaaTable & { key: string })[] }>("/api/ncaa/rankings"),
+  });
+}
+
+export function useNcaaConference(seo: string) {
+  return useQuery({
+    queryKey: ["ncaaConference", seo],
+    queryFn: () => fetchJson<NcaaConference>(`/api/ncaa/conference/${seo}`),
+    refetchInterval: 5 * 60_000,
   });
 }

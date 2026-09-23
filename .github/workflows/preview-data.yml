@@ -25,6 +25,7 @@ jobs:
         with:
           node-version: 22
       - run: npm install --no-audit --no-fund
+      - run: npm install --no-save --no-audit --no-fund sharp # shrinks logos for the preview
       - name: Import GPS files and sync fausports.com
         env:
           DB_PATH: ${{ runner.temp }}/preview.db

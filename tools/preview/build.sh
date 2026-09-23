@@ -36,7 +36,7 @@ if curl -s -m 2 "localhost:$PORT/api/health" > /dev/null; then
 fi
 # exec so $SERVER_PID is the node process itself and kill really stops it.
 ( cd server && ADMIN_USER=coach@fau.edu ADMIN_PASSWORD=secret123 PORT=$PORT DB_PATH="$DB" \
-  AUTO_SYNC_INTERVAL_MINUTES=100000 exec node dist/index.js > "$OUT/server.log" 2>&1 ) &
+  AUTO_SYNC_INTERVAL_MINUTES=100000 NCAA_SYNC=off exec node dist/index.js > "$OUT/server.log" 2>&1 ) &
 SERVER_PID=$!
 trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
 until curl -s "localhost:$PORT/api/health" > /dev/null; do

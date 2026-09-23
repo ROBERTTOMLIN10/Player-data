@@ -17,6 +17,9 @@ import { getDb } from "../../server/src/db/connection.js";
 import { migrate } from "../../server/src/db/migrate.js";
 import { syncSchedule } from "../../server/src/import/syncSchedule.js";
 import { syncMinutes } from "../../server/src/import/importMinutes.js";
+import { syncSeason, syncStatsAndRankings } from "../../server/src/jobs/ncaaSync.js";
+import { ncaaLogoUrl } from "../../server/src/ncaa/client.js";
+import { shiftDate, teamToday } from "../../server/src/lib/readiness.js";
 
 type Row = Record<string, unknown>;
 
@@ -26,7 +29,9 @@ interface Snapshot {
   teamTotals: Row[]; // _game = schedule key
   playerStats: Row[]; // _game = schedule key, _player = canonical name
   minutes: Row[]; // _game = games.source_file, _player = canonical name
-  logos?: Record<string, string>; // opponent logo URL -> data: URI (the preview can't load outside images)
+  logos?: Record<string, string>; // logo URL -> data: URI (the preview can't load outside images)
+  ncaaGames?: Row[]; // NCAA D1 scoreboard rows (all of this season)
+  ncaaCache?: Row[]; // NCAA stat / rankings tables
 }
 
 const [mode, file] = process.argv.slice(2);
@@ -90,26 +95,55 @@ if (mode === "export") {
       .all()
       .map((r) => strip(r as Row, "game_id", "player_id", "created_at")),
   };
-  // Download each opponent logo once, so the preview can embed it.
+  // NCAA D1 (NCAA.com): season results, stat leaders, rankings.
+  await syncStatsAndRankings();
+  await syncSeason();
+  snap.ncaaGames = db.prepare("SELECT * FROM ncaa_games").all() as Row[];
+  snap.ncaaCache = db.prepare("SELECT * FROM ncaa_cache").all() as Row[];
+  console.log(`ncaa: ${snap.ncaaGames.length} games, ${snap.ncaaCache.length} tables`);
+
+  // Logos to embed: every opponent on our schedule and every school on the NCAA
+  // scoreboard this season. Each is shrunk to a small 64px WebP (the size the
+  // app shows) so all of them fit in the preview page.
+  let sharp: ((input: Buffer) => { resize: (w: number, h: number, o: object) => { webp: (o: object) => { toBuffer: () => Promise<Buffer> } } }) | null = null;
+  try {
+    sharp = (await import("sharp" as string)).default;
+  } catch {
+    console.warn("sharp not installed: embedding logos at full size");
+  }
+  const seos = new Set<string>();
+  for (const g of snap.ncaaGames) for (const side of ["home", "away"]) seos.add(String(g[`${side}_seo`]));
   snap.logos = {};
-  const urls = [...new Set(snap.scheduleGames.map((g) => g.opponent_logo_url).filter(Boolean) as string[])];
+  const urls = [
+    ...new Set([
+      ...(snap.scheduleGames.map((g) => g.opponent_logo_url).filter(Boolean) as string[]),
+      ...[...seos].map((seo) => ncaaLogoUrl(seo)),
+    ]),
+  ];
+  const failed: string[] = [];
   for (const url of urls) {
     try {
       const res = await fetch(encodeURI(decodeURI(url)));
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const type = res.headers.get("content-type")?.split(";")[0] || "image/png";
-      const bytes = Buffer.from(await res.arrayBuffer());
-      snap.logos[url] = `data:${type};base64,${bytes.toString("base64")}`;
-      console.log(`logo ${url} (${Math.round(bytes.length / 1024)} KB)`);
+      let bytes = Buffer.from(await res.arrayBuffer());
+      let outType = type;
+      if (sharp) {
+        bytes = await sharp(bytes).resize(64, 64, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).webp({ quality: 80 }).toBuffer();
+        outType = "image/webp";
+      }
+      snap.logos[url] = `data:${outType};base64,${bytes.toString("base64")}`;
     } catch (err) {
-      console.warn(`logo ${url} failed: ${(err as Error).message}`);
+      failed.push(`${url.split("/").pop()} (${(err as Error).message})`);
     }
   }
+  if (failed.length) console.warn(`${failed.length} logos unavailable: ${failed.join(", ")}`);
 
   fs.writeFileSync(file, JSON.stringify(snap, null, 1));
   console.log(
     `wrote ${file}: ${snap.scheduleGames.length} games, ${snap.playerStats.length} player stat lines, ` +
-      `${snap.teamTotals.length} team totals, ${snap.minutes.length} minutes rows, ${Object.keys(snap.logos).length} logos`,
+      `${snap.teamTotals.length} team totals, ${snap.minutes.length} minutes rows, ${Object.keys(snap.logos).length} logos ` +
+      `(${Math.round(JSON.stringify(snap.logos).length / 1024)} KB)`,
   );
 } else {
   const snap = JSON.parse(fs.readFileSync(file, "utf-8")) as Snapshot;
@@ -135,10 +169,15 @@ if (mode === "export") {
       const id = scheduleId(_game);
       if (id) insert("player_game_stats", { ...row, schedule_game_id: id, player_id: playerId(_player) }, "schedule_game_id, player_id");
     }
+    for (const row of snap.ncaaGames ?? []) insert("ncaa_games", row, "contest_id");
+    for (const row of snap.ncaaCache ?? []) insert("ncaa_cache", row, "key");
     for (const { _game, _player, ...row } of snap.minutes) {
       const game = db.prepare("SELECT id FROM games WHERE source_file = ?").get(_game) as { id: number } | undefined;
       if (game) insert("minutes_played", { ...row, game_id: game.id, player_id: playerId(_player) }, "game_id, player_id");
     }
   })();
-  console.log(`loaded snapshot from ${snap.syncedAt}: ${snap.scheduleGames.length} games, ${snap.playerStats.length} player stat lines`);
+  console.log(
+    `loaded snapshot from ${snap.syncedAt}: ${snap.scheduleGames.length} games, ${snap.playerStats.length} player stat lines, ` +
+      `${snap.ncaaGames?.length ?? 0} NCAA games, ${snap.ncaaCache?.length ?? 0} NCAA tables`,
+  );
 }

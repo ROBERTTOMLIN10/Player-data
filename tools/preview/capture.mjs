@@ -27,6 +27,18 @@ await get(coach, "/api/readiness/squad");
 await get(coach, "/api/admin/sync-status");
 await get(coach, "/api/admin/accounts");
 await get(coach, "/api/admin/reminders");
+// NCAA D1
+const board = await get(coach, "/api/ncaa/scoreboard");
+for (let i = -3; i <= 3; i++) {
+  const d = new Date(`${board.today}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + i);
+  await get(coach, `/api/ncaa/scoreboard?date=${d.toISOString().slice(0, 10)}`);
+}
+await get(coach, "/api/ncaa/standings");
+const statsIndex = await get(coach, "/api/ncaa/stats");
+for (const c of statsIndex.categories) await get(coach, `/api/ncaa/stats/${c.key}`).catch(() => undefined);
+await get(coach, "/api/ncaa/rankings");
+await get(coach, "/api/ncaa/conference/american");
 // player
 out.playerMe = await (await fetch(B + "/api/auth/me", { headers: { cookie: player } })).json();
 await get(player, "/api/me/profile");
