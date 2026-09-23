@@ -78,7 +78,7 @@ export function getPlayerDetail(playerId: number) {
 
   const gameStats = db
     .prepare(
-      `SELECT pgs.*, sg.game_date, sg.opponent, sg.status, sg.team_score, sg.opponent_score
+      `SELECT pgs.*, sg.game_date, sg.opponent, sg.opponent_logo_url, sg.status, sg.team_score, sg.opponent_score
        FROM player_game_stats pgs
        JOIN schedule_games sg ON sg.id = pgs.schedule_game_id
        WHERE pgs.player_id = ?

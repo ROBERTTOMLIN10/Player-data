@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import cors from "cors";
 import express from "express";
 import { migrate } from "./db/migrate.js";
-import { attachUser, requireCoach, requirePlayer } from "./middleware/auth.js";
+import { attachUser, requireAuth, requireCoach, requirePlayer } from "./middleware/auth.js";
 import { authRouter } from "./routes/auth.js";
 import { meRouter } from "./routes/me.js";
 import { readinessRouter } from "./routes/readiness.js";
@@ -45,8 +45,10 @@ app.use("/api/me", requirePlayer, meRouter);
 // Coaches: the full dashboard.
 app.use("/api/games", requireCoach, gamesRouter);
 app.use("/api/players", requireCoach, playersRouter);
-app.use("/api/team", requireCoach, teamRouter);
-app.use("/api/schedule", requireCoach, scheduleRouter);
+// Schedule list and season record are public results, so players see them too
+// (each router keeps its other endpoints coach-only).
+app.use("/api/team", requireAuth, teamRouter);
+app.use("/api/schedule", requireAuth, scheduleRouter);
 app.use("/api/compare", requireCoach, compareRouter);
 app.use("/api/readiness", requireCoach, readinessRouter);
 app.use("/api/admin/accounts", requireCoach, accountsRouter);

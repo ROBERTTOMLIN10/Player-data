@@ -11,7 +11,7 @@ OUT="${OUT:-/tmp/fau-preview}"
 DB="$OUT/preview.db"
 PORT=4100
 mkdir -p "$OUT"
-rm -f "$DB"*
+rm -f "$DB"* "$OUT/snapshot.json"
 
 cd "$ROOT"
 npm install --no-audit --no-fund
@@ -67,7 +67,7 @@ for (let k = 1; k <= 20; k++) {
 }'
 
 echo "== Capture API responses (player: $PLAYER_EMAIL)"
-PLAYER_EMAIL="$PLAYER_EMAIL" node "$HERE/capture.mjs" "$OUT/data.json"
+PLAYER_EMAIL="$PLAYER_EMAIL" SNAPSHOT_FILE="$OUT/snapshot.json" node "$HERE/capture.mjs" "$OUT/data.json"
 kill $SERVER_PID 2>/dev/null || true
 
 echo "== Build preview app"

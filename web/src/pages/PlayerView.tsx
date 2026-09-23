@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { usePlayerDetail, usePlayerReadiness, usePlayers, useMetrics } from "../api/client";
 import { Card, SectionHeading } from "../components/Card";
+import { TeamLogo } from "../components/TeamLogo";
 import { MetricCard } from "../components/MetricCard";
 import { RangePicker, ReadinessHistory } from "../components/ReadinessHistory";
 import { TrendChart } from "../components/TrendChart";
@@ -166,7 +167,12 @@ export default function PlayerView() {
                 {detail.gameStats.map((g) => (
                   <tr key={g.id} className="border-b border-border/60 last:border-0">
                     <td className="px-4 py-3 text-text-dim">{formatDate(g.game_date)}</td>
-                    <td className="px-4 py-3 font-medium">{g.opponent}</td>
+                    <td className="px-4 py-3 font-medium">
+                      <span className="flex items-center gap-2">
+                        <TeamLogo name={g.opponent} url={g.opponent_logo_url} size="sm" />
+                        {g.opponent}
+                      </span>
+                    </td>
                     <td className="px-4 py-3 text-text-dim">
                       {g.status ? `${g.status} ${g.team_score}-${g.opponent_score}` : "—"}
                     </td>

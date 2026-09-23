@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { getDb } from "../db/connection.js";
+import { requireCoach } from "../middleware/auth.js";
 
 export const scheduleRouter = Router();
 
 // Full season schedule: past results + upcoming games, ordered chronologically.
+// Open to players as well as coaches.
 scheduleRouter.get("/", (_req, res) => {
   const db = getDb();
   const games = db
@@ -17,7 +19,8 @@ scheduleRouter.get("/", (_req, res) => {
   res.json(games);
 });
 
-scheduleRouter.get("/:id", (req, res) => {
+// Per-game box score with every player's line: coaches only.
+scheduleRouter.get("/:id", requireCoach, (req, res) => {
   const db = getDb();
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return res.status(400).json({ error: "invalid schedule game id" });
