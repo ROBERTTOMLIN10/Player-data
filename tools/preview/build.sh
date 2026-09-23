@@ -125,7 +125,8 @@ js = [f for f in os.listdir(assets) if f.endswith(".js")]
 assert len(js) == 1, js
 code = open(os.path.join(assets, js[0])).read().replace("</script", "<\\/script")
 fonts = re.search(r'<link\s+href="https://fonts.googleapis.com[^>]*>', html, re.S).group(0)
-open(out, "w").write(f"""<title>FAU Soccer App Preview</title>
+open(out, "w").write(f"""<meta charset="utf-8" />
+<title>FAU Soccer App Preview</title>
 <meta name="theme-color" content="#0b0c0f" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
