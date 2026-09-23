@@ -11,7 +11,16 @@ OUT=/tmp/fau-preview bash tools/preview/build.sh
 # → /tmp/fau-preview/fau-app-preview.html
 ```
 
-The fausports.com sync step needs network access to `fausports.com`; without
-it the preview still builds, just with no schedule or box scores.
+## Schedule, box scores and player stats
+
+These come from fausports.com. Claude's cloud sessions can't reach that site,
+so a GitHub Actions job (`.github/workflows/preview-data.yml`) syncs it on
+GitHub's servers daily and on demand, and saves the result to the
+`preview-data` branch as `fausports-snapshot.json` (`snapshot.mts export`).
+`build.sh` loads that snapshot first (`snapshot.mts import`), then still tries a
+live sync, which wins if the build machine can reach the site.
+
+To refresh the data now: GitHub → Actions → "Preview data (fausports.com)" →
+Run workflow.
 
 Not part of the deployed app.

@@ -21,12 +21,28 @@ echo "== Database + GPS files"
 DB_PATH="$DB" node server/dist/db/migrate.js
 DB_PATH="$DB" npm run import:titan
 
+echo "== fausports.com snapshot (kept if the live sync below can't reach the site)"
+if git -C "$ROOT" fetch -q origin preview-data 2>/dev/null \
+  && git -C "$ROOT" show origin/preview-data:fausports-snapshot.json > "$OUT/snapshot.json" 2>/dev/null; then
+  DB_PATH="$DB" npx tsx "$HERE/snapshot.mts" import "$OUT/snapshot.json"
+else
+  echo "No snapshot on the preview-data branch yet; the preview will have no schedule unless the live sync works."
+fi
+
 echo "== Test server"
+if curl -s -m 2 "localhost:$PORT/api/health" > /dev/null; then
+  echo "Port $PORT is already in use (a leftover test server?). Stop it and re-run." >&2
+  exit 1
+fi
+# exec so $SERVER_PID is the node process itself and kill really stops it.
 ( cd server && ADMIN_USER=coach@fau.edu ADMIN_PASSWORD=secret123 PORT=$PORT DB_PATH="$DB" \
-  AUTO_SYNC_INTERVAL_MINUTES=100000 node dist/index.js > "$OUT/server.log" 2>&1 ) &
+  AUTO_SYNC_INTERVAL_MINUTES=100000 exec node dist/index.js > "$OUT/server.log" 2>&1 ) &
 SERVER_PID=$!
 trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
-until curl -s "localhost:$PORT/api/health" > /dev/null; do sleep 1; done
+until curl -s "localhost:$PORT/api/health" > /dev/null; do
+  kill -0 $SERVER_PID 2>/dev/null || { echo "Test server failed to start; see $OUT/server.log" >&2; exit 1; }
+  sleep 1
+done
 
 echo "== fausports.com sync"
 COOKIE=$(curl -s -i -H 'Content-Type: application/json' -d '{"email":"coach@fau.edu","password":"secret123"}' \
@@ -52,7 +68,7 @@ for (let k = 1; k <= 20; k++) {
 
 echo "== Capture API responses (player: $PLAYER_EMAIL)"
 PLAYER_EMAIL="$PLAYER_EMAIL" node "$HERE/capture.mjs" "$OUT/data.json"
-kill $SERVER_PID
+kill $SERVER_PID 2>/dev/null || true
 
 echo "== Build preview app"
 DEMO="$OUT/demo-web"
@@ -109,7 +125,8 @@ js = [f for f in os.listdir(assets) if f.endswith(".js")]
 assert len(js) == 1, js
 code = open(os.path.join(assets, js[0])).read().replace("</script", "<\\/script")
 fonts = re.search(r'<link\s+href="https://fonts.googleapis.com[^>]*>', html, re.S).group(0)
-open(out, "w").write(f"""<title>FAU Soccer App Preview</title>
+open(out, "w").write(f"""<meta charset="utf-8" />
+<title>FAU Soccer App Preview</title>
 <meta name="theme-color" content="#0b0c0f" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
