@@ -102,36 +102,42 @@ if (mode === "export") {
   snap.ncaaCache = db.prepare("SELECT * FROM ncaa_cache").all() as Row[];
   console.log(`ncaa: ${snap.ncaaGames.length} games, ${snap.ncaaCache.length} tables`);
 
-  // Logos to embed: our opponents, plus NCAA logos for American Conference teams,
-  // the Top 25 and this week's games (others fall back to initials in the preview).
-  const today = teamToday();
-  const week = new Set([...Array(11)].map((_, i) => shiftDate(today, i - 3)));
-  const ncaaSeos = new Set<string>();
-  for (const g of snap.ncaaGames) {
-    for (const side of ["home", "away"]) {
-      if (g[`${side}_conf`] === "american" || week.has(String(g.game_date))) ncaaSeos.add(String(g[`${side}_seo`]));
-      if (g[`${side}_rank`]) ncaaSeos.add(String(g[`${side}_seo`]));
-    }
+  // Logos to embed: every opponent on our schedule and every school on the NCAA
+  // scoreboard this season. Each is shrunk to a small 64px WebP (the size the
+  // app shows) so all of them fit in the preview page.
+  let sharp: ((input: Buffer) => { resize: (w: number, h: number, o: object) => { webp: (o: object) => { toBuffer: () => Promise<Buffer> } } }) | null = null;
+  try {
+    sharp = (await import("sharp" as string)).default;
+  } catch {
+    console.warn("sharp not installed: embedding logos at full size");
   }
+  const seos = new Set<string>();
+  for (const g of snap.ncaaGames) for (const side of ["home", "away"]) seos.add(String(g[`${side}_seo`]));
   snap.logos = {};
   const urls = [
     ...new Set([
       ...(snap.scheduleGames.map((g) => g.opponent_logo_url).filter(Boolean) as string[]),
-      ...[...ncaaSeos].map((seo) => ncaaLogoUrl(seo)),
+      ...[...seos].map((seo) => ncaaLogoUrl(seo)),
     ]),
   ];
+  const failed: string[] = [];
   for (const url of urls) {
     try {
       const res = await fetch(encodeURI(decodeURI(url)));
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const type = res.headers.get("content-type")?.split(";")[0] || "image/png";
-      const bytes = Buffer.from(await res.arrayBuffer());
-      snap.logos[url] = `data:${type};base64,${bytes.toString("base64")}`;
-      console.log(`logo ${url} (${Math.round(bytes.length / 1024)} KB)`);
+      let bytes = Buffer.from(await res.arrayBuffer());
+      let outType = type;
+      if (sharp) {
+        bytes = await sharp(bytes).resize(64, 64, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).webp({ quality: 80 }).toBuffer();
+        outType = "image/webp";
+      }
+      snap.logos[url] = `data:${outType};base64,${bytes.toString("base64")}`;
     } catch (err) {
-      console.warn(`logo ${url} failed: ${(err as Error).message}`);
+      failed.push(`${url.split("/").pop()} (${(err as Error).message})`);
     }
   }
+  if (failed.length) console.warn(`${failed.length} logos unavailable: ${failed.join(", ")}`);
 
   fs.writeFileSync(file, JSON.stringify(snap, null, 1));
   console.log(
