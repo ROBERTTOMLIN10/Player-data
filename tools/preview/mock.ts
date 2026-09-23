@@ -18,8 +18,12 @@ const squad = clone(data["/api/readiness/squad"]);
 const reminders = clone(data["/api/admin/reminders"]);
 const accounts = clone(data["/api/admin/accounts"]);
 
+const LOGOS: Record<string, string> = data.__logos ?? {};
+
 function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+  // Swap logo tokens back to the embedded images (see capture.mjs).
+  const text = JSON.stringify(body).replace(/preview-logo:\d+/g, (t) => LOGOS[t] ?? "");
+  return new Response(text, { status, headers: { "Content-Type": "application/json" } });
 }
 
 function flag(entry: any, baseline: number | null) {

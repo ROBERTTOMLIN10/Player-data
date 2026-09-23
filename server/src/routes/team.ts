@@ -1,10 +1,12 @@
 import { Router } from "express";
 import { getDb } from "../db/connection.js";
+import { requireCoach } from "../middleware/auth.js";
 import { CORE_METRICS, CORE_METRIC_KEYS } from "../lib/metrics.js";
 
 export const teamRouter = Router();
 
-teamRouter.get("/summary", (_req, res) => {
+// GPS season summary (names each metric's top player): coaches only.
+teamRouter.get("/summary", requireCoach, (_req, res) => {
   const db = getDb();
 
   const avgSelects = CORE_METRIC_KEYS.map((k) => `AVG(${k}) AS avg_${k}`).join(", ");
@@ -40,6 +42,7 @@ teamRouter.get("/summary", (_req, res) => {
 
 // Season stat totals (goals/assists/points/cards) + per-game log, sourced from
 // player_game_stats/game_team_totals (independent of GPS import status).
+// Public box score data, so players can see it too (the Home page's record).
 teamRouter.get("/stats", (_req, res) => {
   const db = getDb();
 
@@ -65,7 +68,7 @@ teamRouter.get("/stats", (_req, res) => {
 
   const gameLog = db
     .prepare(
-      `SELECT sg.id AS schedule_game_id, sg.game_date, sg.opponent, sg.status, sg.team_score, sg.opponent_score,
+      `SELECT sg.id AS schedule_game_id, sg.game_date, sg.opponent, sg.opponent_logo_url, sg.status, sg.team_score, sg.opponent_score,
               fau.goals, fau.assists, fau.points, fau.shots, fau.shots_on_goal, fau.saves, fau.corners,
               fau.fouls, fau.offsides, fau.yellow_cards, fau.red_cards
        FROM schedule_games sg

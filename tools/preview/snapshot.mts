@@ -26,6 +26,7 @@ interface Snapshot {
   teamTotals: Row[]; // _game = schedule key
   playerStats: Row[]; // _game = schedule key, _player = canonical name
   minutes: Row[]; // _game = games.source_file, _player = canonical name
+  logos?: Record<string, string>; // opponent logo URL -> data: URI (the preview can't load outside images)
 }
 
 const [mode, file] = process.argv.slice(2);
@@ -89,10 +90,26 @@ if (mode === "export") {
       .all()
       .map((r) => strip(r as Row, "game_id", "player_id", "created_at")),
   };
+  // Download each opponent logo once, so the preview can embed it.
+  snap.logos = {};
+  const urls = [...new Set(snap.scheduleGames.map((g) => g.opponent_logo_url).filter(Boolean) as string[])];
+  for (const url of urls) {
+    try {
+      const res = await fetch(encodeURI(decodeURI(url)));
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const type = res.headers.get("content-type")?.split(";")[0] || "image/png";
+      const bytes = Buffer.from(await res.arrayBuffer());
+      snap.logos[url] = `data:${type};base64,${bytes.toString("base64")}`;
+      console.log(`logo ${url} (${Math.round(bytes.length / 1024)} KB)`);
+    } catch (err) {
+      console.warn(`logo ${url} failed: ${(err as Error).message}`);
+    }
+  }
+
   fs.writeFileSync(file, JSON.stringify(snap, null, 1));
   console.log(
     `wrote ${file}: ${snap.scheduleGames.length} games, ${snap.playerStats.length} player stat lines, ` +
-      `${snap.teamTotals.length} team totals, ${snap.minutes.length} minutes rows`,
+      `${snap.teamTotals.length} team totals, ${snap.minutes.length} minutes rows, ${Object.keys(snap.logos).length} logos`,
   );
 } else {
   const snap = JSON.parse(fs.readFileSync(file, "utf-8")) as Snapshot;

@@ -91,6 +91,9 @@ function PlayerApp({ me }: { me: Me }) {
           <NavLink to="/" end className={navLinkClass}>
             Check-in
           </NavLink>
+          <NavLink to="/home" className={navLinkClass}>
+            Home
+          </NavLink>
           <NavLink to="/my-gps" className={navLinkClass}>
             My GPS
           </NavLink>
@@ -101,7 +104,9 @@ function PlayerApp({ me }: { me: Me }) {
       }
     >
       <Routes>
+        {/* Check-in stays the landing page: the morning reminder opens straight into it. */}
         <Route path="/" element={<CheckInView me={me} />} />
+        <Route path="/home" element={<HomeView />} />
         <Route path="/my-gps" element={<MyGpsView />} />
         <Route path="/history" element={<MyHistoryView />} />
         <Route path="*" element={<Navigate to="/" replace />} />

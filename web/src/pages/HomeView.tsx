@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useSchedule, useTeamStats } from "../api/client";
 import { Card, SectionHeading } from "../components/Card";
+import { TeamLogo } from "../components/TeamLogo";
 import { formatDateLong } from "../lib/format";
 import type { ScheduleGame } from "../types";
 
@@ -12,20 +13,7 @@ function resultBadgeClass(status: string | null): string {
 }
 
 function OpponentLogo({ game }: { game: ScheduleGame }) {
-  if (game.opponent_logo_url) {
-    return (
-      <img
-        src={game.opponent_logo_url}
-        alt={`${game.opponent} logo`}
-        className="h-10 w-10 shrink-0 rounded-full bg-white/5 object-contain p-1"
-      />
-    );
-  }
-  return (
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-raised text-xs font-semibold text-text-dim">
-      {game.opponent.slice(0, 2).toUpperCase()}
-    </div>
-  );
+  return <TeamLogo name={game.opponent} url={game.opponent_logo_url} />;
 }
 
 export default function HomeView() {
@@ -138,8 +126,13 @@ export default function HomeView() {
                   <tr key={g.id} className="border-b border-border/60 last:border-0">
                     <td className="px-4 py-3 text-text-dim">{formatDateLong(g.game_date)}</td>
                     <td className="px-4 py-3 font-medium">
-                      {g.home_away === "A" ? "at " : "vs "}
-                      {g.opponent}
+                      <span className="flex items-center gap-2">
+                        <TeamLogo name={g.opponent} url={g.opponent_logo_url} size="sm" />
+                        <span>
+                          {g.home_away === "A" ? "at " : "vs "}
+                          {g.opponent}
+                        </span>
+                      </span>
                     </td>
                     <td className="px-4 py-3">
                       <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${resultBadgeClass(g.status)}`}>

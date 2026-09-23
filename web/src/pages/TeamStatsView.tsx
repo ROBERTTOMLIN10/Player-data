@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useTeamStats } from "../api/client";
 import { Card, SectionHeading } from "../components/Card";
+import { TeamLogo } from "../components/TeamLogo";
 import { formatDate } from "../lib/format";
 
 export default function TeamStatsView() {
@@ -113,7 +114,12 @@ export default function TeamStatsView() {
               {data.gameLog.map((g) => (
                 <tr key={g.schedule_game_id} className="border-b border-border/60 last:border-0">
                   <td className="px-4 py-3 text-text-dim">{formatDate(g.game_date)}</td>
-                  <td className="px-4 py-3 font-medium">{g.opponent}</td>
+                  <td className="px-4 py-3 font-medium">
+                      <span className="flex items-center gap-2">
+                        <TeamLogo name={g.opponent} url={g.opponent_logo_url} size="sm" />
+                        {g.opponent}
+                      </span>
+                    </td>
                   <td className="px-4 py-3 text-text-dim">
                     {g.status ? `${g.status} ${g.team_score}-${g.opponent_score}` : "—"}
                   </td>

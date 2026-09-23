@@ -80,6 +80,7 @@ export interface PlayerGameStat {
   shutout: number;
   game_date: string;
   opponent: string;
+  opponent_logo_url: string | null;
   status: string | null;
   team_score: number | null;
   opponent_score: number | null;
@@ -148,6 +149,7 @@ export interface TeamStatsGameLog {
   schedule_game_id: number;
   game_date: string;
   opponent: string;
+  opponent_logo_url: string | null;
   status: string | null;
   team_score: number | null;
   opponent_score: number | null;
