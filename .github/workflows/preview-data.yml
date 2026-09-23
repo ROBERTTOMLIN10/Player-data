@@ -1,0 +1,46 @@
+# Syncs the season schedule, box scores, player stats and minutes from
+# fausports.com and saves them to the `preview-data` branch as
+# fausports-snapshot.json. The app preview (tools/preview/build.sh) loads it
+# when the machine building the preview can't reach fausports.com.
+# Not used by the deployed app, which syncs fausports.com itself.
+name: Preview data (fausports.com)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 11 * * *" # daily, ~7am Eastern
+  push:
+    branches: [claude/friendly-dijkstra-s2fxp1]
+    paths: [tools/preview/snapshot.mts, .github/workflows/preview-data.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - name: Import GPS files and sync fausports.com
+        env:
+          DB_PATH: ${{ runner.temp }}/preview.db
+        run: |
+          npm run db:migrate
+          npm run import:titan
+          npx tsx tools/preview/snapshot.mts export "$RUNNER_TEMP/fausports-snapshot.json"
+      - name: Save to the preview-data branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir "$RUNNER_TEMP/out" && cd "$RUNNER_TEMP/out"
+          git init -q -b preview-data
+          cp "$RUNNER_TEMP/fausports-snapshot.json" .
+          printf '# Preview data\n\nfausports.com snapshot for the app preview, written by .github/workflows/preview-data.yml. Replaced on every run.\n' > README.md
+          git add .
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "fausports.com snapshot $(date -u +%F)"
+          git push -q -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" preview-data

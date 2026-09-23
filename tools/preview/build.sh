@@ -21,6 +21,14 @@ echo "== Database + GPS files"
 DB_PATH="$DB" node server/dist/db/migrate.js
 DB_PATH="$DB" npm run import:titan
 
+echo "== fausports.com snapshot (kept if the live sync below can't reach the site)"
+if git -C "$ROOT" fetch -q origin preview-data 2>/dev/null \
+  && git -C "$ROOT" show origin/preview-data:fausports-snapshot.json > "$OUT/snapshot.json" 2>/dev/null; then
+  DB_PATH="$DB" npx tsx "$HERE/snapshot.mts" import "$OUT/snapshot.json"
+else
+  echo "No snapshot on the preview-data branch yet; the preview will have no schedule unless the live sync works."
+fi
+
 echo "== Test server"
 if curl -s -m 2 "localhost:$PORT/api/health" > /dev/null; then
   echo "Port $PORT is already in use (a leftover test server?). Stop it and re-run." >&2
