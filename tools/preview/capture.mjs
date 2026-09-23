@@ -53,8 +53,26 @@ let json = JSON.stringify(out);
 const logos = process.env.SNAPSHOT_FILE && fs.existsSync(process.env.SNAPSHOT_FILE)
   ? JSON.parse(fs.readFileSync(process.env.SNAPSHOT_FILE, "utf-8")).logos ?? {}
   : {};
+// NCAA school logos: keep the page light by embedding only American Conference
+// teams, the Top 25 and today's games (the rest fall back to initials).
+const keepSeos = new Set();
+for (const g of out["/api/ncaa/scoreboard"]?.games ?? []) keepSeos.add(g.home.seo).add(g.away.seo);
+for (const r of out["/api/ncaa/conference/american"]?.standings ?? []) keepSeos.add(r.seo);
+for (const t of out["/api/ncaa/rankings"]?.tables?.[0]?.teams ?? []) if (t) keepSeos.add(t.seo);
+const ncaaSeo = (url) => url.match(/logos\/schools\/bgl\/([^/]+)\.svg$/)?.[1];
+const compactSvg = (dataUri) => {
+  const m = dataUri.match(/^data:image\/svg\+xml;base64,(.*)$/);
+  if (!m) return dataUri;
+  const svg = Buffer.from(m[1], "base64").toString("utf-8")
+    .replace(/<\?xml[^>]*>|<!--[\s\S]*?-->|<metadata[\s\S]*?<\/metadata>/g, "")
+    .replace(/>\s+</g, "><").replace(/\s{2,}/g, " ").trim();
+  return `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
+};
 const embedded = {};
-Object.entries(logos).forEach(([url, dataUri], i) => {
+Object.entries(logos).forEach(([url, rawUri], i) => {
+  const seo = ncaaSeo(url);
+  if (seo && !keepSeos.has(seo)) return;
+  const dataUri = compactSvg(rawUri);
   const token = `preview-logo:${i}`;
   const quoted = JSON.stringify(url).slice(1, -1);
   if (json.includes(quoted)) {

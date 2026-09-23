@@ -137,9 +137,9 @@ export function NcaaStatTable({
                 {shown.map(({ i }) => (
                   <td
                     key={i}
-                    className={`px-2 py-2 ${i === shown[shown.length - 1].i ? "text-right font-display font-semibold" : ""} ${
-                      i === 0 ? "text-text-dim" : ""
-                    }`}
+                    className={`px-2 py-2 ${i === teamCol ? "" : "whitespace-nowrap"} ${
+                      i === shown[shown.length - 1].i ? "text-right font-display font-semibold" : ""
+                    } ${i === 0 ? "text-text-dim" : ""}`}
                   >
                     {i === teamCol ? (
                       <span className="flex items-center gap-2">

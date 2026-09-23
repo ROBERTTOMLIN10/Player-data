@@ -213,10 +213,30 @@ export interface EnrichedTable extends HtmlTable {
   teams: (TeamInfo | null)[]; // per row, matched from the "Team" / "School" column
 }
 
+// Names that differ between NCAA's poll/RPI pages and its scoreboard.
+const NAME_ALIASES: Record<string, string> = { umkc: "kansas city" };
+
+/** "Missouri State" / "Missouri St." -> "missouri st" so tables using either spelling match. */
+function normalizeName(name: string): string {
+  const n = name
+    .toLowerCase()
+    .replace(/\s*\(\d+\)$/, "") // first-place votes, e.g. "South Carolina (8)"
+    .replace(/\bstate\b/g, "st")
+    .replace(/[.'’]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return NAME_ALIASES[n] ?? n;
+}
+
 export function enrichTable(table: HtmlTable, teams = teamsByName()): EnrichedTable {
   const col = table.columns.findIndex((c) => ["team", "school"].includes(c.toLowerCase()));
+  const byNormalized = new Map([...teams.values()].map((t) => [normalizeName(t.name), t]));
   return {
     ...table,
-    teams: table.rows.map((r) => (col === -1 ? null : teams.get(r[col].replace(/\s*\(\d+\)$/, "")) ?? null)),
+    teams: table.rows.map((r) => {
+      if (col === -1) return null;
+      const name = r[col].replace(/\s*\(\d+\)$/, "");
+      return teams.get(name) ?? byNormalized.get(normalizeName(name)) ?? null;
+    }),
   };
 }
