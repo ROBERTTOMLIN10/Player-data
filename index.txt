@@ -1,0 +1,6 @@
+200 17633 contests-0920.json https://sdataprod.ncaa.com?meta=GetContests_web&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%224bcb5e6432fa9da365c0c19af01b1f9015cc7eb5c21e7af2dba308784a166df7%22%7D%7D&variables=%7B%22sportCode%22%3A%22MSO%22%2C%22division%22%3A1%2C%22seasonYear%22%3A2026%2C%22contestDate%22%3A%2209%5C%2F20%5C%2F2026%22%7D
+200 36402 contests-today.json https://sdataprod.ncaa.com?meta=GetContests_web&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%224bcb5e6432fa9da365c0c19af01b1f9015cc7eb5c21e7af2dba308784a166df7%22%7D%7D&variables=%7B%22sportCode%22%3A%22MSO%22%2C%22division%22%3A1%2C%22seasonYear%22%3A2026%2C%22contestDate%22%3A%2209%5C%2F22%5C%2F2026%22%7D
+200 2462 conferences.json https://sdataprod.ncaa.com?meta=NCAA_GetConferences_web&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%226795d6b196a67ff7880cffab51e769a8784bc1646a9908276e0b787011df8c3f%22%7D%7D&variables=%7B%22sportCode%22%3A%22MSO%22%2C%22seasonYear%22%3A2026%2C%22division%22%3A1%7D
+200 181222 stats-ind-568.html https://www.ncaa.com/stats/soccer-men/d1/current/individual/568
+200 179001 stats-team-30.html https://www.ncaa.com/stats/soccer-men/d1/current/team/30
+200 187862 standings-american.html https://www.ncaa.com/standings/soccer-men/d1/american-conference
