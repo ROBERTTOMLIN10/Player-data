@@ -193,7 +193,10 @@ export function computeStandings(seasonYear: number): ConferenceStandings[] {
     conf.set(c, table);
   }
 
+  // Only NCAA D1 conferences (non-D1 opponents carry their own conference ids).
+  const d1 = Object.keys(names).length > 0 ? new Set(Object.keys(names)) : null;
   return [...conf.entries()]
+    .filter(([seo]) => !d1 || d1.has(seo))
     .map(([seo, table]) => ({
       seo,
       name: conferenceLabel(seo, names),
