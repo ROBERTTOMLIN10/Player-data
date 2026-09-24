@@ -159,7 +159,9 @@ function StandingsTab() {
             </option>
           ))}
         </select>
-        <span className="text-xs text-text-dim">Conference games only · 3 pts win, 1 pt tie · calculated from NCAA.com results</span>
+        <span className="text-xs text-text-dim">
+          Conference games only · 3 pts win, 1 pt tie · calculated from NCAA.com results · arrows show today&rsquo;s movement
+        </span>
       </div>
       {shown.map((c) => (
         <Card key={c.seo} className="p-0 sm:p-0">
@@ -188,7 +190,7 @@ function StatsTab() {
   const filtered = useMemo(() => {
     if (!table || conf === "all") return table;
     const keep = table.rows.map((_, i) => i).filter((i) => table.teams[i]?.conf === conf);
-    return { ...table, rows: keep.map((i) => table.rows[i]), teams: keep.map((i) => table.teams[i]) };
+    return { ...table, rows: keep.map((i) => table.rows[i]), teams: keep.map((i) => table.teams[i]), moves: keep.map((i) => table.moves?.[i] ?? null) };
   }, [table, conf]);
 
   return (
@@ -227,12 +229,13 @@ function StatsTab() {
         ) : error || !filtered ? (
           <div className="py-12 text-center text-sm text-text-dim">These stats haven&rsquo;t loaded yet. Check back in a few minutes.</div>
         ) : (
-          <NcaaStatTable table={filtered} ourTeam={table!.ourTeam} limit={conf === "all" ? 50 : undefined} />
+          <NcaaStatTable table={filtered} ourTeam={table!.ourTeam} />
         )}
       </Card>
       <p className="text-xs text-text-dim">
         {table?.updatedAt && `${updatedLabel(table.updatedAt)} · `}
-        {kind === "individual" ? "Player tables cover NCAA's national top 200." : "All D1 teams."} Source: NCAA.com.
+        {kind === "individual" ? "Player tables cover NCAA's national top 200." : "All D1 teams."} Arrows show movement since the previous day.
+        Source: NCAA.com.
       </p>
     </div>
   );
@@ -250,7 +253,7 @@ function RankingsTab() {
     rpi && conf !== "all"
       ? (() => {
           const keep = rpi.rows.map((_, i) => i).filter((i) => rpi.teams[i]?.conf === conf);
-          return { ...rpi, rows: keep.map((i) => rpi.rows[i]), teams: keep.map((i) => rpi.teams[i]) };
+          return { ...rpi, rows: keep.map((i) => rpi.rows[i]), teams: keep.map((i) => rpi.teams[i]), moves: keep.map((i) => rpi.moves?.[i] ?? null) };
         })()
       : rpi;
   return (
@@ -275,7 +278,7 @@ function RankingsTab() {
         </div>
         <Card className="p-2 sm:p-3">
           {rpiFiltered?.rows.length ? (
-            <NcaaStatTable table={rpiFiltered} ourTeam={data.ourTeam} limit={conf === "all" ? 50 : undefined} hideColumns={["Non-Div I", "Prev"]} />
+            <NcaaStatTable table={rpiFiltered} ourTeam={data.ourTeam} hideColumns={["Non-Div I", "Prev"]} />
           ) : (
             <Empty />
           )}

@@ -391,6 +391,7 @@ export interface NcaaStandingRow {
   pts: number;
   overall: string;
   logo: string;
+  move?: number | null; // places moved today (+ up, - down)
 }
 
 export interface NcaaStandings {
@@ -411,6 +412,7 @@ export interface NcaaTable {
   columns: string[];
   rows: string[][];
   teams: (NcaaTeamRef | null)[];
+  moves?: (number | null)[]; // per row: places moved since the previous day (+ up, - down)
 }
 
 export interface NcaaStatCategory {

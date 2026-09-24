@@ -32,6 +32,7 @@ interface Snapshot {
   logos?: Record<string, string>; // logo URL -> data: URI (the preview can't load outside images)
   ncaaGames?: Row[]; // NCAA D1 scoreboard rows (all of this season)
   ncaaCache?: Row[]; // NCAA stat / rankings tables
+  ncaaRankHistory?: Row[]; // last few days of ranks, for daily movement arrows
 }
 
 const [mode, file] = process.argv.slice(2);
@@ -100,6 +101,9 @@ if (mode === "export") {
   await syncSeason();
   snap.ncaaGames = db.prepare("SELECT * FROM ncaa_games").all() as Row[];
   snap.ncaaCache = db.prepare("SELECT * FROM ncaa_cache").all() as Row[];
+  snap.ncaaRankHistory = db
+    .prepare("SELECT * FROM ncaa_rank_history WHERE day >= ?")
+    .all(shiftDate(teamToday(), -3)) as Row[];
   console.log(`ncaa: ${snap.ncaaGames.length} games, ${snap.ncaaCache.length} tables`);
 
   // Logos to embed: every opponent on our schedule and every school on the NCAA
@@ -171,6 +175,7 @@ if (mode === "export") {
     }
     for (const row of snap.ncaaGames ?? []) insert("ncaa_games", row, "contest_id");
     for (const row of snap.ncaaCache ?? []) insert("ncaa_cache", row, "key");
+    for (const row of snap.ncaaRankHistory ?? []) insert("ncaa_rank_history", row, "key, day, entity");
     for (const { _game, _player, ...row } of snap.minutes) {
       const game = db.prepare("SELECT id FROM games WHERE source_file = ?").get(_game) as { id: number } | undefined;
       if (game) insert("minutes_played", { ...row, game_id: game.id, player_id: playerId(_player) }, "game_id, player_id");

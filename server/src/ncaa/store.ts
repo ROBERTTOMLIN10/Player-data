@@ -1,5 +1,6 @@
 import { getDb } from "../db/connection.js";
 import type { HtmlTable, NcaaGame } from "./client.js";
+import { teamToday } from "../lib/readiness.js";
 
 // ---- Games -----------------------------------------------------------------------
 
@@ -147,10 +148,10 @@ export interface ConferenceStandings {
 }
 
 /** Conference tables: 3 pts per win, 1 per tie, sorted by points, goal difference, goals for. */
-export function computeStandings(seasonYear: number): ConferenceStandings[] {
+export function computeStandings(seasonYear: number, beforeDate?: string): ConferenceStandings[] {
   const games = getDb()
-    .prepare("SELECT * FROM ncaa_games WHERE state = 'F' AND game_date LIKE ?")
-    .all(`${seasonYear}-%`) as GameRow[];
+    .prepare("SELECT * FROM ncaa_games WHERE state = 'F' AND game_date LIKE ? AND game_date < ?")
+    .all(`${seasonYear}-%`, beforeDate ?? "9999-12-31") as GameRow[];
   const names = conferenceNames();
 
   const blank = (seo: string, name: string) => ({ seo, name, gp: 0, w: 0, l: 0, t: 0, gf: 0, ga: 0 });
@@ -242,4 +243,75 @@ export function enrichTable(table: HtmlTable, teams = teamsByName()): EnrichedTa
       return teams.get(name) ?? byNormalized.get(normalizeName(name)) ?? null;
     }),
   };
+}
+
+/**
+ * Standings with each team's daily movement: position now vs. the table at the
+ * start of today (results before today). move > 0 = moved up that many places.
+ */
+export function standingsWithMovement(seasonYear: number) {
+  const before = new Map<string, number>();
+  for (const c of computeStandings(seasonYear, teamToday())) c.rows.forEach((r, i) => before.set(`${c.seo}|${r.seo}`, i));
+  return computeStandings(seasonYear).map((c) => ({
+    ...c,
+    rows: c.rows.map((r, i) => {
+      const prev = before.get(`${c.seo}|${r.seo}`);
+      return { ...r, move: prev === undefined ? null : prev - i };
+    }),
+  }));
+}
+
+// ---- Daily rank history (movement arrows on RPI / poll / stats) ----------------
+
+/** Row identity for a table: team seo, or "player name|team" on player tables. */
+function entityKeys(table: EnrichedTable): (string | null)[] {
+  const nameCol = table.columns.findIndex((c) => c.toLowerCase() === "name");
+  const teamCol = table.columns.findIndex((c) => ["team", "school"].includes(c.toLowerCase()));
+  return table.rows.map((r, i) => {
+    if (nameCol !== -1) return `${r[nameCol]}|${teamCol === -1 ? "" : r[teamCol]}`;
+    return table.teams[i]?.seo ?? (teamCol === -1 ? null : r[teamCol]);
+  });
+}
+
+function ranksOf(table: EnrichedTable): (number | null)[] {
+  const rankCol = table.columns.findIndex((c) => c.toLowerCase() === "rank");
+  return table.rows.map((r, i) => {
+    const n = rankCol === -1 ? i + 1 : parseInt(r[rankCol], 10);
+    return Number.isFinite(n) ? n : null;
+  });
+}
+
+/** Saves today's rank for every row (re-running the same day overwrites). */
+export function recordRanks(key: string, table: HtmlTable, day = teamToday()) {
+  const enriched = enrichTable(table);
+  const ids = entityKeys(enriched);
+  const ranks = ranksOf(enriched);
+  const db = getDb();
+  const stmt = db.prepare(
+    "INSERT INTO ncaa_rank_history (key, day, entity, rank) VALUES (?, ?, ?, ?) ON CONFLICT(key, day, entity) DO UPDATE SET rank = excluded.rank",
+  );
+  db.transaction(() => {
+    db.prepare("DELETE FROM ncaa_rank_history WHERE key = ? AND day = ?").run(key, day);
+    ids.forEach((id, i) => id && ranks[i] !== null && stmt.run(key, day, id, ranks[i]));
+  })();
+}
+
+/** Per row: places moved since the previous day with data (+ up, - down, null = new or unknown). */
+export function rankMoves(key: string, table: EnrichedTable, day = teamToday()): (number | null)[] {
+  const db = getDb();
+  const prevDay = (db.prepare("SELECT MAX(day) AS d FROM ncaa_rank_history WHERE key = ? AND day < ?").get(key, day) as {
+    d: string | null;
+  }).d;
+  if (!prevDay) return table.rows.map(() => null);
+  const prev = new Map(
+    (db.prepare("SELECT entity, rank FROM ncaa_rank_history WHERE key = ? AND day = ?").all(key, prevDay) as {
+      entity: string;
+      rank: number;
+    }[]).map((r) => [r.entity, r.rank]),
+  );
+  const ranks = ranksOf(table);
+  return entityKeys(table).map((id, i) => {
+    const before = id ? prev.get(id) : undefined;
+    return before === undefined || ranks[i] === null ? null : before - ranks[i]!;
+  });
 }
