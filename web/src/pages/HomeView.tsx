@@ -187,7 +187,7 @@ function ConferenceSection() {
           ) : (
             <div className="py-8 text-center text-sm text-text-dim">Standings appear once results have loaded.</div>
           )}
-          <p className="px-2 pt-2 text-[11px] text-text-dim">Conference games only · 3 pts win, 1 pt tie</p>
+          <p className="px-2 pt-2 text-[11px] text-text-dim">Conference games only · 3 pts win, 1 pt tie · arrows: movement since the last round of games</p>
         </Card>
         <div className="flex flex-col gap-4">
           {data.playerLeaders.slice(0, 1).map((t) => (

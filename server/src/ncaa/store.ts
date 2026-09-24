@@ -336,19 +336,39 @@ export function enrichTable(table: HtmlTable, teams = teamsByName()): EnrichedTa
 }
 
 /**
- * Standings with each team's daily movement: position now vs. the table at the
- * start of today (results before today). move > 0 = moved up that many places.
+ * Standings with each team's movement since the conference's latest matchday:
+ * position now vs. the table before its most recent day of conference games.
+ * move > 0 = moved up that many places.
  */
 export function standingsWithMovement(seasonYear: number) {
-  const before = new Map<string, number>();
-  for (const c of computeStandings(seasonYear, teamToday())) c.rows.forEach((r, i) => before.set(`${c.seo}|${r.seo}`, i));
-  return computeStandings(seasonYear).map((c) => ({
-    ...c,
-    rows: c.rows.map((r, i) => {
-      const prev = before.get(`${c.seo}|${r.seo}`);
-      return { ...r, move: prev === undefined ? null : prev - i };
-    }),
-  }));
+  const latest = new Map(
+    (getDb()
+      .prepare(
+        `SELECT home_conf AS conf, MAX(game_date) AS day FROM ncaa_games
+         WHERE state = 'F' AND is_conference = 1 AND game_date LIKE ? AND game_date <= ? GROUP BY home_conf`,
+      )
+      .all(`${seasonYear}-%`, teamToday()) as { conf: string; day: string }[]).map((r) => [r.conf, r.day]),
+  );
+  const tablesBefore = new Map<string, Map<string, number>>(); // day -> "conf|team" -> position
+  const positionsBefore = (day: string) => {
+    if (!tablesBefore.has(day)) {
+      const pos = new Map<string, number>();
+      for (const c of computeStandings(seasonYear, day)) c.rows.forEach((r, i) => pos.set(`${c.seo}|${r.seo}`, i));
+      tablesBefore.set(day, pos);
+    }
+    return tablesBefore.get(day)!;
+  };
+  return computeStandings(seasonYear).map((c) => {
+    const day = latest.get(c.seo);
+    const before = day ? positionsBefore(day) : null;
+    return {
+      ...c,
+      rows: c.rows.map((r, i) => {
+        const prev = before?.get(`${c.seo}|${r.seo}`);
+        return { ...r, move: prev === undefined ? null : prev - i };
+      }),
+    };
+  });
 }
 
 // ---- Daily rank history (movement arrows on RPI / poll / stats) ----------------
@@ -382,15 +402,18 @@ export function recordRanks(key: string, table: HtmlTable, day = teamToday()) {
   );
   db.transaction(() => {
     db.prepare("DELETE FROM ncaa_rank_history WHERE key = ? AND day = ?").run(key, day);
+    db.prepare("DELETE FROM ncaa_rank_history WHERE key = ? AND day < date(?, '-60 days')").run(key, day);
     ids.forEach((id, i) => id && ranks[i] !== null && stmt.run(key, day, id, ranks[i]));
   })();
 }
 
 /**
- * Weekly polls: movement since the previous poll, i.e. the most recent earlier
- * day whose ranking differs from the current one.
+ * Per row: places moved since the table last changed, i.e. against the most
+ * recent earlier day whose ranking differs from the current one (+ up, - down,
+ * null = new or unknown). Arrows stay up until the next update: a weekly poll
+ * compares with last week's poll, stats with their previous update.
  */
-export function pollMoves(key: string, table: EnrichedTable, day = teamToday()): (number | null)[] {
+export function rankMoves(key: string, table: EnrichedTable, day = teamToday()): (number | null)[] {
   const db = getDb();
   const ids = entityKeys(table);
   const ranks = ranksOf(table);
@@ -414,22 +437,3 @@ export function pollMoves(key: string, table: EnrichedTable, day = teamToday()):
   return table.rows.map(() => null);
 }
 
-/** Per row: places moved since the previous day with data (+ up, - down, null = new or unknown). */
-export function rankMoves(key: string, table: EnrichedTable, day = teamToday()): (number | null)[] {
-  const db = getDb();
-  const prevDay = (db.prepare("SELECT MAX(day) AS d FROM ncaa_rank_history WHERE key = ? AND day < ?").get(key, day) as {
-    d: string | null;
-  }).d;
-  if (!prevDay) return table.rows.map(() => null);
-  const prev = new Map(
-    (db.prepare("SELECT entity, rank FROM ncaa_rank_history WHERE key = ? AND day = ?").all(key, prevDay) as {
-      entity: string;
-      rank: number;
-    }[]).map((r) => [r.entity, r.rank]),
-  );
-  const ranks = ranksOf(table);
-  return entityKeys(table).map((id, i) => {
-    const before = id ? prev.get(id) : undefined;
-    return before === undefined || ranks[i] === null ? null : before - ranks[i]!;
-  });
-}

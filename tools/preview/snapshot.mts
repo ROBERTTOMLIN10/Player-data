@@ -104,7 +104,7 @@ if (mode === "export") {
   snap.ncaaCache = db.prepare("SELECT * FROM ncaa_cache").all() as Row[];
   snap.ncaaRankHistory = db
     .prepare("SELECT * FROM ncaa_rank_history WHERE day >= ?")
-    .all(shiftDate(teamToday(), -3)) as Row[];
+    .all(shiftDate(teamToday(), -14)) as Row[]; // two weeks: enough for weekly polls
   console.log(`ncaa: ${snap.ncaaGames.length} games, ${snap.ncaaCache.length} tables`);
 
   // Logos to embed: every opponent on our schedule and every school on the NCAA
