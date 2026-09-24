@@ -8,7 +8,7 @@ name: Preview data (fausports.com)
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 11 * * *" # daily, ~7am Eastern
+    - cron: "15 */3 * * *" # every 3 hours, so new results reach the preview soon after games
   push:
     branches: [claude/friendly-dijkstra-s2fxp1]
     paths: [tools/preview/snapshot.mts, .github/workflows/preview-data.yml]

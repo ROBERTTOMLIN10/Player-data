@@ -89,7 +89,9 @@ export default function AdminView() {
         </div>
         <div className="text-text-dim">
           {autoSyncStatus
-            ? `Checks fausports.com every ${autoSyncStatus.intervalMinutes} minutes for schedule updates, game stats, and minutes played — no action needed.`
+            ? autoSyncStatus.awaitingGame
+              ? `Waiting on the ${autoSyncStatus.awaitingGame.opponent} result: checking fausports.com every ${autoSyncStatus.gameIntervalMinutes} minutes until the box score is in.`
+              : `Checks fausports.com every ${autoSyncStatus.intervalMinutes} minutes for schedule updates, game stats, and minutes played, and every ${autoSyncStatus.gameIntervalMinutes} minutes after each game until its box score is in. NCAA scores update every minute during games; NCAA stats and rankings refresh every 3 hours and soon after new results.`
             : "Loading status…"}
           {autoSyncStatus?.lastRunAt && (
             <> Last checked {new Date(autoSyncStatus.lastRunAt).toLocaleString(undefined, { hour: "numeric", minute: "2-digit", month: "short", day: "numeric" })}.</>

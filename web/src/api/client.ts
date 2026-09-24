@@ -306,6 +306,8 @@ export async function syncScheduleFromSidearm(): Promise<SyncScheduleResult> {
 export interface AutoSyncStatus {
   enabled: boolean;
   intervalMinutes: number;
+  gameIntervalMinutes: number;
+  awaitingGame: { opponent: string; game_date: string } | null;
   running: boolean;
   lastRunAt: string | null;
   lastResult: { schedule: SyncScheduleResult | null; minutes: SyncMinutesResult | null } | null;
