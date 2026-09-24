@@ -1,8 +1,10 @@
 import { Router } from "express";
-import { ensureDate, RANKINGS, STAT_CATEGORIES } from "../jobs/ncaaSync.js";
+import { ensureDate, PAST_SEASONS, RANKINGS, STAT_CATEGORIES } from "../jobs/ncaaSync.js";
+import { POLLS, pollWeekTable, type PollKey, type SeasonPolls } from "../ncaa/polls.js";
 import { isIsoDate, teamToday } from "../lib/readiness.js";
 import { ncaaLogoUrl, type HtmlTable } from "../ncaa/client.js";
 import {
+  computeStandings,
   conferenceLabel,
   rankMoves,
   standingsWithMovement,
@@ -58,12 +60,29 @@ ncaaRouter.get("/scoreboard", async (req, res) => {
   res.json({ date, today, ourTeam: OUR_TEAM, updatedAt, games: rows.map((g) => toGame(g, names)) });
 });
 
-ncaaRouter.get("/standings", (_req, res) => {
-  const conferences = standingsWithMovement(Number(teamToday().slice(0, 4))).map((c) => ({
+/** This season first, then the last PAST_SEASONS seasons. */
+function seasons() {
+  const current = Number(teamToday().slice(0, 4));
+  return Array.from({ length: PAST_SEASONS + 1 }, (_, i) => current - i);
+}
+
+/** ?season=YYYY (one of seasons()), else this season. */
+function seasonParam(value: unknown): number {
+  const all = seasons();
+  const n = Number(value);
+  return all.includes(n) ? n : all[0];
+}
+
+ncaaRouter.get("/standings", (req, res) => {
+  const season = seasonParam(req.query.season);
+  const current = season === seasons()[0];
+  // Past seasons: the final regular-season table (no daily movement).
+  const tables = current ? standingsWithMovement(season) : computeStandings(season);
+  const conferences = tables.map((c) => ({
     ...c,
     rows: c.rows.map((r) => ({ ...r, logo: ncaaLogoUrl(r.seo) })),
   }));
-  res.json({ ourTeam: OUR_TEAM, conferences });
+  res.json({ ourTeam: OUR_TEAM, season, seasons: seasons(), current, conferences });
 });
 
 ncaaRouter.get("/stats", (_req, res) => {
@@ -81,6 +100,10 @@ ncaaRouter.get("/stats", (_req, res) => {
   });
 });
 
+function withLogos(teams: ReturnType<typeof enrichTable>["teams"]) {
+  return teams.map((t) => (t ? { ...t, logo: ncaaLogoUrl(t.seo) } : null));
+}
+
 function tableResponse(key: string, label: string) {
   const cached = getCache<HtmlTable>(key);
   if (!cached) return null;
@@ -90,8 +113,54 @@ function tableResponse(key: string, label: string) {
     updatedAt: cached.updatedAt,
     columns: table.columns,
     rows: table.rows,
-    teams: table.teams.map((t) => (t ? { ...t, logo: ncaaLogoUrl(t.seo) } : null)),
+    teams: withLogos(table.teams),
     moves: rankMoves(key, table),
+  };
+}
+
+/**
+ * One Top 25 poll for a season: this season's latest week (the coaches' poll
+ * straight from NCAA.com, the others from Wikipedia), or a past season's final
+ * poll. Movement is against the poll the week before.
+ */
+function pollResponse(key: PollKey, season: number, current: boolean) {
+  const label = POLLS.find((p) => p.key === key)!.label;
+  if (current && key === "usc") {
+    const cached = getCache<HtmlTable>("rankings-poll");
+    if (cached) {
+      const table = enrichTable(cached.value);
+      const rankCol = table.columns.findIndex((c) => c.toLowerCase() === "rank");
+      const prevCol = table.columns.findIndex((c) => c.toLowerCase().startsWith("prev"));
+      return {
+        key,
+        label,
+        week: "Latest poll",
+        updatedAt: cached.updatedAt,
+        columns: table.columns,
+        rows: table.rows,
+        teams: withLogos(table.teams),
+        moves: table.rows.map((r) => {
+          const before = parseInt(r[prevCol], 10);
+          return prevCol === -1 || !Number.isFinite(before) ? null : before - parseInt(r[rankCol], 10);
+        }),
+      };
+    }
+  }
+  const cached = getCache<SeasonPolls>(`polls-${season}`);
+  const weeks = cached?.value[key];
+  if (!weeks?.length) return { key, label, week: null, updatedAt: cached?.updatedAt ?? null, columns: [], rows: [], teams: [], moves: [] };
+  const index = weeks.length - 1;
+  const table = pollWeekTable(weeks, index);
+  const w = weeks[index];
+  return {
+    key,
+    label,
+    week: current ? `${w.label}${w.date ? ` · ${w.date}` : ""}` : w.label === "Final" ? `Final poll${w.date ? ` · ${w.date}` : ""}` : `Last poll: ${w.label}`,
+    updatedAt: cached!.updatedAt,
+    columns: table.columns,
+    rows: table.rows,
+    teams: withLogos(enrichTable(table, teamsByName(season)).teams),
+    moves: table.moves,
   };
 }
 
@@ -103,10 +172,18 @@ ncaaRouter.get("/stats/:key", (req, res) => {
   res.json({ ...table, kind: category.kind, ourTeam: OUR_TEAM });
 });
 
-ncaaRouter.get("/rankings", (_req, res) => {
+ncaaRouter.get("/rankings", (req, res) => {
+  const season = seasonParam(req.query.season);
+  const current = season === seasons()[0];
+  const rpi = RANKINGS.find((r) => r.key === "rankings-rpi")!;
   res.json({
     ourTeam: OUR_TEAM,
-    tables: RANKINGS.map((r) => ({ key: r.key, ...(tableResponse(r.key, r.label) ?? { label: r.label, rows: [] }) })),
+    season,
+    seasons: seasons(),
+    current,
+    polls: POLLS.map((p) => pollResponse(p.key, season, current)),
+    // NCAA.com only publishes the current RPI.
+    rpi: current ? { key: rpi.key, ...(tableResponse(rpi.key, rpi.label) ?? { label: rpi.label, columns: [], rows: [], teams: [] }) } : null,
   });
 });
 

@@ -1,5 +1,6 @@
 import { fetchConferences, fetchRankingTable, fetchScoreboard, fetchStatTable } from "../ncaa/client.js";
-import { gamesOn, hasGamesOn, recordRanks, setCache, upsertGames } from "../ncaa/store.js";
+import { fetchSeasonPolls } from "../ncaa/polls.js";
+import { gamesOn, getCache, hasGamesOn, recordRanks, setCache, upsertGames } from "../ncaa/store.js";
 import { shiftDate, teamToday } from "../lib/readiness.js";
 
 /**
@@ -7,7 +8,9 @@ import { shiftDate, teamToday } from "../lib/readiness.js";
  * - Today's scoreboard every minute while any game is live or about to start,
  *   every 15 minutes otherwise; yesterday's until every game is final.
  * - The whole season's results once a day (for standings).
- * - Stat leaders and rankings every 6 hours.
+ * - Stat leaders and rankings (NCAA.com, plus the Top 25 polls from Wikipedia) every 6 hours.
+ * - The last PAST_SEASONS seasons' results (for past standings), a few dates a
+ *   minute until each season is complete, then never again.
  * Set NCAA_SYNC=off to disable (e.g. local use without internet).
  */
 export interface StatCategory {
@@ -45,12 +48,15 @@ export const RANKINGS = [
 ];
 
 const SEASON_START_MONTH_DAY = "08-15";
+const SEASON_END_MONTH_DAY = "12-20"; // after the College Cup
+export const PAST_SEASONS = 5;
 const TICK_MS = 60_000;
 const IDLE_REFRESH_MS = 15 * 60_000;
 const STATS_REFRESH_MS = 6 * 60 * 60_000;
 
 const lastRun: Record<string, number> = {};
 let running = false;
+let pastSeasonsLoaded = false;
 
 function due(key: string, intervalMs: number): boolean {
   return Date.now() - (lastRun[key] ?? 0) >= intervalMs;
@@ -98,9 +104,22 @@ export async function syncSeason(today = teamToday()) {
   for (let i = 1; i <= 7; i++) await ensureDate(shiftDate(today, i));
 }
 
+/** This season's Top 25 polls every time; past seasons' once. */
+async function syncPolls(season: number) {
+  for (let y = season; y >= season - PAST_SEASONS; y--) {
+    if (y !== season && getCache(`polls-${y}`)) continue;
+    try {
+      setCache(`polls-${y}`, await fetchSeasonPolls(y));
+    } catch (err) {
+      console.error(`[ncaa] ${y} polls failed: ${(err as Error).message}`);
+    }
+  }
+}
+
 export async function syncStatsAndRankings() {
+  const season = Number(teamToday().slice(0, 4));
   try {
-    setCache("conferences", await fetchConferences(Number(teamToday().slice(0, 4))));
+    setCache("conferences", await fetchConferences(season));
   } catch (err) {
     console.error(`[ncaa] conferences failed: ${(err as Error).message}`);
   }
@@ -125,6 +144,44 @@ export async function syncStatsAndRankings() {
       console.error(`[ncaa] ${r.label} failed: ${(err as Error).message}`);
     }
   }
+  await syncPolls(season);
+}
+
+/**
+ * Loads past seasons' results, at most maxDates scoreboard days per call so the
+ * live sync isn't held up. Returns true once every past season is complete.
+ */
+export async function syncPastSeasons(maxDates = 15): Promise<boolean> {
+  const season = Number(teamToday().slice(0, 4));
+  let budget = maxDates;
+  for (let y = season - 1; y >= season - PAST_SEASONS; y--) {
+    if (getCache(`season-complete-${y}`)) continue;
+    if (!getCache(`conferences-${y}`)) {
+      try {
+        setCache(`conferences-${y}`, await fetchConferences(y));
+      } catch (err) {
+        console.error(`[ncaa] ${y} conferences failed: ${(err as Error).message}`);
+        return false;
+      }
+    }
+    // Resume where the last call stopped: the first day not loaded yet.
+    const progress = getCache<string>(`season-progress-${y}`)?.value;
+    let d = progress ? shiftDate(progress, 1) : `${y}-${SEASON_START_MONTH_DAY}`;
+    for (; d <= `${y}-${SEASON_END_MONTH_DAY}`; d = shiftDate(d, 1)) {
+      if (budget-- <= 0) return false;
+      try {
+        await syncDate(d);
+      } catch (err) {
+        console.error(`[ncaa] scoreboard ${d} failed: ${(err as Error).message}`);
+        return false; // try this day again next time
+      }
+      setCache(`season-progress-${y}`, d);
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    setCache(`season-complete-${y}`, true);
+    console.log(`[ncaa] ${y} season loaded`);
+  }
+  return true;
 }
 
 async function tick() {
@@ -145,6 +202,7 @@ async function tick() {
       lastRun.stats = Date.now();
       await syncStatsAndRankings();
     }
+    if (!pastSeasonsLoaded) pastSeasonsLoaded = await syncPastSeasons();
   } catch (err) {
     console.error(`[ncaa] sync failed: ${(err as Error).message}`);
   } finally {

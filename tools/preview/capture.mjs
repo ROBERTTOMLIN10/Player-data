@@ -34,10 +34,12 @@ for (let i = -3; i <= 3; i++) {
   d.setUTCDate(d.getUTCDate() + i);
   await get(coach, `/api/ncaa/scoreboard?date=${d.toISOString().slice(0, 10)}`);
 }
-await get(coach, "/api/ncaa/standings");
+const standings = await get(coach, "/api/ncaa/standings");
+for (const y of standings.seasons) await get(coach, `/api/ncaa/standings?season=${y}`);
 const statsIndex = await get(coach, "/api/ncaa/stats");
 for (const c of statsIndex.categories) await get(coach, `/api/ncaa/stats/${c.key}`).catch(() => undefined);
-await get(coach, "/api/ncaa/rankings");
+const rankings = await get(coach, "/api/ncaa/rankings");
+for (const y of rankings.seasons) await get(coach, `/api/ncaa/rankings?season=${y}`);
 await get(coach, "/api/ncaa/conference/american");
 // player
 out.playerMe = await (await fetch(B + "/api/auth/me", { headers: { cookie: player } })).json();

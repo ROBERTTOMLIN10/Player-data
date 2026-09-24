@@ -396,6 +396,9 @@ export interface NcaaStandingRow {
 
 export interface NcaaStandings {
   ourTeam: string;
+  season: number;
+  seasons: number[]; // this season first, then past ones
+  current: boolean;
   conferences: { seo: string; name: string; rows: NcaaStandingRow[] }[];
 }
 
@@ -412,7 +415,21 @@ export interface NcaaTable {
   columns: string[];
   rows: string[][];
   teams: (NcaaTeamRef | null)[];
-  moves?: (number | null)[]; // per row: places moved since the previous day (+ up, - down)
+  moves?: (number | null)[]; // per row: places moved since the previous day or poll (+ up, - down)
+}
+
+export interface NcaaPoll extends NcaaTable {
+  key: "usc" | "tds" | "csn";
+  week: string | null; // "Week 6 · Sep 22", "Final poll · Dec 16"
+}
+
+export interface NcaaRankings {
+  ourTeam: string;
+  season: number;
+  seasons: number[];
+  current: boolean;
+  polls: NcaaPoll[];
+  rpi: (NcaaTable & { key: string }) | null; // current season only
 }
 
 export interface NcaaStatCategory {
