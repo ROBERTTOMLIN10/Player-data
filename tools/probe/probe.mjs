@@ -2,7 +2,7 @@
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
 const get = async (u) => { const r = await fetch(u, { headers: { "User-Agent": UA } }); return { status: r.status, t: await r.text() }; };
 const { t } = await get("https://www.ncaa.com/standings/soccer-men/d1/2024/american");
-const dec = decodeURIComponent(t.replace(/\\u0022/g, '"').replace(/\\\//g, "/"));
+const dec = (() => { const x = t.replace(/\\u0022/g, '"').replace(/\\\//g, "/"); try { return decodeURIComponent(x); } catch { return x.replace(/%22/g, "\"").replace(/%3A/g, ":").replace(/%7B/g, "{").replace(/%7D/g, "}").replace(/%2C/g, ","); } })();
 console.log("QUERY NAMES:", [...new Set([...dec.matchAll(/(?:meta=|"operationName":"|queryName":")?([A-Za-z_]*(?:Standing|standing)[A-Za-z_]*)/g)].map((m) => m[1]))].slice(0, 30));
 for (const m of dec.matchAll(/.{0,200}sha256Hash.{0,120}/g)) console.log("HASH CTX:", m[0]);
 for (const m of dec.matchAll(/.{0,300}(standings|Standings).{0,300}/g)) { if (/sdataprod|graphql|json|api|data-/.test(m[0])) console.log("CTX:", m[0].slice(0, 600)); }
