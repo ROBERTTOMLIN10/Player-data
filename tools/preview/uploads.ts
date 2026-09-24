@@ -7,6 +7,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as XLSX from "xlsx";
 import { DATE_HEADER_CANDIDATES, NAME_HEADER_CANDIDATES } from "../../server/src/import/columnMapping";
+import { normalizeOpponent, parseGpsFilename } from "../../server/src/import/gpsFilename";
 
 export interface UploadRecord {
   filename: string;
@@ -29,13 +30,28 @@ async function capability(name: string): Promise<any> {
   }
 }
 
-const FILENAME = /^(\d{4}-\d{2}-\d{2})_(.+)\.xlsx$/i;
 const docId = (filename: string) => filename.replace(/[^A-Za-z0-9_\-.~]+/g, "_").replace(/^\.+/, "_").slice(0, 180);
 
 function toBase64(bytes: Uint8Array): string {
   let bin = "";
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(bin);
+}
+
+/** Same rules as the real import (server/src/import/importTitan.ts toIsoDate). */
+function toIsoDate(value: unknown): string | null {
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (typeof value === "string") {
+    const t = value.trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10);
+    const d = new Date(t);
+    if (t && !Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  }
+  if (typeof value === "number") {
+    const p = XLSX.SSF.parse_date_code(value);
+    if (p) return `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`;
+  }
+  return null;
 }
 
 function findHeader(headers: string[], candidates: string[]) {
@@ -58,10 +74,11 @@ export async function listUploads(): Promise<UploadRecord[]> {
 }
 
 /** Handles the Data page's upload in the preview. Returns the same shape as the real upload endpoint. */
-export async function handlePreviewUpload(file: File, existingFiles: string[]) {
+export async function handlePreviewUpload(file: File, existingFiles: string[], schedule: { game_date: string; opponent: string }[]) {
   const fail = (message: string, status = 422) => ({ status, body: { status: "error", filename: file.name, message, warnings: [] as string[] } });
-  const match = file.name.match(FILENAME);
-  if (!match) return fail(`Name the file like 2026-09-12_Opponent.xlsx (date, underscore, opponent) and upload it again.`);
+  if (!/\.xlsx$/i.test(file.name)) return fail("Only .xlsx files are accepted.");
+  const named = parseGpsFilename(file.name);
+  if (!named.opponent) return fail(`Name the file after the game, like "Memphis 2026.xlsx", and upload it again.`);
   const uploads = await listUploads();
   if (existingFiles.includes(file.name) || uploads.some((u) => u.filename === file.name))
     return fail(`A file named "${file.name}" was already uploaded. Rename it (e.g. include the date) if this is a different game.`, 409);
@@ -80,7 +97,18 @@ export async function handlePreviewUpload(file: File, existingFiles: string[]) {
   const players = rows.filter((r) => String(r[nameKey] ?? "").trim()).length;
   if (!players) return fail("No player rows found in this file.");
   const dateKey = findHeader(headers, DATE_HEADER_CANDIDATES);
-  const fileDate = dateKey && rows[0][dateKey] instanceof Date ? (rows[0][dateKey] as Date).toISOString().slice(0, 10) : null;
+  let fileDate: string | null = null;
+  for (const r of dateKey ? rows : []) if ((fileDate = toIsoDate(r[dateKey!]))) break;
+  // Same order as the real import: the file's Date column, a date in the name, then the schedule.
+  const want = normalizeOpponent(named.opponent);
+  const scheduled = schedule.filter((g) => named.year && g.game_date.startsWith(`${named.year}-`) && normalizeOpponent(g.opponent) === want);
+  const gameDate = fileDate ?? named.date ?? (scheduled.length === 1 ? scheduled[0].game_date : null);
+  if (!gameDate)
+    return fail(
+      named.year
+        ? `Couldn't find the game date: the file has no Date column and "${named.opponent}" in ${named.year} doesn't match exactly one game on the schedule. Add the date to the name, e.g. 2026-09-12_${named.opponent}.xlsx.`
+        : `Name the file with the opponent and year, like "Memphis 2026.xlsx", and upload it again.`,
+    );
 
   const assets = await capability("assets");
   const db = await capability("db");
@@ -90,15 +118,18 @@ export async function handlePreviewUpload(file: File, existingFiles: string[]) {
     const record: UploadRecord = {
       filename: file.name,
       assetId: asset.id,
-      gameDate: fileDate ?? match[1],
-      opponent: match[2].replace(/[_-]+/g, " ").trim(),
+      gameDate,
+      opponent: named.opponent,
       playerCount: players,
       uploadedAt: new Date().toISOString(),
       status: "pending",
     };
     await db.doc(`gpsUploads/${docId(file.name)}`).set(record);
     window.dispatchEvent(new Event("preview-uploads-changed"));
-    const warnings = fileDate && fileDate !== match[1] ? [`The file's own date is ${fileDate}, not ${match[1]} as in its name. The file's date will be used.`] : [];
+    const warnings =
+      named.year && Number(gameDate.slice(0, 4)) !== named.year
+        ? [`The file's date is ${gameDate}, but its name says ${named.year}. The file's date will be used.`]
+        : [];
     return {
       status: 200,
       body: {
@@ -107,7 +138,7 @@ export async function handlePreviewUpload(file: File, existingFiles: string[]) {
         gameDate: record.gameDate,
         opponent: record.opponent,
         playerCount: players,
-        message: `Saved: ${players} players vs ${record.opponent}. It joins the GPS pages at the next preview update ("update the preview").`,
+        message: `Saved: ${players} players vs ${record.opponent} (${gameDate}). It joins the GPS pages at the next preview update ("update the preview").`,
         warnings,
       },
     };

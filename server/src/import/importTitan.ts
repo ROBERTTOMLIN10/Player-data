@@ -5,19 +5,26 @@ import XLSX from "xlsx";
 import { getDb } from "../db/connection.js";
 import { normalizePlayerName } from "./nameNormalization.js";
 import { CORE_FIELD_MAP, DATE_HEADER_CANDIDATES, matchZoneColumn, NAME_HEADER_CANDIDATES } from "./columnMapping.js";
+import { normalizeOpponent, parseGpsFilename } from "./gpsFilename.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const DATA_DIR = process.env.TITAN_DATA_DIR
   ? path.resolve(process.env.TITAN_DATA_DIR)
   : path.join(__dirname, "..", "..", "..", "data", "titan");
 
-const FILENAME_PATTERN = /^(?:(\d{4}-\d{2}-\d{2})_)?(.+)\.xlsx$/i;
-
-function parseFilename(filename: string): { opponent: string | null } {
-  const match = filename.match(FILENAME_PATTERN);
-  if (!match) return { opponent: null };
-  const opponent = match[2].replace(/[_-]+/g, " ").trim();
-  return { opponent: opponent || null };
+/**
+ * Game date from the schedule for files named by opponent and year ("Memphis
+ * 2026.xlsx") that have no usable Date column. Null when there's no single match.
+ */
+function scheduleDate(db: ReturnType<typeof getDb>, opponent: string | null, year: number | null): string | null {
+  if (!opponent || !year) return null;
+  const want = normalizeOpponent(opponent);
+  const games = db.prepare("SELECT game_date, opponent FROM schedule_games WHERE game_date LIKE ?").all(`${year}-%`) as {
+    game_date: string;
+    opponent: string;
+  }[];
+  const matches = games.filter((g) => normalizeOpponent(g.opponent) === want);
+  return matches.length === 1 ? matches[0].game_date : null;
 }
 
 function findHeaderKey(headers: string[], candidates: string[]): string | null {
@@ -115,8 +122,10 @@ export function importTitanFile(filePath: string): ImportTitanResult {
   const nameKey = findHeaderKey(headers, NAME_HEADER_CANDIDATES);
   const dateKey = findHeaderKey(headers, DATE_HEADER_CANDIDATES);
 
-  if (!nameKey || !dateKey) {
-    const message = `could not find name/date columns in headers: ${headers.join(", ")}`;
+  const named = parseGpsFilename(filename);
+
+  if (!nameKey) {
+    const message = `could not find a player name column in headers: ${headers.join(", ")}`;
     console.error(`  ${message}`);
     return { status: "error", filename, message, warnings };
   }
@@ -134,21 +143,29 @@ export function importTitanFile(filePath: string): ImportTitanResult {
     warnings.push(message);
   }
 
+  // The file's own Date column decides the game date; then a date at the start
+  // of the name; then the schedule (opponent + year from the name).
   let gameDate: string | null = null;
-  for (const row of rows) {
-    const iso = toIsoDate(row[dateKey]);
+  for (const row of dateKey ? rows : []) {
+    const iso = toIsoDate(row[dateKey!]);
     if (iso) {
       gameDate = iso;
       break;
     }
   }
+  gameDate ??= named.date ?? scheduleDate(db, named.opponent, named.year);
   if (!gameDate) {
-    const message = `could not parse a valid date from column "${dateKey}".`;
+    const message = named.year
+      ? `couldn't find the game date: the file has no Date column and "${named.opponent}" in ${named.year} doesn't match exactly one game on the schedule. Add the date to the name, e.g. 2026-09-12_${named.opponent}.xlsx.`
+      : `couldn't find the game date. Name the file with the opponent and year, e.g. "Memphis 2026.xlsx".`;
     console.error(`  ${message}`);
     return { status: "error", filename, message, warnings };
   }
+  if (named.year && Number(gameDate.slice(0, 4)) !== named.year) {
+    warnings.push(`The file's date is ${gameDate}, but its name says ${named.year}. The file's date was used.`);
+  }
 
-  const { opponent } = parseFilename(filename);
+  const opponent = named.opponent;
 
   const insertGame = db
     .prepare("INSERT INTO games (game_date, opponent, source_file) VALUES (?, ?, ?)")

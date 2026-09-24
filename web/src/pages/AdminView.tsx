@@ -106,7 +106,7 @@ export default function AdminView() {
       <section>
         <SectionHeading
           title="Upload GPS File"
-          subtitle="Drop in a Titan/Hudl .xlsx export. Name it like 2026-09-12_Opponent.xlsx so the opponent shows up correctly."
+          subtitle="Drop in a Titan/Hudl .xlsx export named after the game, like Memphis 2026.xlsx. The date comes from the file itself."
         />
         <Card className="flex flex-col gap-4">
           <input

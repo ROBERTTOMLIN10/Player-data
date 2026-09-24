@@ -229,7 +229,7 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const file = init.body.get("file");
     if (!(file instanceof File)) return json({ status: "error", filename: "", message: "No file chosen.", warnings: [] }, 400);
     const existing = (data["/api/games"] ?? []).map((g: any) => g.source_file);
-    const { status, body } = await handlePreviewUpload(file, existing);
+    const { status, body } = await handlePreviewUpload(file, existing, data["/api/schedule"] ?? []);
     return json(body, status);
   }
   const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
