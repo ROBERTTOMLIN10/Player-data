@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useGameDetail, useGames, useMetrics, useTeamSummary } from "../api/client";
+import { useGameDetail, useGames, useMetrics, useTeamFitness, useTeamSummary } from "../api/client";
+import { SquadFitnessTable } from "../components/Fitness";
 import { Card, SectionHeading } from "../components/Card";
 import { MetricCard } from "../components/MetricCard";
 import { TrendChart } from "../components/TrendChart";
@@ -11,6 +12,7 @@ export default function TeamView() {
   const { data: games, isLoading: gamesLoading } = useGames();
   const { data: summary, isLoading: summaryLoading } = useTeamSummary();
   const { data: metrics } = useMetrics();
+  const { data: fitness } = useTeamFitness();
   const navigate = useNavigate();
 
   const [selectedMetricKey, setSelectedMetricKey] = useState("load");
@@ -40,6 +42,8 @@ export default function TeamView() {
 
   return (
     <div className="flex flex-col gap-8">
+      {fitness && <SquadFitnessTable data={fitness} />}
+
       <section>
         <SectionHeading title="Season Averages" subtitle="Click a metric to chart its trend across games" />
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">

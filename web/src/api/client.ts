@@ -21,6 +21,8 @@ import type {
   SquadReadiness,
   NcaaConference,
   NcaaRankings,
+  MyFitness,
+  TeamFitness,
   NcaaScoreboard,
   NcaaStandings,
   NcaaStatsIndex,
@@ -74,6 +76,14 @@ export function logout() {
 }
 
 // --- Player's own view --------------------------------------------------------
+
+export function useTeamFitness(enabled = true) {
+  return useQuery({ queryKey: ["teamFitness"], queryFn: () => fetchJson<TeamFitness>("/api/team/fitness"), enabled });
+}
+
+export function useMyFitness() {
+  return useQuery({ queryKey: ["myFitness"], queryFn: () => fetchJson<MyFitness>("/api/me/fitness") });
+}
 
 export function useMyProfile() {
   return useQuery({ queryKey: ["myProfile"], queryFn: () => fetchJson<MyProfile>("/api/me/profile") });

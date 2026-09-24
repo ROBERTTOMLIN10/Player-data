@@ -19,6 +19,7 @@ await get(coach, "/api/metrics");
 await get(coach, "/api/schedule");
 await get(coach, "/api/team/summary");
 await get(coach, "/api/team/stats");
+await get(coach, "/api/team/fitness");
 const games = await get(coach, "/api/games");
 for (const g of games) await get(coach, `/api/games/${g.id}`);
 const players = await get(coach, "/api/players");
@@ -42,6 +43,7 @@ await get(coach, "/api/ncaa/conference/american");
 // player
 out.playerMe = await (await fetch(B + "/api/auth/me", { headers: { cookie: player } })).json();
 await get(player, "/api/me/profile");
+await get(player, "/api/me/fitness");
 for (const g of games) await get(player, `/api/me/gps/${g.id}`);
 await get(player, "/api/me/readiness/today");
 for (const d of [14, 30, 90]) await get(player, `/api/me/readiness/history?days=${d}`);

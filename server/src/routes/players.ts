@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getDb } from "../db/connection.js";
+import { SESSION_ROLE_SQL } from "../lib/fitness.js";
 import { CORE_METRIC_KEYS } from "../lib/metrics.js";
 
 export const playersRouter = Router();
@@ -33,9 +34,11 @@ playersRouter.get("/", (_req, res) => {
   const db = getDb();
   const players = db
     .prepare(
-      `SELECT p.id, p.canonical_name, COUNT(s.id) AS games_played, pos.position
+      `SELECT p.id, p.canonical_name, COUNT(CASE WHEN mp.minutes > 0 THEN 1 END) AS games_played,
+              COUNT(s.id) AS sessions, pos.position
        FROM players p
        LEFT JOIN gps_sessions s ON s.player_id = p.id
+       LEFT JOIN minutes_played mp ON mp.game_id = s.game_id AND mp.player_id = s.player_id
        ${POSITION_SUBQUERY}
        GROUP BY p.id
        ORDER BY p.canonical_name ASC`,
@@ -63,7 +66,7 @@ export function getPlayerDetail(playerId: number) {
 
   const sessions = db
     .prepare(
-      `SELECT s.*, g.game_date, g.opponent, mp.minutes AS minutes_played, mp.started
+      `SELECT s.*, g.game_date, g.opponent, mp.minutes AS minutes_played, mp.started, ${SESSION_ROLE_SQL}
        FROM gps_sessions s
        JOIN games g ON g.id = s.game_id
        LEFT JOIN minutes_played mp ON mp.game_id = s.game_id AND mp.player_id = s.player_id
@@ -73,7 +76,14 @@ export function getPlayerDetail(playerId: number) {
     .all(playerId);
 
   const seasonTotals = db
-    .prepare(`SELECT ${avgSelects}, ${sumSelects}, COUNT(*) AS games_played FROM gps_sessions WHERE player_id = ?`)
+    .prepare(
+      // Games played = logged minutes. Load from warm-up/fitness-only sessions still counts in the totals.
+      `SELECT ${avgSelects.replace(/AVG\(/g, "AVG(s.")}, ${sumSelects.replace(/SUM\(/g, "SUM(s.")},
+              COUNT(CASE WHEN mp.minutes > 0 THEN 1 END) AS games_played, COUNT(*) AS sessions
+       FROM gps_sessions s
+       LEFT JOIN minutes_played mp ON mp.game_id = s.game_id AND mp.player_id = s.player_id
+       WHERE s.player_id = ?`,
+    )
     .get(playerId);
 
   const gameStats = db

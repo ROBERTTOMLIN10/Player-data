@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { useMetrics, useMyGameGps, useMyProfile } from "../../api/client";
+import { useMetrics, useMyFitness, useMyGameGps, useMyProfile } from "../../api/client";
+import { FitnessCard, MinutesCell } from "../../components/Fitness";
 import { Card, SectionHeading } from "../../components/Card";
 import { TrendChart } from "../../components/TrendChart";
 import { formatDate, formatMetricValue } from "../../lib/format";
@@ -11,6 +12,7 @@ const TEAM_COLOR = "#9aa0ab";
 
 export default function MyGpsView() {
   const { data: profile, isLoading } = useMyProfile();
+  const { data: fitness } = useMyFitness();
   const { data: metrics } = useMetrics();
   const [metricKey, setMetricKey] = useState("load");
   const [gameId, setGameId] = useState<number | null>(null);
@@ -45,8 +47,10 @@ export default function MyGpsView() {
     <div className="flex flex-col gap-8">
       <SectionHeading
         title="My GPS"
-        subtitle={`${sessions.length} tracked game${sessions.length === 1 ? "" : "s"} · compared against the squad (teammates stay anonymous)`}
+        subtitle={`${profile.seasonTotals.games_played ?? 0} game${profile.seasonTotals.games_played === 1 ? "" : "s"} played · ${sessions.length} tracked session${sessions.length === 1 ? "" : "s"} · compared against the squad (teammates stay anonymous)`}
       />
+
+      {fitness?.you && <FitnessCard you={fitness.you} thresholds={fitness.thresholds} asOf={fitness.asOf} title="Your Fitness vs Match Group" />}
 
       <section>
         <SectionHeading title="Season Averages" subtitle="Tap a metric to chart it below" />
@@ -115,7 +119,7 @@ export default function MyGpsView() {
       </section>
 
       <section>
-        <SectionHeading title="My Game Log" />
+        <SectionHeading title="My Session Log" subtitle="Fitness = you didn't play, load from the warm-up and/or fitness work (it still counts)" />
         <Card className="overflow-x-auto p-0">
           <table className="w-full min-w-[560px] text-sm">
             <thead>
@@ -135,7 +139,9 @@ export default function MyGpsView() {
                 <tr key={s.id} className="border-b border-border/60 last:border-0">
                   <td className="px-4 py-3 text-text-dim">{formatDate(s.game_date!)}</td>
                   <td className="px-4 py-3 font-medium">{s.opponent ?? "—"}</td>
-                  <td className="px-4 py-3 text-text-dim">{s.minutes_played != null ? `${s.minutes_played}'` : "—"}</td>
+                  <td className="px-4 py-3 text-text-dim">
+                    <MinutesCell s={s} />
+                  </td>
                   {metrics?.slice(0, 5).map((m) => (
                     <td key={m.key} className="px-4 py-3 text-text-dim">
                       {formatMetricValue((s as unknown as Record<string, number | null>)[m.key], m)}

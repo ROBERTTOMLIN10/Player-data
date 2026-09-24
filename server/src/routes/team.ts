@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { computeFitness, FITNESS_AMBER, FITNESS_RED } from "../lib/fitness.js";
 import { getDb } from "../db/connection.js";
 import { requireCoach } from "../middleware/auth.js";
 import { CORE_METRICS, CORE_METRIC_KEYS } from "../lib/metrics.js";
@@ -91,4 +92,9 @@ teamRouter.get("/stats", (_req, res) => {
     .all();
 
   res.json({ seasonTotals, record, gameLog, topScorers });
+});
+
+/** Coaches: every player's load vs the players getting minutes (see lib/fitness.ts). */
+teamRouter.get("/fitness", requireCoach, (_req, res) => {
+  res.json({ ...computeFitness(), thresholds: { amber: FITNESS_AMBER, red: FITNESS_RED } });
 });
