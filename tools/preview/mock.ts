@@ -2,6 +2,7 @@
 // data captured off a test server, and keeps check-ins/settings in memory.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import raw from "./data.json";
+import { handlePreviewUpload } from "./uploads";
 
 const data: Record<string, any> = raw as any;
 export type DemoRole = "player" | "coach" | null;
@@ -193,8 +194,6 @@ function route(method: string, path: string, q: URLSearchParams, body: any): Res
     if (method === "PATCH") return json({ ok: true });
     return json(accounts);
   }
-  if (path === "/api/admin/upload-titan")
-    return json({ status: "error", filename: "", message: "Uploading is turned off in this preview.", warnings: [] }, 422);
   if (path === "/api/admin/sync-minutes" || path === "/api/admin/sync-schedule")
     return json({
       status: "ok",
@@ -226,6 +225,13 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   if (!str.startsWith("/api/")) return realFetch(input, init);
   const url = new URL(str, "http://preview.local");
   const method = (init?.method ?? "GET").toUpperCase();
+  if (url.pathname === "/api/admin/upload-titan" && init?.body instanceof FormData) {
+    const file = init.body.get("file");
+    if (!(file instanceof File)) return json({ status: "error", filename: "", message: "No file chosen.", warnings: [] }, 400);
+    const existing = (data["/api/games"] ?? []).map((g: any) => g.source_file);
+    const { status, body } = await handlePreviewUpload(file, existing);
+    return json(body, status);
+  }
   const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
   await new Promise((r) => setTimeout(r, 120));
   return route(method, url.pathname, url.searchParams, body);
