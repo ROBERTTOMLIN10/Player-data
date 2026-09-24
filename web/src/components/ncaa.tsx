@@ -3,14 +3,14 @@ import type { NcaaGame, NcaaSide, NcaaStandingRow, NcaaTable } from "../types";
 
 /** Shared NCAA D1 pieces: game card, standings table, stat table. */
 
-/** Daily movement: green ▲n up, red ▼n down, nothing when unchanged or new. */
+/** Movement since the last update: green ▲n up, red ▼n down, nothing when unchanged or new. */
 export function Movement({ move }: { move: number | null | undefined }) {
   if (!move) return <span className="inline-block w-7" aria-hidden />;
   const up = move > 0;
   return (
     <span
       className={`inline-flex w-7 items-center text-[11px] font-semibold ${up ? "text-emerald-400" : "text-red-400"}`}
-      title={`${up ? "Up" : "Down"} ${Math.abs(move)} since yesterday`}
+      title={`${up ? "Up" : "Down"} ${Math.abs(move)} since the last update`}
       aria-label={`${up ? "up" : "down"} ${Math.abs(move)}`}
     >
       {up ? "▲" : "▼"}

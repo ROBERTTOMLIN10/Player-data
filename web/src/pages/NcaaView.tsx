@@ -161,7 +161,7 @@ function StandingsTab() {
         </select>
         <span className="text-xs text-text-dim">
           Conference regular season (tournaments not included) · 3 pts win, 1 pt tie · calculated from NCAA.com results · arrows show
-          today&rsquo;s movement
+          movement since the last round of games
         </span>
       </div>
       {shown.map((c) => (
@@ -235,7 +235,7 @@ function StatsTab() {
       </Card>
       <p className="text-xs text-text-dim">
         {table?.updatedAt && `${updatedLabel(table.updatedAt)} · `}
-        {kind === "individual" ? "Player tables cover NCAA's national top 200." : "All D1 teams."} Arrows show movement since the previous day.
+        {kind === "individual" ? "Player tables cover NCAA's national top 200." : "All D1 teams."} Arrows show movement since the last update.
         Source: NCAA.com.
       </p>
     </div>
@@ -261,7 +261,7 @@ function RankingsTab() {
       : rpi;
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-xs text-text-dim">Poll arrows: movement since the previous poll · RPI arrows: movement since yesterday</p>
+      <p className="text-xs text-text-dim">Arrows show movement since the previous poll (RPI: since its last update)</p>
       <div className="grid gap-5 lg:grid-cols-2">
         <section className="min-w-0">
           <div className="mb-3 flex flex-wrap items-center gap-2">

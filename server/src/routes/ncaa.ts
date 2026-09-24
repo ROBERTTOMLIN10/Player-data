@@ -4,7 +4,6 @@ import { isIsoDate, teamToday } from "../lib/readiness.js";
 import { ncaaLogoUrl, type HtmlTable } from "../ncaa/client.js";
 import {
   conferenceLabel,
-  pollMoves,
   rankMoves,
   standingsWithMovement,
   conferenceNames,
@@ -119,7 +118,7 @@ function pollResponse(poll: (typeof POLLS)[number]) {
     teams: withLogos(table.teams),
     moves:
       prevCol === -1
-        ? pollMoves(poll.cacheKey, table)
+        ? rankMoves(poll.cacheKey, table)
         : table.rows.map((r) => {
             const before = parseInt(r[prevCol], 10);
             return Number.isFinite(before) ? before - parseInt(r[rankCol], 10) : null;
