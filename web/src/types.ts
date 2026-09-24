@@ -327,6 +327,7 @@ export interface MyProfile extends PlayerDetail {
   teamAverages: Record<string, number | null>;
   teamTrend: Array<{ game_id: number; game_date: string; opponent: string | null } & Record<string, number | null>>;
   ranks: Record<string, { rank: number; outOf: number } | null>;
+  teamHighs: Record<string, number | null>; // max_<metric>: squad's best single game
 }
 
 export interface MyGameGps {
