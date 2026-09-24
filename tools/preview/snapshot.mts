@@ -19,6 +19,7 @@ import { syncSchedule } from "../../server/src/import/syncSchedule.js";
 import { syncMinutes } from "../../server/src/import/importMinutes.js";
 import { syncSeason, syncStatsAndRankings } from "../../server/src/jobs/ncaaSync.js";
 import { ncaaLogoUrl } from "../../server/src/ncaa/client.js";
+import { recordRanks } from "../../server/src/ncaa/store.js";
 import { shiftDate, teamToday } from "../../server/src/lib/readiness.js";
 
 type Row = Record<string, unknown>;
@@ -181,6 +182,18 @@ if (mode === "export") {
       if (game) insert("minutes_played", { ...row, game_id: game.id, player_id: playerId(_player) }, "game_id, player_id");
     }
   })();
+  // Snapshots from before rank history existed: seed it from their cached
+  // tables, dated (team timezone) by when each table was fetched.
+  if (!snap.ncaaRankHistory?.length) {
+    const teamDate = (utc: string) =>
+      new Intl.DateTimeFormat("en-CA", { timeZone: process.env.TEAM_TIMEZONE || "America/New_York" }).format(
+        new Date(`${utc.replace(" ", "T")}Z`),
+      );
+    for (const row of snap.ncaaCache ?? []) {
+      const key = String(row.key);
+      if (/^(stats-|rankings-)/.test(key)) recordRanks(key, JSON.parse(String(row.json)), teamDate(String(row.updated_at)));
+    }
+  }
   console.log(
     `loaded snapshot from ${snap.syncedAt}: ${snap.scheduleGames.length} games, ${snap.playerStats.length} player stat lines, ` +
       `${snap.ncaaGames?.length ?? 0} NCAA games, ${snap.ncaaCache?.length ?? 0} NCAA tables`,
