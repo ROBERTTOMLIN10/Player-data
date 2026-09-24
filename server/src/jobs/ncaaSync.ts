@@ -8,7 +8,9 @@ import { shiftDate, teamToday } from "../lib/readiness.js";
  *   every 15 minutes otherwise; yesterday's until every game is final.
  * - The whole season's results once a day (for standings).
  * - Stat leaders and rankings (NCAA.com, plus Top Drawer Soccer's Top 25) every
- *   3 hours, and 30 minutes after new results come in (games going final).
+ *   3 hours, and after every game: from 30 minutes after a result comes in,
+ *   every 30 minutes for 3 hours (NCAA.com posts stats with a delay), so the
+ *   movement arrows pick up each game's effect as soon as it's published.
  * Set NCAA_SYNC=off to disable (e.g. local use without internet).
  */
 export interface StatCategory {
@@ -57,13 +59,14 @@ const TICK_MS = 60_000;
 const IDLE_REFRESH_MS = 15 * 60_000;
 const STATS_REFRESH_MS = 3 * 60 * 60_000;
 const STATS_AFTER_RESULTS_MS = 30 * 60_000; // NCAA.com needs a little time to post new stats
+const STATS_FOLLOW_UP_MS = 3 * 60 * 60_000; // keep re-checking this long after the latest result
 
 /** Final games today and yesterday: when this goes up, there are new results to refresh stats for. */
 function finalsCount(today: string): number {
   return [today, shiftDate(today, -1)].reduce((n, d) => n + gamesOn(d).filter((g) => g.state === "F").length, 0);
 }
-let finalsAtLastStats = -1;
-let newResultsSince: number | null = null; // when new finals were first seen since the last stats refresh
+let finalsSeen = -1;
+let latestResultAt: number | null = null; // when a game last went final
 
 const lastRun: Record<string, number> = {};
 let running = false;
@@ -167,12 +170,16 @@ async function tick() {
       await syncDate(yesterday);
     }
     const finals = finalsCount(today);
-    if (finalsAtLastStats !== -1 && finals > finalsAtLastStats && newResultsSince === null) newResultsSince = Date.now();
-    const afterResults = newResultsSince !== null && Date.now() - newResultsSince >= STATS_AFTER_RESULTS_MS;
-    if (due("stats", STATS_REFRESH_MS) || afterResults) {
+    if (finalsSeen !== -1 && finals > finalsSeen) latestResultAt = Date.now();
+    finalsSeen = finals;
+    const sinceResult = latestResultAt === null ? null : Date.now() - latestResultAt;
+    const followUp =
+      sinceResult !== null &&
+      sinceResult >= STATS_AFTER_RESULTS_MS &&
+      sinceResult <= STATS_FOLLOW_UP_MS &&
+      due("stats", STATS_AFTER_RESULTS_MS);
+    if (due("stats", STATS_REFRESH_MS) || followUp) {
       lastRun.stats = Date.now();
-      finalsAtLastStats = finals;
-      newResultsSince = null;
       await syncStatsAndRankings();
     }
   } catch (err) {

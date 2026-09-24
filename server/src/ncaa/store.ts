@@ -391,44 +391,69 @@ function ranksOf(table: EnrichedTable): (number | null)[] {
   });
 }
 
-/** Saves today's rank for every row (re-running the same day overwrites). */
-export function recordRanks(key: string, table: HtmlTable, day = teamToday()) {
+/** Ranks of one saved snapshot: entity -> rank. */
+function snapshotAt(key: string, at: string): Map<string, number> {
+  const rows = getDb().prepare("SELECT entity, rank FROM ncaa_rank_history WHERE key = ? AND day = ?").all(key, at) as {
+    entity: string;
+    rank: number;
+  }[];
+  return new Map(rows.map((r) => [r.entity, r.rank]));
+}
+
+/** entity -> rank for the rows that have both. */
+function rankMap(ids: (string | null)[], ranks: (number | null)[]): Map<string, number> {
+  const map = new Map<string, number>();
+  ids.forEach((id, i) => id && ranks[i] !== null && map.set(id, ranks[i]!));
+  return map;
+}
+
+function sameRanks(a: Map<string, number>, b: Map<string, number>): boolean {
+  if (a.size !== b.size) return false;
+  for (const [id, rank] of a) if (b.get(id) !== rank) return false;
+  return true;
+}
+
+/**
+ * Saves a snapshot of every row's rank whenever the table has changed since the
+ * last snapshot, so each update (e.g. after a round of games) gets its own
+ * snapshot. `at` is a timestamp ("YYYY-MM-DD HH:MM:SS", UTC) or a plain date.
+ */
+export function recordRanks(key: string, table: HtmlTable, at = new Date().toISOString().slice(0, 19).replace("T", " ")) {
   const enriched = enrichTable(table);
   const ids = entityKeys(enriched);
   const ranks = ranksOf(enriched);
+  const current = rankMap(ids, ranks);
   const db = getDb();
+  const latest = (db.prepare("SELECT MAX(day) AS at FROM ncaa_rank_history WHERE key = ?").get(key) as { at: string | null }).at;
+  if (latest && sameRanks(current, snapshotAt(key, latest))) return; // nothing moved
   const stmt = db.prepare(
     "INSERT INTO ncaa_rank_history (key, day, entity, rank) VALUES (?, ?, ?, ?) ON CONFLICT(key, day, entity) DO UPDATE SET rank = excluded.rank",
   );
   db.transaction(() => {
-    db.prepare("DELETE FROM ncaa_rank_history WHERE key = ? AND day = ?").run(key, day);
-    db.prepare("DELETE FROM ncaa_rank_history WHERE key = ? AND day < date(?, '-60 days')").run(key, day);
-    ids.forEach((id, i) => id && ranks[i] !== null && stmt.run(key, day, id, ranks[i]));
+    db.prepare("DELETE FROM ncaa_rank_history WHERE key = ? AND day = ?").run(key, at);
+    db.prepare("DELETE FROM ncaa_rank_history WHERE key = ? AND day < date(?, '-60 days')").run(key, at);
+    ids.forEach((id, i) => id && ranks[i] !== null && stmt.run(key, at, id, ranks[i]));
   })();
 }
 
 /**
  * Per row: places moved since the table last changed, i.e. against the most
- * recent earlier day whose ranking differs from the current one (+ up, - down,
- * null = new or unknown). Arrows stay up until the next update: a weekly poll
- * compares with last week's poll, stats with their previous update.
+ * recent snapshot whose ranking differs from the current one (+ up, - down,
+ * null = new or unknown). Arrows update with every change (e.g. after each
+ * round of games) and stay up until the next one: a weekly poll compares with
+ * last week's poll, stats with their previous update.
  */
-export function rankMoves(key: string, table: EnrichedTable, day = teamToday()): (number | null)[] {
+export function rankMoves(key: string, table: EnrichedTable): (number | null)[] {
   const db = getDb();
   const ids = entityKeys(table);
   const ranks = ranksOf(table);
-  const current = new Map(ids.map((id, i) => [id, ranks[i]]));
-  const days = (db.prepare("SELECT DISTINCT day FROM ncaa_rank_history WHERE key = ? AND day < ? ORDER BY day DESC").all(key, day) as {
+  const current = rankMap(ids, ranks);
+  const snapshots = (db.prepare("SELECT DISTINCT day FROM ncaa_rank_history WHERE key = ? ORDER BY day DESC").all(key) as {
     day: string;
   }[]).map((r) => r.day);
-  for (const d of days) {
-    const rows = db.prepare("SELECT entity, rank FROM ncaa_rank_history WHERE key = ? AND day = ?").all(key, d) as {
-      entity: string;
-      rank: number;
-    }[];
-    const same = rows.length === current.size && rows.every((r) => current.get(r.entity) === r.rank);
-    if (same) continue;
-    const prev = new Map(rows.map((r) => [r.entity, r.rank]));
+  for (const at of snapshots) {
+    const prev = snapshotAt(key, at);
+    if (sameRanks(current, prev)) continue;
     return ids.map((id, i) => {
       const before = id ? prev.get(id) : undefined;
       return before === undefined || ranks[i] === null ? null : before - ranks[i]!;
