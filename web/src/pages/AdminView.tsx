@@ -30,12 +30,16 @@ export default function AdminView() {
   const [syncScheduleResult, setSyncScheduleResult] = useState<SyncScheduleResult | null>(null);
   const [syncScheduleError, setSyncScheduleError] = useState<string | null>(null);
 
-  async function handleUpload(file: File) {
+  const [pendingReplace, setPendingReplace] = useState<File | null>(null);
+
+  async function handleUpload(file: File, replace = false) {
     setUploading(true);
     setUploadResult(null);
     setUploadError(null);
+    setPendingReplace(null);
     try {
-      const result = await uploadTitanFile(file);
+      const result = await uploadTitanFile(file, replace);
+      if (result.canReplace) setPendingReplace(file);
       setUploadResult(result);
       if (result.status === "imported") {
         queryClient.invalidateQueries();
@@ -140,6 +144,14 @@ export default function AdminView() {
                     <li key={i}>{w}</li>
                   ))}
                 </ul>
+              )}
+              {pendingReplace && (
+                <button
+                  onClick={() => handleUpload(pendingReplace, true)}
+                  className="mt-2 rounded-md bg-owl-red px-3 py-1.5 text-xs font-medium text-white hover:bg-owl-red/90"
+                >
+                  Replace the existing file with this one
+                </button>
               )}
             </div>
           )}

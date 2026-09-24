@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { computeFitness, FITNESS_AMBER, FITNESS_RED } from "../lib/fitness.js";
+import { getSessionFlags } from "../lib/sessionFlags.js";
 import { getDb } from "../db/connection.js";
 import { requireCoach } from "../middleware/auth.js";
 import { CORE_METRICS, CORE_METRIC_KEYS } from "../lib/metrics.js";
@@ -11,13 +12,13 @@ teamRouter.get("/summary", requireCoach, (_req, res) => {
   const db = getDb();
 
   const avgSelects = CORE_METRIC_KEYS.map((k) => `AVG(${k}) AS avg_${k}`).join(", ");
-  const seasonAverages = db.prepare(`SELECT ${avgSelects} FROM gps_sessions`).get() as Record<string, number>;
+  const seasonAverages = db.prepare(`SELECT ${avgSelects} FROM gps_sessions_valid`).get() as Record<string, number>;
 
   const trend = db
     .prepare(
       `SELECT g.id AS game_id, g.game_date, g.opponent, ${CORE_METRIC_KEYS.map((k) => `AVG(s.${k}) AS avg_${k}`).join(", ")}
        FROM games g
-       JOIN gps_sessions s ON s.game_id = g.id
+       JOIN gps_sessions_valid s ON s.game_id = g.id
        GROUP BY g.id
        ORDER BY g.game_date ASC`,
     )
@@ -27,7 +28,7 @@ teamRouter.get("/summary", requireCoach, (_req, res) => {
     const row = db
       .prepare(
         `SELECT s.${metric.key} AS value, p.canonical_name AS player_name, g.opponent, g.game_date, g.id AS game_id
-         FROM gps_sessions s
+         FROM gps_sessions_valid s
          JOIN players p ON p.id = s.player_id
          JOIN games g ON g.id = s.game_id
          WHERE s.${metric.key} IS NOT NULL
@@ -97,4 +98,21 @@ teamRouter.get("/stats", (_req, res) => {
 /** Coaches: every player's load vs the players getting minutes (see lib/fitness.ts). */
 teamRouter.get("/fitness", requireCoach, (_req, res) => {
   res.json({ ...computeFitness(), thresholds: { amber: FITNESS_AMBER, red: FITNESS_RED } });
+});
+
+/** Coaches: GPS sessions that need checking (tracker glitches and big spikes), newest first. */
+teamRouter.get("/flags", requireCoach, (_req, res) => {
+  const flags = getSessionFlags();
+  if (!flags.size) return res.json([]);
+  const ids = [...flags.keys()];
+  const rows = getDb()
+    .prepare(
+      `SELECT s.id, s.game_id, s.player_id, s.load, s.distance_mi, s.top_speed_mph, p.canonical_name AS player_name,
+              g.game_date, g.opponent, g.source_file
+       FROM gps_sessions s JOIN players p ON p.id = s.player_id JOIN games g ON g.id = s.game_id
+       WHERE s.id IN (${ids.map(() => "?").join(",")})
+       ORDER BY g.game_date DESC, p.canonical_name`,
+    )
+    .all(...ids) as { id: number }[];
+  res.json(rows.map((r) => ({ ...r, flag: flags.get(r.id) })));
 });

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { usePlayerDetail, usePlayerReadiness, usePlayers, useMetrics, useTeamFitness } from "../api/client";
 import { FitnessCard, MinutesCell } from "../components/Fitness";
+import { hideGlitches, SessionFlagTag } from "../components/SessionFlag";
 import { Card, SectionHeading } from "../components/Card";
 import { TeamLogo } from "../components/TeamLogo";
 import { MetricCard } from "../components/MetricCard";
@@ -24,8 +25,12 @@ export default function PlayerView() {
   const selectedMetric = metrics?.find((m) => m.key === selectedMetricKey);
 
   const chartData = useMemo(
-    () => (detail?.sessions ?? []).map((s) => ({ ...s, label: `${s.opponent ?? ""} ${s.game_date}` })),
-    [detail],
+    () =>
+      (detail?.sessions ?? []).map((s) => ({
+        ...hideGlitches(s, (metrics ?? []).map((m) => m.key)),
+        label: `${s.opponent ?? ""} ${s.game_date}`,
+      })),
+    [detail, metrics],
   );
 
   if (!selectedId) {
@@ -123,6 +128,7 @@ export default function PlayerView() {
                   <td className="px-4 py-3 font-medium">
                     {s.opponent ?? "—"}
                     {s.started === 1 && <span className="ml-1.5 text-[10px] font-normal uppercase tracking-wide text-teal">GS</span>}
+                    <SessionFlagTag s={s} />
                   </td>
                   <td className="px-4 py-3 text-text-dim">
                     <MinutesCell s={s} />
@@ -141,9 +147,11 @@ export default function PlayerView() {
 
       {detail.gameStats.length > 0 && (
         <section>
-          <SectionHeading title="Match Stats" subtitle="Goals, assists, points, and cards per game (from fausports.com box scores)" />
-          <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+          <SectionHeading title="Match Stats" subtitle="Minutes, goals, assists, points, and cards per game, from fausports.com box scores (no GPS file needed)" />
+          <div className="mb-3 grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-9">
             {[
+              { label: "Minutes", value: Math.round(detail.gameStats.reduce((n, g) => n + (g.minutes ?? 0), 0)) },
+              { label: "Starts", value: detail.gameStats.filter((g) => g.started).length },
               { label: "Goals", value: detail.statTotals.goals },
               { label: "Assists", value: detail.statTotals.assists },
               { label: "Points", value: detail.statTotals.points },
@@ -165,6 +173,7 @@ export default function PlayerView() {
                   <th className="px-4 py-3 font-medium">Date</th>
                   <th className="px-4 py-3 font-medium">Opponent</th>
                   <th className="px-4 py-3 font-medium">Result</th>
+                  <th className="px-4 py-3 font-medium">Min</th>
                   <th className="px-4 py-3 font-medium">G</th>
                   <th className="px-4 py-3 font-medium">A</th>
                   <th className="px-4 py-3 font-medium">Pts</th>
@@ -185,6 +194,10 @@ export default function PlayerView() {
                     </td>
                     <td className="px-4 py-3 text-text-dim">
                       {g.status ? `${g.status} ${g.team_score}-${g.opponent_score}` : "—"}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      {g.minutes ? `${g.minutes}'` : <span className="text-text-dim">DNP</span>}
+                      {g.started === 1 && <span className="ml-1.5 text-[10px] uppercase tracking-wide text-teal">GS</span>}
                     </td>
                     <td className="px-4 py-3">{g.goals}</td>
                     <td className="px-4 py-3">{g.assists}</td>

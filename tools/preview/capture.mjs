@@ -20,6 +20,7 @@ await get(coach, "/api/schedule");
 await get(coach, "/api/team/summary");
 await get(coach, "/api/team/stats");
 await get(coach, "/api/team/fitness");
+await get(coach, "/api/team/flags");
 const games = await get(coach, "/api/games");
 for (const g of games) await get(coach, `/api/games/${g.id}`);
 const players = await get(coach, "/api/players");

@@ -35,6 +35,7 @@ export interface GpsSession {
   started?: number | null;
   played?: number; // 1 = logged minutes
   box_score?: number; // 1 = the game has minutes data (so no minutes = didn't play, fitness only)
+  flag?: { kind: "glitch" | "spike"; reason: string } | null; // needs checking (glitch = left out of averages)
   player_name?: string;
   game_date?: string;
   opponent?: string | null;
@@ -482,4 +483,19 @@ export interface MyFitness {
   asOf: string | null;
   you: PlayerFitness | null;
   thresholds: { amber: number; red: number };
+}
+
+/** A GPS session that needs checking, for the coaches' list. */
+export interface FlaggedSession {
+  id: number;
+  game_id: number;
+  player_id: number;
+  player_name: string;
+  game_date: string;
+  opponent: string | null;
+  source_file: string;
+  load: number | null;
+  distance_mi: number | null;
+  top_speed_mph: number | null;
+  flag: { kind: "glitch" | "spike"; reason: string };
 }

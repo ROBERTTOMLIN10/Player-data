@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getDb } from "../db/connection.js";
 import { BODY_REGION_IDS, SEVERITIES } from "../lib/bodyRegions.js";
 import { computeFitness, FITNESS_AMBER, FITNESS_RED } from "../lib/fitness.js";
-import { CORE_METRIC_KEYS } from "../lib/metrics.js";
+import { CORE_METRIC_KEYS, GLITCH_SQL } from "../lib/metrics.js";
 import { getReminderSettings } from "../jobs/morningReminder.js";
 import { removeSubscription, saveSubscription, vapidPublicKey } from "../lib/push.js";
 import { gameOnDate, getCheckins, readinessScore, shiftDate, teamToday } from "../lib/readiness.js";
@@ -24,20 +24,20 @@ meRouter.get("/profile", (req, res) => {
   if (!detail) return res.status(404).json({ error: "Your player profile wasn't found. Ask a coach to check your account." });
 
   const db = getDb();
-  const teamAverages = db.prepare(`SELECT ${avgSelects} FROM gps_sessions`).get();
+  const teamAverages = db.prepare(`SELECT ${avgSelects} FROM gps_sessions_valid`).get();
 
   // Per-game squad averages, for "you vs team" trend lines.
   const teamTrend = db
     .prepare(
       `SELECT g.id AS game_id, g.game_date, g.opponent, ${CORE_METRIC_KEYS.map((k) => `AVG(s.${k}) AS avg_${k}`).join(", ")}
-       FROM games g JOIN gps_sessions s ON s.game_id = g.id
+       FROM games g JOIN gps_sessions_valid s ON s.game_id = g.id
        GROUP BY g.id ORDER BY g.game_date ASC`,
     )
     .all();
 
   // Where the player's season average ranks in the squad, per metric (1 = highest).
   const perPlayer = db
-    .prepare(`SELECT player_id, ${avgSelects} FROM gps_sessions GROUP BY player_id`)
+    .prepare(`SELECT player_id, ${avgSelects} FROM gps_sessions_valid GROUP BY player_id`)
     .all() as Array<Record<string, number | null> & { player_id: number }>;
   const ranks: Record<string, { rank: number; outOf: number } | null> = {};
   for (const key of CORE_METRIC_KEYS) {
@@ -70,13 +70,14 @@ meRouter.get("/gps/:gameId", (req, res) => {
 
   const cols = CORE_METRIC_KEYS.map((k) => `s.${k}`).join(", ");
   const rows = db
-    .prepare(`SELECT s.player_id, ${cols} FROM gps_sessions s WHERE s.game_id = ? ORDER BY s.load DESC`)
+    .prepare(`SELECT s.player_id, ${cols}, ${GLITCH_SQL} FROM gps_sessions s WHERE s.game_id = ? ORDER BY s.load DESC`)
     .all(gameId) as Array<Record<string, number | null> & { player_id: number }>;
 
   const strip = ({ player_id: _id, ...metrics }: Record<string, number | null> & { player_id: number }) => metrics;
   const mine = rows.find((r) => r.player_id === playerId);
-  const others = rows.filter((r) => r.player_id !== playerId).map(strip);
-  const teamAverages = db.prepare(`SELECT ${avgSelects} FROM gps_sessions WHERE game_id = ?`).get(gameId);
+  // Teammates' glitched sessions would distort the chart, so they're left out.
+  const others = rows.filter((r) => r.player_id !== playerId && !r.glitch).map(strip);
+  const teamAverages = db.prepare(`SELECT ${avgSelects} FROM gps_sessions_valid WHERE game_id = ?`).get(gameId);
 
   res.json({ game, you: mine ? strip(mine) : null, others, teamAverages });
 });

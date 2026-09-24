@@ -41,10 +41,19 @@ function handleUpload(req: Request, res: Response) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   const destPath = path.join(DATA_DIR, req.file.originalname);
 
+  // Replacing a file (e.g. a corrected export after a tracker was left on):
+  // remove the old game and its sessions, then import the new file.
+  const replace = req.body?.replace === "true";
+  if (replace && fs.existsSync(destPath)) {
+    getDb().prepare("DELETE FROM games WHERE source_file = ?").run(req.file.originalname);
+    fs.rmSync(destPath, { force: true });
+  }
+
   if (fs.existsSync(destPath)) {
     return res.status(409).json({
+      canReplace: true,
       status: "error",
-      message: `A file named "${req.file.originalname}" was already uploaded. Rename it (e.g. include the date) if this is a different game.`,
+      message: `A file named "${req.file.originalname}" was already uploaded. If this is a corrected file for the same game, replace it below. If it's a different game, rename it (e.g. add the date).`,
     });
   }
 

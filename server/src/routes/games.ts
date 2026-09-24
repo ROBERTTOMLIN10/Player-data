@@ -2,6 +2,7 @@ import { Router } from "express";
 import { SESSION_ROLE_SQL } from "../lib/fitness.js";
 import { getDb } from "../db/connection.js";
 import { CORE_METRIC_KEYS } from "../lib/metrics.js";
+import { withFlags } from "../lib/sessionFlags.js";
 
 export const gamesRouter = Router();
 
@@ -40,13 +41,13 @@ gamesRouter.get("/:id", (req, res) => {
        WHERE s.game_id = ?
        ORDER BY p.canonical_name ASC`,
     )
-    .all(gameId);
+    .all(gameId) as { id: number }[];
 
   const teamAverages = db
-    .prepare(`SELECT ${avgSelects}, ${maxSelects} FROM gps_sessions WHERE game_id = ?`)
+    .prepare(`SELECT ${avgSelects}, ${maxSelects} FROM gps_sessions_valid WHERE game_id = ?`)
     .get(gameId);
 
-  res.json({ game, sessions, teamAverages });
+  res.json({ game, sessions: withFlags(sessions), teamAverages });
 });
 
 gamesRouter.get("/:id/zones", (req, res) => {
