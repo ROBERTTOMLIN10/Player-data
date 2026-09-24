@@ -49,7 +49,12 @@ meRouter.get("/profile", (req, res) => {
     ranks[key] = idx === -1 ? null : { rank: idx + 1, outOf: values.length };
   }
 
-  res.json({ ...detail, teamAverages, teamTrend, ranks });
+  // Squad's best single game per metric (no names), for the Highs tab.
+  const teamHighs = db
+    .prepare(`SELECT ${CORE_METRIC_KEYS.map((k) => `MAX(${k}) AS max_${k}`).join(", ")} FROM gps_sessions_valid`)
+    .get();
+
+  res.json({ ...detail, teamAverages, teamTrend, ranks, teamHighs });
 });
 
 /** The player's own load vs the players getting minutes. No other player's name or numbers. */
