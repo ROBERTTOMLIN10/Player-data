@@ -322,13 +322,8 @@ export function useNcaaScoreboard(date: string | null, live: boolean) {
   });
 }
 
-export function useNcaaStandings(season: number | null) {
-  return useQuery({
-    queryKey: ["ncaaStandings", season],
-    queryFn: () => fetchJson<NcaaStandings>(`/api/ncaa/standings${season ? `?season=${season}` : ""}`),
-    refetchInterval: 5 * 60_000,
-    placeholderData: (prev) => prev,
-  });
+export function useNcaaStandings() {
+  return useQuery({ queryKey: ["ncaaStandings"], queryFn: () => fetchJson<NcaaStandings>("/api/ncaa/standings"), refetchInterval: 5 * 60_000 });
 }
 
 export function useNcaaStatsIndex() {
@@ -343,11 +338,10 @@ export function useNcaaStat(key: string | null) {
   });
 }
 
-export function useNcaaRankings(season: number | null) {
+export function useNcaaRankings() {
   return useQuery({
-    queryKey: ["ncaaRankings", season],
-    queryFn: () => fetchJson<NcaaRankings>(`/api/ncaa/rankings${season ? `?season=${season}` : ""}`),
-    placeholderData: (prev) => prev,
+    queryKey: ["ncaaRankings"],
+    queryFn: () => fetchJson<NcaaRankings>("/api/ncaa/rankings"),
   });
 }
 

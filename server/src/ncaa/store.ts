@@ -93,14 +93,14 @@ export interface TeamInfo {
   conf: string | null;
 }
 
-/** Every team seen on the scoreboard in a season (default: this one), keyed by NCAA short name ("Michigan St."). */
+/** Every team seen on the scoreboard this season, keyed by NCAA short name ("Michigan St."). */
 export function teamsByName(seasonYear = Number(teamToday().slice(0, 4))): Map<string, TeamInfo> {
   const rows = getDb()
     .prepare(
-      `SELECT home_name AS name, home_seo AS seo, home_conf AS conf FROM ncaa_games WHERE game_date LIKE ?1
-       UNION SELECT away_name, away_seo, away_conf FROM ncaa_games WHERE game_date LIKE ?1`,
+      `SELECT home_name AS name, home_seo AS seo, home_conf AS conf FROM ncaa_games WHERE game_date LIKE @season
+       UNION SELECT away_name, away_seo, away_conf FROM ncaa_games WHERE game_date LIKE @season`,
     )
-    .all(`${seasonYear}-%`) as TeamInfo[];
+    .all({ season: `${seasonYear}-%` }) as TeamInfo[];
   const map = new Map<string, TeamInfo>();
   for (const r of rows) if (r.conf || !map.has(r.name)) map.set(r.name, r);
   return map;
@@ -113,12 +113,9 @@ const slug = (s: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
 
-/** Conference seo -> display name ("american" -> "American Conference"), for a past season if given. */
-export function conferenceNames(seasonYear?: number): Record<string, string> {
-  const list =
-    (seasonYear !== undefined ? getCache<{ name: string; display: string }[]>(`conferences-${seasonYear}`)?.value : undefined) ??
-    getCache<{ name: string; display: string }[]>("conferences")?.value ??
-    [];
+/** Conference seo -> display name ("american" -> "American Conference"). */
+export function conferenceNames(): Record<string, string> {
+  const list = getCache<{ name: string; display: string }[]>("conferences")?.value ?? [];
   const names: Record<string, string> = {};
   for (const c of list) names[slug(c.name)] = c.display;
   return names;
@@ -204,10 +201,9 @@ export function computeStandings(seasonYear: number, beforeDate?: string): Confe
   const games = getDb()
     .prepare("SELECT * FROM ncaa_games WHERE state = 'F' AND game_date LIKE ? AND game_date < ?")
     .all(`${seasonYear}-%`, beforeDate ?? "9999-12-31") as GameRow[];
-  const current = Number(teamToday().slice(0, 4));
-  const regularSeasonOver = seasonYear < current || (beforeDate ?? teamToday()) >= `${seasonYear}-11-01`;
+  const regularSeasonOver = (beforeDate ?? teamToday()) >= `${seasonYear}-11-01`;
   const tournament = tournamentGames(games, regularSeasonOver);
-  const names = conferenceNames(seasonYear === current ? undefined : seasonYear);
+  const names = conferenceNames();
 
   const blank = (seo: string, name: string) => ({ seo, name, gp: 0, w: 0, l: 0, t: 0, gf: 0, ga: 0 });
   const conf = new Map<string, Map<string, ReturnType<typeof blank>>>();
@@ -388,6 +384,34 @@ export function recordRanks(key: string, table: HtmlTable, day = teamToday()) {
     db.prepare("DELETE FROM ncaa_rank_history WHERE key = ? AND day = ?").run(key, day);
     ids.forEach((id, i) => id && ranks[i] !== null && stmt.run(key, day, id, ranks[i]));
   })();
+}
+
+/**
+ * Weekly polls: movement since the previous poll, i.e. the most recent earlier
+ * day whose ranking differs from the current one.
+ */
+export function pollMoves(key: string, table: EnrichedTable, day = teamToday()): (number | null)[] {
+  const db = getDb();
+  const ids = entityKeys(table);
+  const ranks = ranksOf(table);
+  const current = new Map(ids.map((id, i) => [id, ranks[i]]));
+  const days = (db.prepare("SELECT DISTINCT day FROM ncaa_rank_history WHERE key = ? AND day < ? ORDER BY day DESC").all(key, day) as {
+    day: string;
+  }[]).map((r) => r.day);
+  for (const d of days) {
+    const rows = db.prepare("SELECT entity, rank FROM ncaa_rank_history WHERE key = ? AND day = ?").all(key, d) as {
+      entity: string;
+      rank: number;
+    }[];
+    const same = rows.length === current.size && rows.every((r) => current.get(r.entity) === r.rank);
+    if (same) continue;
+    const prev = new Map(rows.map((r) => [r.entity, r.rank]));
+    return ids.map((id, i) => {
+      const before = id ? prev.get(id) : undefined;
+      return before === undefined || ranks[i] === null ? null : before - ranks[i]!;
+    });
+  }
+  return table.rows.map(() => null);
 }
 
 /** Per row: places moved since the previous day with data (+ up, - down, null = new or unknown). */

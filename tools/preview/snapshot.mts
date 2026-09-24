@@ -17,9 +17,9 @@ import { getDb } from "../../server/src/db/connection.js";
 import { migrate } from "../../server/src/db/migrate.js";
 import { syncSchedule } from "../../server/src/import/syncSchedule.js";
 import { syncMinutes } from "../../server/src/import/importMinutes.js";
-import { PAST_SEASONS, syncPastSeasons, syncSeason, syncStatsAndRankings } from "../../server/src/jobs/ncaaSync.js";
+import { syncSeason, syncStatsAndRankings } from "../../server/src/jobs/ncaaSync.js";
 import { ncaaLogoUrl } from "../../server/src/ncaa/client.js";
-import { conferenceNames, recordRanks } from "../../server/src/ncaa/store.js";
+import { recordRanks } from "../../server/src/ncaa/store.js";
 import { shiftDate, teamToday } from "../../server/src/lib/readiness.js";
 
 type Row = Record<string, unknown>;
@@ -100,11 +100,7 @@ if (mode === "export") {
   // NCAA D1 (NCAA.com): season results, stat leaders, rankings.
   await syncStatsAndRankings();
   await syncSeason();
-  // Past seasons (for past standings): already in the previous snapshot after the first run.
-  for (let attempt = 0; attempt < 20 && !(await syncPastSeasons(1000)); attempt++) {
-    await new Promise((r) => setTimeout(r, 5000));
-  }
-  snap.ncaaGames = db.prepare("SELECT * FROM ncaa_games").all() as Row[];
+  snap.ncaaGames = db.prepare("SELECT * FROM ncaa_games WHERE game_date LIKE ?").all(`${teamToday().slice(0, 4)}-%`) as Row[];
   snap.ncaaCache = db.prepare("SELECT * FROM ncaa_cache").all() as Row[];
   snap.ncaaRankHistory = db
     .prepare("SELECT * FROM ncaa_rank_history WHERE day >= ?")
@@ -120,16 +116,8 @@ if (mode === "export") {
   } catch {
     console.warn("sharp not installed: embedding logos at full size");
   }
-  // This season: every school on the scoreboard. Past seasons: D1 schools only (standings, polls).
   const seos = new Set<string>();
-  const thisSeason = teamToday().slice(0, 4);
-  const d1 = new Map<string, Set<string>>();
-  for (let y = Number(thisSeason) - PAST_SEASONS; y < Number(thisSeason); y++) d1.set(String(y), new Set(Object.keys(conferenceNames(y))));
-  for (const g of snap.ncaaGames)
-    for (const side of ["home", "away"]) {
-      const year = String(g.game_date).slice(0, 4);
-      if (year === thisSeason || d1.get(year)?.has(String(g[`${side}_conf`]))) seos.add(String(g[`${side}_seo`]));
-    }
+  for (const g of snap.ncaaGames) for (const side of ["home", "away"]) seos.add(String(g[`${side}_seo`]));
   snap.logos = {};
   const urls = [
     ...new Set([

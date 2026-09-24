@@ -143,29 +143,14 @@ function ScoresTab() {
 
 // ---- Standings -----------------------------------------------------------------
 
-/** "2026 season" dropdown: this season, then past ones. */
-function SeasonSelect({ seasons, value, onChange }: { seasons: number[]; value: number; onChange: (season: number) => void }) {
-  return (
-    <select value={value} onChange={(e) => onChange(Number(e.target.value))} className={selectClass} aria-label="Season">
-      {seasons.map((y, i) => (
-        <option key={y} value={y}>
-          {y} season{i === 0 ? " (current)" : ""}
-        </option>
-      ))}
-    </select>
-  );
-}
-
 function StandingsTab() {
-  const [season, setSeason] = useState<number | null>(null);
-  const { data, isLoading } = useNcaaStandings(season);
+  const { data, isLoading } = useNcaaStandings();
   const [conf, setConf] = useState(DEFAULT_CONFERENCE);
   if (isLoading || !data) return <div className="py-16 text-center text-text-dim">Loading standings…</div>;
   const shown = conf === "all" ? data.conferences : data.conferences.filter((c) => c.seo === conf);
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
-        <SeasonSelect seasons={data.seasons} value={data.season} onChange={setSeason} />
         <select value={conf} onChange={(e) => setConf(e.target.value)} className={selectClass} aria-label="Conference">
           <option value="all">All conferences</option>
           {data.conferences.map((c) => (
@@ -175,9 +160,8 @@ function StandingsTab() {
           ))}
         </select>
         <span className="text-xs text-text-dim">
-          {data.current
-            ? "Conference regular season · 3 pts win, 1 pt tie · calculated from NCAA.com results · arrows show today\u2019s movement"
-            : `Final ${data.season} regular-season table (conference tournaments not included) · 3 pts win, 1 pt tie · from NCAA.com results`}
+          Conference regular season (tournaments not included) · 3 pts win, 1 pt tie · calculated from NCAA.com results · arrows show
+          today&rsquo;s movement
         </span>
       </div>
       {shown.map((c) => (
@@ -188,11 +172,7 @@ function StandingsTab() {
           </div>
         </Card>
       ))}
-      {shown.length === 0 && (
-        <Card className="text-center text-sm text-text-dim">
-          {data.current ? "No results for this conference yet." : `The ${data.season} season is still loading from NCAA.com. Check back soon.`}
-        </Card>
-      )}
+      {shown.length === 0 && <Card className="text-center text-sm text-text-dim">No results for this conference yet.</Card>}
     </div>
   );
 }
@@ -265,8 +245,7 @@ function StatsTab() {
 // ---- Rankings -----------------------------------------------------------------
 
 function RankingsTab() {
-  const [season, setSeason] = useState<number | null>(null);
-  const { data, isLoading } = useNcaaRankings(season);
+  const { data, isLoading } = useNcaaRankings();
   const [pollKey, setPollKey] = useState("usc");
   const [conf, setConf] = useState("all");
   if (isLoading || !data) return <div className="py-16 text-center text-text-dim">Loading rankings…</div>;
@@ -282,12 +261,7 @@ function RankingsTab() {
       : rpi;
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <SeasonSelect seasons={data.seasons} value={data.season} onChange={setSeason} />
-        <span className="text-xs text-text-dim">
-          {data.current ? "Poll arrows: movement since last week\u2019s poll · RPI arrows: since yesterday" : `Final ${data.season} polls · arrows: movement since the poll before`}
-        </span>
-      </div>
+      <p className="text-xs text-text-dim">Poll arrows: movement since the previous poll · RPI arrows: movement since yesterday</p>
       <div className="grid gap-5 lg:grid-cols-2">
         <section className="min-w-0">
           <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -299,19 +273,16 @@ function RankingsTab() {
                 </option>
               ))}
             </select>
-            {poll.week && <span className="text-xs text-text-dim">{poll.week}</span>}
           </div>
           <Card className="p-2 sm:p-3">
             {poll.rows.length ? (
               <NcaaStatTable table={poll} ourTeam={data.ourTeam} hideColumns={["PREVIOUS", "Prev"]} />
             ) : (
-              <div className="py-12 text-center text-sm text-text-dim">
-                {data.current ? "Not loaded yet. Check back in a few minutes." : `${poll.label} didn\u2019t publish a Top 25 that we can find for ${data.season}.`}
-              </div>
+              <Empty />
             )}
           </Card>
           <p className="mt-2 text-xs text-text-dim">
-            Source: {data.current && poll.key === "usc" ? "NCAA.com" : "the weekly poll tables on Wikipedia"}
+            Source: {poll.key === "usc" ? "NCAA.com" : "topdrawersoccer.com"}
             {poll.updatedAt ? ` · ${updatedLabel(poll.updatedAt)}` : ""}
           </p>
         </section>
@@ -330,9 +301,7 @@ function RankingsTab() {
             )}
           </div>
           <Card className="p-2 sm:p-3">
-            {!rpi ? (
-              <div className="py-12 text-center text-sm text-text-dim">NCAA.com only publishes the RPI for the current season.</div>
-            ) : rpiFiltered?.rows.length ? (
+            {rpiFiltered?.rows.length ? (
               <NcaaStatTable table={rpiFiltered} ourTeam={data.ourTeam} hideColumns={["Non-Div I", "Prev"]} />
             ) : (
               <Empty />
