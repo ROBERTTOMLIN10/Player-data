@@ -1,5 +1,5 @@
 import { fetchConferences, fetchRankingTable, fetchScoreboard, fetchStatTable } from "../ncaa/client.js";
-import { gamesOn, hasGamesOn, setCache, upsertGames } from "../ncaa/store.js";
+import { gamesOn, hasGamesOn, recordRanks, setCache, upsertGames } from "../ncaa/store.js";
 import { shiftDate, teamToday } from "../lib/readiness.js";
 
 /**
@@ -107,7 +107,9 @@ export async function syncStatsAndRankings() {
   for (const c of STAT_CATEGORIES) {
     try {
       // Team tables: every team (~5 pages) so conference views are complete. Players: top 200.
-      setCache(`stats-${c.key}`, await fetchStatTable(c.kind, c.id, c.kind === "team" ? 6 : 4));
+      const table = await fetchStatTable(c.kind, c.id, c.kind === "team" ? 6 : 4);
+      setCache(`stats-${c.key}`, table);
+      recordRanks(`stats-${c.key}`, table);
     } catch (err) {
       console.error(`[ncaa] stats ${c.label} failed: ${(err as Error).message}`);
     }
@@ -115,7 +117,10 @@ export async function syncStatsAndRankings() {
   for (const r of RANKINGS) {
     try {
       const table = await fetchRankingTable(r.slug);
-      if (table) setCache(r.key, table);
+      if (table) {
+        setCache(r.key, table);
+        recordRanks(r.key, table);
+      }
     } catch (err) {
       console.error(`[ncaa] ${r.label} failed: ${(err as Error).message}`);
     }

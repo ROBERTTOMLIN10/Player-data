@@ -21,6 +21,11 @@ echo "== Database + GPS files"
 DB_PATH="$DB" node server/dist/db/migrate.js
 DB_PATH="$DB" npm run import:titan
 
+if [ -n "${PREVIOUS_SNAPSHOT:-}" ]; then
+  echo "== Previous day's snapshot (for movement arrows): $PREVIOUS_SNAPSHOT"
+  DB_PATH="$DB" npx tsx "$HERE/snapshot.mts" import "$PREVIOUS_SNAPSHOT"
+fi
+
 echo "== fausports.com snapshot (kept if the live sync below can't reach the site)"
 if git -C "$ROOT" fetch -q origin preview-data 2>/dev/null \
   && git -C "$ROOT" show origin/preview-data:fausports-snapshot.json > "$OUT/snapshot.json" 2>/dev/null; then

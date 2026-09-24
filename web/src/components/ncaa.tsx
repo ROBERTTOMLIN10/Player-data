@@ -3,6 +3,22 @@ import type { NcaaGame, NcaaSide, NcaaStandingRow, NcaaTable } from "../types";
 
 /** Shared NCAA D1 pieces: game card, standings table, stat table. */
 
+/** Daily movement: green ▲n up, red ▼n down, nothing when unchanged or new. */
+export function Movement({ move }: { move: number | null | undefined }) {
+  if (!move) return <span className="inline-block w-7" aria-hidden />;
+  const up = move > 0;
+  return (
+    <span
+      className={`inline-flex w-7 items-center text-[11px] font-semibold ${up ? "text-emerald-400" : "text-red-400"}`}
+      title={`${up ? "Up" : "Down"} ${Math.abs(move)} since yesterday`}
+      aria-label={`${up ? "up" : "down"} ${Math.abs(move)}`}
+    >
+      {up ? "▲" : "▼"}
+      {Math.abs(move)}
+    </span>
+  );
+}
+
 export function GameCard({ game, ourTeam }: { game: NcaaGame; ourTeam: string }) {
   const live = game.state === "I";
   const final = game.state === "F";
@@ -59,7 +75,7 @@ export function StandingsTable({ rows, ourTeam, compact = false }: { rows: NcaaS
       <table className="w-full min-w-[520px] text-sm tabular-nums">
         <thead>
           <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-text-dim">
-            <th className="w-8 px-2 py-2 font-medium">#</th>
+            <th className="w-16 px-2 py-2 font-medium">#</th>
             <th className="px-2 py-2 font-medium">Team</th>
             <th className="px-2 py-2 text-center font-medium">GP</th>
             <th className="px-2 py-2 text-center font-medium">W</th>
@@ -78,7 +94,10 @@ export function StandingsTable({ rows, ourTeam, compact = false }: { rows: NcaaS
               key={r.seo}
               className={`border-b border-border/60 last:border-0 ${r.seo === ourTeam ? "bg-owl-red/10" : ""}`}
             >
-              <td className="px-2 py-2 text-text-dim">{i + 1}</td>
+              <td className="whitespace-nowrap px-2 py-2 text-text-dim">
+                <span className="inline-block w-5">{i + 1}</span>
+                <Movement move={r.move} />
+              </td>
               <td className="px-2 py-2">
                 <span className="flex items-center gap-2 font-medium">
                   <TeamLogo name={r.name} url={r.logo} size="sm" />
@@ -141,7 +160,12 @@ export function NcaaStatTable({
                       i === shown[shown.length - 1].i ? "text-right font-display font-semibold" : ""
                     } ${i === 0 ? "text-text-dim" : ""}`}
                   >
-                    {i === teamCol ? (
+                    {i === 0 && table.moves ? (
+                      <span className="inline-flex items-center gap-1">
+                        <span className="inline-block min-w-[1.5rem]">{r[i]}</span>
+                        <Movement move={table.moves[ri]} />
+                      </span>
+                    ) : i === teamCol ? (
                       <span className="flex items-center gap-2">
                         <TeamLogo name={r[i]} url={team?.logo} size="sm" />
                         <span className="truncate">{r[i]}</span>

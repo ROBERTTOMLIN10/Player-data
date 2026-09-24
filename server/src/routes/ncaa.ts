@@ -3,8 +3,9 @@ import { ensureDate, RANKINGS, STAT_CATEGORIES } from "../jobs/ncaaSync.js";
 import { isIsoDate, teamToday } from "../lib/readiness.js";
 import { ncaaLogoUrl, type HtmlTable } from "../ncaa/client.js";
 import {
-  computeStandings,
   conferenceLabel,
+  rankMoves,
+  standingsWithMovement,
   conferenceNames,
   enrichTable,
   gamesOn,
@@ -58,7 +59,7 @@ ncaaRouter.get("/scoreboard", async (req, res) => {
 });
 
 ncaaRouter.get("/standings", (_req, res) => {
-  const conferences = computeStandings(Number(teamToday().slice(0, 4))).map((c) => ({
+  const conferences = standingsWithMovement(Number(teamToday().slice(0, 4))).map((c) => ({
     ...c,
     rows: c.rows.map((r) => ({ ...r, logo: ncaaLogoUrl(r.seo) })),
   }));
@@ -90,6 +91,7 @@ function tableResponse(key: string, label: string) {
     columns: table.columns,
     rows: table.rows,
     teams: table.teams.map((t) => (t ? { ...t, logo: ncaaLogoUrl(t.seo) } : null)),
+    moves: rankMoves(key, table),
   };
 }
 
@@ -115,7 +117,7 @@ ncaaRouter.get("/rankings", (_req, res) => {
  */
 ncaaRouter.get("/conference/:seo", (req, res) => {
   const seo = req.params.seo;
-  const standings = computeStandings(Number(teamToday().slice(0, 4))).find((c) => c.seo === seo);
+  const standings = standingsWithMovement(Number(teamToday().slice(0, 4))).find((c) => c.seo === seo);
   const teams = teamsByName();
 
   const filtered = (key: string, limit: number) => {
@@ -123,7 +125,12 @@ ncaaRouter.get("/conference/:seo", (req, res) => {
     const table = tableResponse(`stats-${key}`, category.label);
     if (!table) return null;
     const keep = table.rows.map((_, i) => i).filter((i) => table.teams[i]?.conf === seo).slice(0, limit);
-    return { ...table, rows: keep.map((i) => table.rows[i]), teams: keep.map((i) => table.teams[i]) };
+    return {
+      ...table,
+      rows: keep.map((i) => table.rows[i]),
+      teams: keep.map((i) => table.teams[i]),
+      moves: keep.map((i) => table.moves[i]),
+    };
   };
 
   res.json({

@@ -19,6 +19,7 @@ import { syncSchedule } from "../../server/src/import/syncSchedule.js";
 import { syncMinutes } from "../../server/src/import/importMinutes.js";
 import { syncSeason, syncStatsAndRankings } from "../../server/src/jobs/ncaaSync.js";
 import { ncaaLogoUrl } from "../../server/src/ncaa/client.js";
+import { recordRanks } from "../../server/src/ncaa/store.js";
 import { shiftDate, teamToday } from "../../server/src/lib/readiness.js";
 
 type Row = Record<string, unknown>;
@@ -32,6 +33,7 @@ interface Snapshot {
   logos?: Record<string, string>; // logo URL -> data: URI (the preview can't load outside images)
   ncaaGames?: Row[]; // NCAA D1 scoreboard rows (all of this season)
   ncaaCache?: Row[]; // NCAA stat / rankings tables
+  ncaaRankHistory?: Row[]; // last few days of ranks, for daily movement arrows
 }
 
 const [mode, file] = process.argv.slice(2);
@@ -100,6 +102,9 @@ if (mode === "export") {
   await syncSeason();
   snap.ncaaGames = db.prepare("SELECT * FROM ncaa_games").all() as Row[];
   snap.ncaaCache = db.prepare("SELECT * FROM ncaa_cache").all() as Row[];
+  snap.ncaaRankHistory = db
+    .prepare("SELECT * FROM ncaa_rank_history WHERE day >= ?")
+    .all(shiftDate(teamToday(), -3)) as Row[];
   console.log(`ncaa: ${snap.ncaaGames.length} games, ${snap.ncaaCache.length} tables`);
 
   // Logos to embed: every opponent on our schedule and every school on the NCAA
@@ -171,11 +176,24 @@ if (mode === "export") {
     }
     for (const row of snap.ncaaGames ?? []) insert("ncaa_games", row, "contest_id");
     for (const row of snap.ncaaCache ?? []) insert("ncaa_cache", row, "key");
+    for (const row of snap.ncaaRankHistory ?? []) insert("ncaa_rank_history", row, "key, day, entity");
     for (const { _game, _player, ...row } of snap.minutes) {
       const game = db.prepare("SELECT id FROM games WHERE source_file = ?").get(_game) as { id: number } | undefined;
       if (game) insert("minutes_played", { ...row, game_id: game.id, player_id: playerId(_player) }, "game_id, player_id");
     }
   })();
+  // Snapshots from before rank history existed: seed it from their cached
+  // tables, dated (team timezone) by when each table was fetched.
+  if (!snap.ncaaRankHistory?.length) {
+    const teamDate = (utc: string) =>
+      new Intl.DateTimeFormat("en-CA", { timeZone: process.env.TEAM_TIMEZONE || "America/New_York" }).format(
+        new Date(`${utc.replace(" ", "T")}Z`),
+      );
+    for (const row of snap.ncaaCache ?? []) {
+      const key = String(row.key);
+      if (/^(stats-|rankings-)/.test(key)) recordRanks(key, JSON.parse(String(row.json)), teamDate(String(row.updated_at)));
+    }
+  }
   console.log(
     `loaded snapshot from ${snap.syncedAt}: ${snap.scheduleGames.length} games, ${snap.playerStats.length} player stat lines, ` +
       `${snap.ncaaGames?.length ?? 0} NCAA games, ${snap.ncaaCache?.length ?? 0} NCAA tables`,

@@ -317,3 +317,13 @@ CREATE TABLE IF NOT EXISTS ncaa_cache (
   json TEXT NOT NULL,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Each day's rank per row of the NCAA tables (RPI, poll, stat leaders), so the
+-- app can show daily movement arrows. entity = team seo, or "name|team" for players.
+CREATE TABLE IF NOT EXISTS ncaa_rank_history (
+  key TEXT NOT NULL, -- table key, e.g. 'rankings-rpi', 'stats-individual-570'
+  day TEXT NOT NULL, -- YYYY-MM-DD (team timezone)
+  entity TEXT NOT NULL,
+  rank INTEGER NOT NULL,
+  PRIMARY KEY (key, day, entity)
+);

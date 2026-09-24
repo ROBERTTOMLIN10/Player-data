@@ -32,6 +32,10 @@ jobs:
         run: |
           npm run db:migrate
           npm run import:titan
+          # Carry over the previous snapshot (rank history for daily movement arrows).
+          if git fetch -q --depth=1 origin preview-data && git show FETCH_HEAD:fausports-snapshot.json > "$RUNNER_TEMP/previous.json"; then
+            npx tsx tools/preview/snapshot.mts import "$RUNNER_TEMP/previous.json"
+          fi
           npx tsx tools/preview/snapshot.mts export "$RUNNER_TEMP/fausports-snapshot.json"
       - name: Save to the preview-data branch
         env:
