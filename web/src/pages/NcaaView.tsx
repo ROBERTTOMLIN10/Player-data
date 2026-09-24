@@ -160,7 +160,8 @@ function StandingsTab() {
           ))}
         </select>
         <span className="text-xs text-text-dim">
-          Conference games only · 3 pts win, 1 pt tie · calculated from NCAA.com results · arrows show today&rsquo;s movement
+          Conference regular season (tournaments not included) · 3 pts win, 1 pt tie · calculated from NCAA.com results · arrows show
+          today&rsquo;s movement
         </span>
       </div>
       {shown.map((c) => (
@@ -245,9 +246,11 @@ function StatsTab() {
 
 function RankingsTab() {
   const { data, isLoading } = useNcaaRankings();
+  const [pollKey, setPollKey] = useState("usc");
   const [conf, setConf] = useState("all");
   if (isLoading || !data) return <div className="py-16 text-center text-text-dim">Loading rankings…</div>;
-  const [poll, rpi] = data.tables;
+  const poll = data.polls.find((p) => p.key === pollKey) ?? data.polls[0];
+  const rpi = data.rpi;
   const rpiConfs = [...new Set(rpi?.teams.filter(Boolean).map((t) => t!.conf).filter(Boolean) as string[])].sort();
   const rpiFiltered =
     rpi && conf !== "all"
@@ -257,33 +260,55 @@ function RankingsTab() {
         })()
       : rpi;
   return (
-    <div className="grid gap-5 lg:grid-cols-2">
-      <section className="min-w-0">
-        <SectionHeading title={poll?.label ?? "Top 25"} subtitle={updatedLabel(poll?.updatedAt)} />
-        <Card className="p-2 sm:p-3">
-          {poll?.rows.length ? <NcaaStatTable table={poll} ourTeam={data.ourTeam} /> : <Empty />}
-        </Card>
-      </section>
-      <section className="min-w-0">
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <SectionHeading title={rpi?.label ?? "RPI"} subtitle={updatedLabel(rpi?.updatedAt)} />
-          <select value={conf} onChange={(e) => setConf(e.target.value)} className={`${selectClass} mb-3`} aria-label="Conference">
-            <option value="all">All teams</option>
-            {rpiConfs.map((c) => (
-              <option key={c} value={c}>
-                {rpi?.rows[rpi.teams.findIndex((t) => t?.conf === c)]?.[3] ?? c}
-              </option>
-            ))}
-          </select>
-        </div>
-        <Card className="p-2 sm:p-3">
-          {rpiFiltered?.rows.length ? (
-            <NcaaStatTable table={rpiFiltered} ourTeam={data.ourTeam} hideColumns={["Non-Div I", "Prev"]} />
-          ) : (
-            <Empty />
-          )}
-        </Card>
-      </section>
+    <div className="flex flex-col gap-4">
+      <p className="text-xs text-text-dim">Poll arrows: movement since the previous poll · RPI arrows: movement since yesterday</p>
+      <div className="grid gap-5 lg:grid-cols-2">
+        <section className="min-w-0">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <h2 className="font-display text-lg font-semibold">Top 25</h2>
+            <select value={poll.key} onChange={(e) => setPollKey(e.target.value)} className={selectClass} aria-label="Poll">
+              {data.polls.map((p) => (
+                <option key={p.key} value={p.key}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <Card className="p-2 sm:p-3">
+            {poll.rows.length ? (
+              <NcaaStatTable table={poll} ourTeam={data.ourTeam} hideColumns={["PREVIOUS", "Prev"]} />
+            ) : (
+              <Empty />
+            )}
+          </Card>
+          <p className="mt-2 text-xs text-text-dim">
+            Source: {poll.key === "usc" ? "NCAA.com" : "topdrawersoccer.com"}
+            {poll.updatedAt ? ` · ${updatedLabel(poll.updatedAt)}` : ""}
+          </p>
+        </section>
+        <section className="min-w-0">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <SectionHeading title={rpi?.label ?? "NCAA RPI"} subtitle={updatedLabel(rpi?.updatedAt)} />
+            {rpi && (
+              <select value={conf} onChange={(e) => setConf(e.target.value)} className={`${selectClass} mb-3`} aria-label="Conference">
+                <option value="all">All teams</option>
+                {rpiConfs.map((c) => (
+                  <option key={c} value={c}>
+                    {rpi.rows[rpi.teams.findIndex((t) => t?.conf === c)]?.[3] ?? c}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+          <Card className="p-2 sm:p-3">
+            {rpiFiltered?.rows.length ? (
+              <NcaaStatTable table={rpiFiltered} ourTeam={data.ourTeam} hideColumns={["Non-Div I", "Prev"]} />
+            ) : (
+              <Empty />
+            )}
+          </Card>
+        </section>
+      </div>
     </div>
   );
 }

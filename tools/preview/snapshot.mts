@@ -100,7 +100,7 @@ if (mode === "export") {
   // NCAA D1 (NCAA.com): season results, stat leaders, rankings.
   await syncStatsAndRankings();
   await syncSeason();
-  snap.ncaaGames = db.prepare("SELECT * FROM ncaa_games").all() as Row[];
+  snap.ncaaGames = db.prepare("SELECT * FROM ncaa_games WHERE game_date LIKE ?").all(`${teamToday().slice(0, 4)}-%`) as Row[];
   snap.ncaaCache = db.prepare("SELECT * FROM ncaa_cache").all() as Row[];
   snap.ncaaRankHistory = db
     .prepare("SELECT * FROM ncaa_rank_history WHERE day >= ?")

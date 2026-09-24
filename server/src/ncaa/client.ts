@@ -212,6 +212,16 @@ export async function fetchRankingTable(slug: string): Promise<HtmlTable | null>
   return parseFirstTable(await fetchText(`${SITE}/rankings/soccer-men/d1/${slug}`));
 }
 
+/** Top Drawer Soccer's men's Top 25 (topdrawersoccer.com): Rank, School, Conference, Overall, Conf. */
+export async function fetchTopDrawerTop25(): Promise<HtmlTable> {
+  const html = await fetchText("https://www.topdrawersoccer.com/college-soccer-national-rankings/men");
+  // Each row has a logo cell the header doesn't; drop it so rows line up with the columns.
+  const table = parseFirstTable(html.replace(/<td class="clgTeamLogo">[\s\S]*?<\/td>/g, ""));
+  if (!table) throw new Error("no rankings table");
+  const columns = table.columns.map((c) => c.replace(/\b\w/g, (l) => l.toUpperCase()));
+  return { columns, rows: table.rows.map((r) => r.map((c, i) => (i === 0 ? c.replace(/\.$/, "") : c))) };
+}
+
 export function ncaaLogoUrl(seo: string): string {
   return `${SITE}/sites/default/files/images/logos/schools/bgl/${seo}.svg`;
 }

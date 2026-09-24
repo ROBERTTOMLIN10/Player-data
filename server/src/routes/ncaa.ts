@@ -1,9 +1,10 @@
 import { Router } from "express";
-import { ensureDate, RANKINGS, STAT_CATEGORIES } from "../jobs/ncaaSync.js";
+import { ensureDate, POLLS, RANKINGS, STAT_CATEGORIES } from "../jobs/ncaaSync.js";
 import { isIsoDate, teamToday } from "../lib/readiness.js";
 import { ncaaLogoUrl, type HtmlTable } from "../ncaa/client.js";
 import {
   conferenceLabel,
+  pollMoves,
   rankMoves,
   standingsWithMovement,
   conferenceNames,
@@ -81,6 +82,10 @@ ncaaRouter.get("/stats", (_req, res) => {
   });
 });
 
+function withLogos(teams: ReturnType<typeof enrichTable>["teams"]) {
+  return teams.map((t) => (t ? { ...t, logo: ncaaLogoUrl(t.seo) } : null));
+}
+
 function tableResponse(key: string, label: string) {
   const cached = getCache<HtmlTable>(key);
   if (!cached) return null;
@@ -90,8 +95,35 @@ function tableResponse(key: string, label: string) {
     updatedAt: cached.updatedAt,
     columns: table.columns,
     rows: table.rows,
-    teams: table.teams.map((t) => (t ? { ...t, logo: ncaaLogoUrl(t.seo) } : null)),
+    teams: withLogos(table.teams),
     moves: rankMoves(key, table),
+  };
+}
+
+/**
+ * One Top 25 poll, with movement since the previous poll: the coaches' poll
+ * from its "Previous" column, Top Drawer Soccer from our own daily record.
+ */
+function pollResponse(poll: (typeof POLLS)[number]) {
+  const cached = getCache<HtmlTable>(poll.cacheKey);
+  if (!cached) return { key: poll.key, label: poll.label, columns: [], rows: [], teams: [], moves: [] };
+  const table = enrichTable(cached.value);
+  const rankCol = table.columns.findIndex((c) => c.toLowerCase() === "rank");
+  const prevCol = table.columns.findIndex((c) => c.toLowerCase().startsWith("prev"));
+  return {
+    key: poll.key,
+    label: poll.label,
+    updatedAt: cached.updatedAt,
+    columns: table.columns,
+    rows: table.rows,
+    teams: withLogos(table.teams),
+    moves:
+      prevCol === -1
+        ? pollMoves(poll.cacheKey, table)
+        : table.rows.map((r) => {
+            const before = parseInt(r[prevCol], 10);
+            return Number.isFinite(before) ? before - parseInt(r[rankCol], 10) : null;
+          }),
   };
 }
 
@@ -106,7 +138,8 @@ ncaaRouter.get("/stats/:key", (req, res) => {
 ncaaRouter.get("/rankings", (_req, res) => {
   res.json({
     ourTeam: OUR_TEAM,
-    tables: RANKINGS.map((r) => ({ key: r.key, ...(tableResponse(r.key, r.label) ?? { label: r.label, rows: [] }) })),
+    polls: POLLS.map(pollResponse),
+    rpi: tableResponse("rankings-rpi", RANKINGS.find((r) => r.key === "rankings-rpi")!.label),
   });
 });
 

@@ -93,14 +93,14 @@ export interface TeamInfo {
   conf: string | null;
 }
 
-/** Every D1 team seen on the scoreboard this season, keyed by NCAA short name ("Michigan St."). */
-export function teamsByName(): Map<string, TeamInfo> {
+/** Every team seen on the scoreboard this season, keyed by NCAA short name ("Michigan St."). */
+export function teamsByName(seasonYear = Number(teamToday().slice(0, 4))): Map<string, TeamInfo> {
   const rows = getDb()
     .prepare(
-      `SELECT home_name AS name, home_seo AS seo, home_conf AS conf FROM ncaa_games
-       UNION SELECT away_name, away_seo, away_conf FROM ncaa_games`,
+      `SELECT home_name AS name, home_seo AS seo, home_conf AS conf FROM ncaa_games WHERE game_date LIKE @season
+       UNION SELECT away_name, away_seo, away_conf FROM ncaa_games WHERE game_date LIKE @season`,
     )
-    .all() as TeamInfo[];
+    .all({ season: `${seasonYear}-%` }) as TeamInfo[];
   const map = new Map<string, TeamInfo>();
   for (const r of rows) if (r.conf || !map.has(r.name)) map.set(r.name, r);
   return map;
@@ -147,11 +147,62 @@ export interface ConferenceStandings {
   rows: StandingRow[];
 }
 
-/** Conference tables: 3 pts per win, 1 per tie, sorted by points, goal difference, goals for. */
+/**
+ * Conference tournament games, which NCAA's data doesn't flag. A conference
+ * game is a tournament game when the two teams already met that season (the
+ * regular season is a single round robin), or, once the regular season is over,
+ * when it's beyond a team's usual number of conference games (catches
+ * tournament games between teams that didn't meet in a partial schedule).
+ */
+function tournamentGames(games: GameRow[], regularSeasonOver: boolean): Set<number> {
+  const out = new Set<number>();
+  const byConf = new Map<string, GameRow[]>();
+  for (const g of games) {
+    if (!g.is_conference || !g.home_conf) continue;
+    byConf.set(g.home_conf, [...(byConf.get(g.home_conf) ?? []), g]);
+  }
+  for (const list of byConf.values()) {
+    list.sort((a, b) => a.game_date.localeCompare(b.game_date) || (a.start_epoch ?? 0) - (b.start_epoch ?? 0));
+    const met = new Set<string>();
+    const regular: GameRow[] = [];
+    for (const g of list) {
+      const pair = [g.home_seo, g.away_seo].sort().join("|");
+      if (met.has(pair)) out.add(g.contest_id);
+      else {
+        met.add(pair);
+        regular.push(g);
+      }
+    }
+    if (!regularSeasonOver) continue;
+    // Usual number of conference games per team: the most common count.
+    const counts = new Map<string, number>();
+    for (const g of regular) for (const t of [g.home_seo, g.away_seo]) counts.set(t, (counts.get(t) ?? 0) + 1);
+    const freq = new Map<number, number>();
+    for (const n of counts.values()) freq.set(n, (freq.get(n) ?? 0) + 1);
+    const usual = [...freq.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0]?.[0];
+    if (!usual) continue;
+    const played = new Map<string, number>();
+    for (const g of regular) {
+      const h = (played.get(g.home_seo) ?? 0) + 1;
+      const a = (played.get(g.away_seo) ?? 0) + 1;
+      played.set(g.home_seo, h);
+      played.set(g.away_seo, a);
+      if (h > usual || a > usual) out.add(g.contest_id);
+    }
+  }
+  return out;
+}
+
+/**
+ * Regular-season conference tables (conference tournaments left out): 3 pts
+ * per win, 1 per tie, sorted by points, goal difference, goals for.
+ */
 export function computeStandings(seasonYear: number, beforeDate?: string): ConferenceStandings[] {
   const games = getDb()
     .prepare("SELECT * FROM ncaa_games WHERE state = 'F' AND game_date LIKE ? AND game_date < ?")
     .all(`${seasonYear}-%`, beforeDate ?? "9999-12-31") as GameRow[];
+  const regularSeasonOver = (beforeDate ?? teamToday()) >= `${seasonYear}-11-01`;
+  const tournament = tournamentGames(games, regularSeasonOver);
   const names = conferenceNames();
 
   const blank = (seo: string, name: string) => ({ seo, name, gp: 0, w: 0, l: 0, t: 0, gf: 0, ga: 0 });
@@ -173,7 +224,7 @@ export function computeStandings(seasonYear: number, beforeDate?: string): Confe
       else if (mine < theirs) o.l++;
       else o.t++;
       overall.set(seo, o);
-      if (!g.is_conference || !c) continue;
+      if (!g.is_conference || !c || tournament.has(g.contest_id)) continue;
       const table = conf.get(c) ?? new Map();
       const row = table.get(seo) ?? blank(seo, name);
       row.gp++;
@@ -217,8 +268,27 @@ export interface EnrichedTable extends HtmlTable {
   teams: (TeamInfo | null)[]; // per row, matched from the "Team" / "School" column
 }
 
-// Names that differ between NCAA's poll/RPI pages and its scoreboard.
-const NAME_ALIASES: Record<string, string> = { umkc: "kansas city" };
+// Names that differ between NCAA's poll/RPI pages (or Wikipedia's polls) and its scoreboard.
+const NAME_ALIASES: Record<string, string> = {
+  umkc: "kansas city",
+  umass: "massachusetts",
+  charleston: "col of charleston",
+  "college of charleston": "col of charleston",
+  "loyola marymount": "lmu (ca)",
+  lmu: "lmu (ca)",
+  "saint marys": "saint marys (ca)",
+  "st marys": "saint marys (ca)",
+  "st johns": "st johns (ny)",
+  "saint johns": "st johns (ny)",
+  "st thomas": "st thomas (mn)",
+  "unc wilmington": "uncw",
+  "florida atlantic": "fla atlantic",
+  "seattle": "seattle u",
+  "southern methodist": "smu",
+  "central florida": "ucf",
+  "connecticut": "uconn",
+  "north carolina state": "nc state",
+};
 
 /** "Missouri State" / "Missouri St." -> "missouri st" so tables using either spelling match. */
 function normalizeName(name: string): string {
@@ -232,15 +302,35 @@ function normalizeName(name: string): string {
   return NAME_ALIASES[n] ?? n;
 }
 
+/**
+ * NCAA abbreviates words ("Western Mich.", "Fla. Gulf Coast"): match when every
+ * word is equal or an abbreviated prefix of the full word.
+ */
+function abbreviationMatch(full: string, short: string): boolean {
+  const a = full.split(" ");
+  const b = short.split(" ");
+  return a.length === b.length && b.every((w, i) => w === a[i] || (w.length >= 2 && a[i].startsWith(w)));
+}
+
 export function enrichTable(table: HtmlTable, teams = teamsByName()): EnrichedTable {
   const col = table.columns.findIndex((c) => ["team", "school"].includes(c.toLowerCase()));
-  const byNormalized = new Map([...teams.values()].map((t) => [normalizeName(t.name), t]));
+  const all = [...teams.values()];
+  const byNormalized = new Map(all.map((t) => [normalizeName(t.name), t]));
+  const bySeo = new Map(all.map((t) => [t.seo, t]));
+  const abbreviated = all.map((t) => ({ t, words: normalizeName(t.name) }));
   return {
     ...table,
     teams: table.rows.map((r) => {
       if (col === -1) return null;
       const name = r[col].replace(/\s*\(\d+\)$/, "");
-      return teams.get(name) ?? byNormalized.get(normalizeName(name)) ?? null;
+      const n = normalizeName(name);
+      return (
+        teams.get(name) ??
+        byNormalized.get(n) ??
+        bySeo.get(n.replace(/[^a-z0-9]+/g, "-")) ??
+        abbreviated.find((x) => abbreviationMatch(n, x.words))?.t ??
+        null
+      );
     }),
   };
 }
@@ -294,6 +384,34 @@ export function recordRanks(key: string, table: HtmlTable, day = teamToday()) {
     db.prepare("DELETE FROM ncaa_rank_history WHERE key = ? AND day = ?").run(key, day);
     ids.forEach((id, i) => id && ranks[i] !== null && stmt.run(key, day, id, ranks[i]));
   })();
+}
+
+/**
+ * Weekly polls: movement since the previous poll, i.e. the most recent earlier
+ * day whose ranking differs from the current one.
+ */
+export function pollMoves(key: string, table: EnrichedTable, day = teamToday()): (number | null)[] {
+  const db = getDb();
+  const ids = entityKeys(table);
+  const ranks = ranksOf(table);
+  const current = new Map(ids.map((id, i) => [id, ranks[i]]));
+  const days = (db.prepare("SELECT DISTINCT day FROM ncaa_rank_history WHERE key = ? AND day < ? ORDER BY day DESC").all(key, day) as {
+    day: string;
+  }[]).map((r) => r.day);
+  for (const d of days) {
+    const rows = db.prepare("SELECT entity, rank FROM ncaa_rank_history WHERE key = ? AND day = ?").all(key, d) as {
+      entity: string;
+      rank: number;
+    }[];
+    const same = rows.length === current.size && rows.every((r) => current.get(r.entity) === r.rank);
+    if (same) continue;
+    const prev = new Map(rows.map((r) => [r.entity, r.rank]));
+    return ids.map((id, i) => {
+      const before = id ? prev.get(id) : undefined;
+      return before === undefined || ranks[i] === null ? null : before - ranks[i]!;
+    });
+  }
+  return table.rows.map(() => null);
 }
 
 /** Per row: places moved since the previous day with data (+ up, - down, null = new or unknown). */

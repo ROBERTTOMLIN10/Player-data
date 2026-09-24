@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { SESSION_ROLE_SQL } from "../lib/fitness.js";
 import { getDb } from "../db/connection.js";
 import { CORE_METRIC_KEYS } from "../lib/metrics.js";
 
@@ -32,7 +33,7 @@ gamesRouter.get("/:id", (req, res) => {
 
   const sessions = db
     .prepare(
-      `SELECT s.*, p.canonical_name AS player_name, mp.minutes AS minutes_played, mp.started
+      `SELECT s.*, p.canonical_name AS player_name, mp.minutes AS minutes_played, mp.started, ${SESSION_ROLE_SQL}
        FROM gps_sessions s
        JOIN players p ON p.id = s.player_id
        LEFT JOIN minutes_played mp ON mp.game_id = s.game_id AND mp.player_id = s.player_id

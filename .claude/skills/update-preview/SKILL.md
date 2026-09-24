@@ -1,14 +1,13 @@
 ---
 name: update-preview
-description: Rebuild and republish the clickable preview of the FAU Men's Soccer app (player check-in, body map, My GPS, coach Readiness board) at its existing Claude artifact link. Use whenever Rob says "update the preview", "refresh the preview", "show me the changes", or asks to see the app after a change — and after finishing any change to web/ or server/ that he'll want to look at.
+description: Rebuild the clickable preview of the FAU Men's Soccer app (player check-in, body map, My GPS, coach Readiness board, NCAA D1) and show it to Rob right in the Claude app. Use whenever Rob says "update the preview", "refresh the preview", "show me the changes", or asks to see the app after a change — and after finishing any change to web/ or server/ that he'll want to look at.
 ---
 
 # Update the app preview
 
-The preview is a single self-contained page of the real web app, published as a
-private Claude artifact that keeps the same link every time:
-
-**https://claude.ai/artifact/GmuXMtqxTjNBfykNJNUNKp**
+The preview is a single self-contained page of the real web app. Rob views it
+right here in the Claude desktop app: send him the file itself. He doesn't
+want a link.
 
 It runs the real frontend with `/api` answered from data captured off a local
 test server (see `tools/preview/README.md`): real GPS files from `data/titan`,
@@ -37,13 +36,13 @@ player and coach views. Nothing in it is saved.
    sure there are no page errors. Garbled characters like `Â·` in a local file
    are only the missing charset tag; the published page adds it.
 
-3. **Publish to the same link.** Use the Artifact tool: `read` the URL above
-   first (a conversation that didn't publish it must read it before updating),
-   then publish with `url` set to that link and `file_path`
-   `/tmp/fau-preview/fau-app-preview.html`. Don't pass `icon`.
+3. **Show it in the app.** Copy `/tmp/fau-preview/fau-app-preview.html` into
+   the session's scratchpad directory and send it with `SendUserFile`
+   (`display: "render"`), so it opens in the side panel. Don't publish an
+   artifact or give a link.
 
-4. **Tell Rob** in plain language: the link, what changed, and that it uses
-   test check-ins and doesn't save anything.
+4. **Tell Rob** in plain language what changed and where to click, and that it
+   uses test check-ins and doesn't save anything.
 
 ## When the app changes
 

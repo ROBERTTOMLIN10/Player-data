@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { usePlayerDetail, usePlayerReadiness, usePlayers, useMetrics } from "../api/client";
+import { usePlayerDetail, usePlayerReadiness, usePlayers, useMetrics, useTeamFitness } from "../api/client";
+import { FitnessCard, MinutesCell } from "../components/Fitness";
 import { Card, SectionHeading } from "../components/Card";
 import { TeamLogo } from "../components/TeamLogo";
 import { MetricCard } from "../components/MetricCard";
@@ -16,6 +17,8 @@ export default function PlayerView() {
 
   const selectedId = playerId ? Number(playerId) : null;
   const { data: detail, isLoading: detailLoading } = usePlayerDetail(selectedId);
+  const { data: fitness } = useTeamFitness(selectedId !== null);
+  const myFitness = fitness?.players.find((p) => p.playerId === selectedId);
 
   const [selectedMetricKey, setSelectedMetricKey] = useState("load");
   const selectedMetric = metrics?.find((m) => m.key === selectedMetricKey);
@@ -40,7 +43,10 @@ export default function PlayerView() {
                 className="rounded-lg border border-border bg-surface-raised p-3 text-left transition-colors hover:border-owl-red"
               >
                 <div className="font-medium">{p.canonical_name}</div>
-                <div className="text-xs text-text-dim">{p.games_played} games</div>
+                <div className="text-xs text-text-dim">
+                  {p.games_played} games played
+                  {p.sessions && p.sessions > p.games_played ? ` · ${p.sessions - p.games_played} fitness` : ""}
+                </div>
               </button>
             ))}
           </div>
@@ -56,7 +62,7 @@ export default function PlayerView() {
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <SectionHeading title={detail.player.canonical_name} subtitle={`${detail.sessions.length} games this season`} />
+        <SectionHeading title={detail.player.canonical_name} subtitle={`${detail.seasonTotals.games_played ?? 0} games played · ${detail.sessions.length} tracked sessions this season`} />
         <button onClick={() => navigate("/players")} className="text-sm text-text-dim hover:text-owl-red">
           ← All players
         </button>
@@ -64,8 +70,10 @@ export default function PlayerView() {
 
       <PlayerReadinessSection playerId={selectedId} />
 
+      {myFitness && fitness && <FitnessCard you={myFitness} thresholds={fitness.thresholds} asOf={fitness.asOf} coach />}
+
       <section>
-        <SectionHeading title="Season Averages" subtitle="Click a metric to chart its trend across games" />
+        <SectionHeading title="Season Averages" subtitle="Per tracked session (games and fitness-only). Click a metric to chart its trend" />
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
           {metrics?.map((m) => (
             <MetricCard
@@ -93,7 +101,7 @@ export default function PlayerView() {
       </section>
 
       <section>
-        <SectionHeading title="Game Log" />
+        <SectionHeading title="Session Log" subtitle="Every tracked game. Fitness = didn't play, load from the warm-up and/or fitness work" />
         <Card className="overflow-x-auto p-0">
           <table className="w-full min-w-[640px] text-sm">
             <thead>
@@ -116,7 +124,9 @@ export default function PlayerView() {
                     {s.opponent ?? "—"}
                     {s.started === 1 && <span className="ml-1.5 text-[10px] font-normal uppercase tracking-wide text-teal">GS</span>}
                   </td>
-                  <td className="px-4 py-3 text-text-dim">{s.minutes_played != null ? `${s.minutes_played}'` : "—"}</td>
+                  <td className="px-4 py-3 text-text-dim">
+                    <MinutesCell s={s} />
+                  </td>
                   {metrics?.slice(0, 5).map((m) => (
                     <td key={m.key} className="px-4 py-3 text-text-dim">
                       {formatMetricValue((s as any)[m.key], m)}

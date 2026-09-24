@@ -33,6 +33,8 @@ export interface GpsSession {
   explosiveness_mean_accel: number | null;
   minutes_played?: number | null;
   started?: number | null;
+  played?: number; // 1 = logged minutes
+  box_score?: number; // 1 = the game has minutes data (so no minutes = didn't play, fitness only)
   player_name?: string;
   game_date?: string;
   opponent?: string | null;
@@ -55,7 +57,8 @@ export interface GameDetail {
 export interface Player {
   id: number;
   canonical_name: string;
-  games_played: number;
+  games_played: number; // logged minutes
+  sessions?: number; // tracked GPS sessions, including fitness-only
   position: string | null; // 'fwd' | 'mid' | 'def' | 'gk' | null (not yet known)
 }
 
@@ -412,7 +415,17 @@ export interface NcaaTable {
   columns: string[];
   rows: string[][];
   teams: (NcaaTeamRef | null)[];
-  moves?: (number | null)[]; // per row: places moved since the previous day (+ up, - down)
+  moves?: (number | null)[]; // per row: places moved since the previous day or poll (+ up, - down)
+}
+
+export interface NcaaPoll extends NcaaTable {
+  key: "usc" | "tds";
+}
+
+export interface NcaaRankings {
+  ourTeam: string;
+  polls: NcaaPoll[];
+  rpi: NcaaTable | null;
 }
 
 export interface NcaaStatCategory {
@@ -435,4 +448,38 @@ export interface NcaaConference {
   standings: NcaaStandingRow[];
   teamStats: NcaaTable[];
   playerLeaders: NcaaTable[];
+}
+
+// ---- Fitness vs the match group ------------------------------------------------
+
+export type FitnessStatus = "ok" | "amber" | "red";
+
+export interface FitnessWindow {
+  days: number;
+  games: number;
+  load: number;
+  matchLoad: number;
+  pct: number | null;
+  status: FitnessStatus | null;
+}
+
+export interface PlayerFitness {
+  playerId: number;
+  name: string;
+  gamesPlayed: number;
+  fitnessSessions: number;
+  otherSessions: number;
+  windows: FitnessWindow[];
+}
+
+export interface TeamFitness {
+  asOf: string | null;
+  players: PlayerFitness[];
+  thresholds: { amber: number; red: number };
+}
+
+export interface MyFitness {
+  asOf: string | null;
+  you: PlayerFitness | null;
+  thresholds: { amber: number; red: number };
 }

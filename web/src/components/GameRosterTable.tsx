@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { GpsSession, MetricDef } from "../types";
+import { MinutesCell } from "./Fitness";
 import { formatMetricValue } from "../lib/format";
 import { Card } from "./Card";
 
@@ -79,7 +80,7 @@ export function GameRosterTable({
                 {s.started === 1 && <span className="ml-1.5 text-[10px] font-normal uppercase tracking-wide text-teal">GS</span>}
               </td>
               <td className="px-4 py-3 text-text-dim">
-                {s.minutes_played != null ? `${s.minutes_played}'` : "—"}
+                <MinutesCell s={s} />
               </td>
               {visibleMetrics.map((m) => (
                 <td key={m.key} className="px-4 py-3 text-text-dim">

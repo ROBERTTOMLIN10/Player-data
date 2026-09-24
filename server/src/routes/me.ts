@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { getDb } from "../db/connection.js";
 import { BODY_REGION_IDS, SEVERITIES } from "../lib/bodyRegions.js";
+import { computeFitness, FITNESS_AMBER, FITNESS_RED } from "../lib/fitness.js";
 import { CORE_METRIC_KEYS } from "../lib/metrics.js";
 import { getReminderSettings } from "../jobs/morningReminder.js";
 import { removeSubscription, saveSubscription, vapidPublicKey } from "../lib/push.js";
@@ -49,6 +50,13 @@ meRouter.get("/profile", (req, res) => {
   }
 
   res.json({ ...detail, teamAverages, teamTrend, ranks });
+});
+
+/** The player's own load vs the players getting minutes. No other player's name or numbers. */
+meRouter.get("/fitness", (req, res) => {
+  const { asOf, players } = computeFitness();
+  const mine = players.find((p) => p.playerId === req.user!.playerId);
+  res.json({ asOf, you: mine ?? null, thresholds: { amber: FITNESS_AMBER, red: FITNESS_RED } });
 });
 
 meRouter.get("/gps/:gameId", (req, res) => {

@@ -1,4 +1,4 @@
-import { fetchConferences, fetchRankingTable, fetchScoreboard, fetchStatTable } from "../ncaa/client.js";
+import { fetchConferences, fetchRankingTable, fetchTopDrawerTop25, fetchScoreboard, fetchStatTable } from "../ncaa/client.js";
 import { gamesOn, hasGamesOn, recordRanks, setCache, upsertGames } from "../ncaa/store.js";
 import { shiftDate, teamToday } from "../lib/readiness.js";
 
@@ -7,7 +7,7 @@ import { shiftDate, teamToday } from "../lib/readiness.js";
  * - Today's scoreboard every minute while any game is live or about to start,
  *   every 15 minutes otherwise; yesterday's until every game is final.
  * - The whole season's results once a day (for standings).
- * - Stat leaders and rankings every 6 hours.
+ * - Stat leaders and rankings (NCAA.com, plus Top Drawer Soccer's Top 25) every 6 hours.
  * Set NCAA_SYNC=off to disable (e.g. local use without internet).
  */
 export interface StatCategory {
@@ -44,7 +44,14 @@ export const RANKINGS = [
   { key: "rankings-rpi", slug: "ncaa-mens-soccer-rpi", label: "NCAA RPI" },
 ];
 
+/** Top 25 polls for the Rankings dropdown: the coaches' poll (NCAA.com) first. */
+export const POLLS = [
+  { key: "usc", cacheKey: "rankings-poll", label: "United Soccer Coaches" },
+  { key: "tds", cacheKey: "rankings-tds", label: "Top Drawer Soccer" },
+] as const;
+
 const SEASON_START_MONTH_DAY = "08-15";
+
 const TICK_MS = 60_000;
 const IDLE_REFRESH_MS = 15 * 60_000;
 const STATS_REFRESH_MS = 6 * 60 * 60_000;
@@ -124,6 +131,15 @@ export async function syncStatsAndRankings() {
     } catch (err) {
       console.error(`[ncaa] ${r.label} failed: ${(err as Error).message}`);
     }
+  }
+  try {
+    const table = await fetchTopDrawerTop25();
+    if (table.rows.length) {
+      setCache("rankings-tds", table);
+      recordRanks("rankings-tds", table);
+    }
+  } catch (err) {
+    console.error(`[ncaa] Top Drawer Soccer poll failed: ${(err as Error).message}`);
   }
 }
 
