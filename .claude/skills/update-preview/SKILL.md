@@ -1,13 +1,15 @@
 ---
 name: update-preview
-description: Rebuild the clickable preview of the FAU Men's Soccer app (player check-in, body map, My GPS, coach Readiness board, NCAA D1) and show it to Rob right in the Claude app. Use whenever Rob says "update the preview", "refresh the preview", "show me the changes", or asks to see the app after a change — and after finishing any change to web/ or server/ that he'll want to look at.
+description: Rebuild the clickable preview of the FAU Men's Soccer app (player check-in, body map, My GPS, coach Readiness board, NCAA D1) and republish it to its Claude artifact, which Rob views in the window on the right of the Claude app. Use whenever Rob says "update the preview", "refresh the preview", "show me the changes", or asks to see the app after a change — and after finishing any change to web/ or server/ that he'll want to look at.
 ---
 
 # Update the app preview
 
-The preview is a single self-contained page of the real web app. Rob views it
-right here in the Claude desktop app: send him the file itself. He doesn't
-want a link.
+The preview is the real web app, published as a private Claude artifact that
+keeps the same address every time. Rob views it in the window on the right of
+the Claude app. Don't send him HTML files or links: publish, then open it.
+
+**https://claude.ai/artifact/GmuXMtqxTjNBfykNJNUNKp**
 
 It runs the real frontend with `/api` answered from data captured off a local
 test server (see `tools/preview/README.md`): real GPS files from `data/titan`,
@@ -36,10 +38,14 @@ player and coach views. Nothing in it is saved.
    sure there are no page errors. Garbled characters like `Â·` in a local file
    are only the missing charset tag; the published page adds it.
 
-3. **Show it in the app.** Copy `/tmp/fau-preview/fau-app-preview.html` into
-   the session's scratchpad directory and send it with `SendUserFile`
-   (`display: "render"`), so it opens in the side panel. Don't publish an
-   artifact or give a link.
+3. **Publish as three files, then open it.** Publishing the single 3 MB page
+   gets refused, so split it: a small `index.html` that loads `app.css` and
+   `app.js` (`<script type="module" src="app.js">`), with the CSS from the
+   page's `<style>` and the code from its `<script type="module">` (turn
+   `<\/script` back into `</script`). Publish `index.html` with the Artifact
+   tool (`url` set to the link above, `files` mapping `app.js` and `app.css`,
+   no `icon`), then call Artifact `open` on the same URL so it shows on the
+   right.
 
 4. **Tell Rob** in plain language what changed and where to click, and that it
    uses test check-ins and doesn't save anything.
