@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { getDb } from "../db/connection.js";
 import { CORE_METRIC_KEYS } from "../lib/metrics.js";
+import { withFlags } from "../lib/sessionFlags.js";
 
 export const compareRouter = Router();
 
@@ -27,20 +28,20 @@ compareRouter.get("/", (req, res) => {
        WHERE s.player_id IN (${placeholders})
        ORDER BY g.game_date ASC`,
     )
-    .all(...playerIds);
+    .all(...playerIds) as { id: number }[];
 
   const avgSelects = CORE_METRIC_KEYS.map((k) => `AVG(${k}) AS avg_${k}`).join(", ");
   const seasonAverages = db
     .prepare(
       `SELECT s.player_id, p.canonical_name AS player_name, ${avgSelects}
-       FROM gps_sessions s
+       FROM gps_sessions_valid s
        JOIN players p ON p.id = s.player_id
        WHERE s.player_id IN (${placeholders})
        GROUP BY s.player_id`,
     )
     .all(...playerIds);
 
-  const teamAverages = db.prepare(`SELECT ${avgSelects} FROM gps_sessions`).get();
+  const teamAverages = db.prepare(`SELECT ${avgSelects} FROM gps_sessions_valid`).get();
 
-  res.json({ sessions, seasonAverages, teamAverages });
+  res.json({ sessions: withFlags(sessions), seasonAverages, teamAverages });
 });

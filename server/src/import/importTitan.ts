@@ -6,6 +6,7 @@ import { getDb } from "../db/connection.js";
 import { normalizePlayerName } from "./nameNormalization.js";
 import { CORE_FIELD_MAP, DATE_HEADER_CANDIDATES, matchZoneColumn, NAME_HEADER_CANDIDATES } from "./columnMapping.js";
 import { normalizeOpponent, parseGpsFilename } from "./gpsFilename.js";
+import { fillMinutesFromBoxScores } from "./importMinutes.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const DATA_DIR = process.env.TITAN_DATA_DIR
@@ -241,6 +242,8 @@ export function importTitanFile(filePath: string): ImportTitanResult {
   const playerCount = runImport(rows);
   const message = `imported ${playerCount} player sessions for game_date=${gameDate} opponent=${opponent ?? "(unset)"}`;
   console.log(`  ${message}`);
+  // Minutes from the game's box score, if the schedule sync already has it.
+  fillMinutesFromBoxScores();
   return { status: "imported", filename, gameId, gameDate, opponent, playerCount, message, warnings };
 }
 

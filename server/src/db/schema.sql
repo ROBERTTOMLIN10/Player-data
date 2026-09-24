@@ -59,6 +59,13 @@ CREATE TABLE IF NOT EXISTS gps_sessions (
 CREATE INDEX IF NOT EXISTS idx_gps_sessions_player ON gps_sessions(player_id);
 CREATE INDEX IF NOT EXISTS idx_gps_sessions_game ON gps_sessions(game_id);
 
+-- Sessions with believable readings. A tracker glitch (e.g. a GPS jump) shows
+-- up as an impossible top speed and inflates distance and load too, so those
+-- sessions stay out of averages, rankings and fitness. Keep the 25 mph cut in
+-- step with GLITCH_TOP_SPEED_MPH in server/src/lib/metrics.ts.
+CREATE VIEW IF NOT EXISTS gps_sessions_valid AS
+  SELECT * FROM gps_sessions WHERE top_speed_mph IS NULL OR top_speed_mph <= 25;
+
 -- Normalized zone breakdowns (speed zones, speed bands, accel/decel zones).
 -- Kept separate from gps_sessions because the number and thresholds of zones
 -- can change between seasons/Titan configs; this avoids a schema migration

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useGameDetail, useGames, useMetrics, useTeamFitness, useTeamSummary } from "../api/client";
+import { useFlaggedSessions, useGameDetail, useGames, useMetrics, useTeamFitness, useTeamSummary } from "../api/client";
+import { NeedsChecking } from "../components/NeedsChecking";
 import { SquadFitnessTable } from "../components/Fitness";
 import { Card, SectionHeading } from "../components/Card";
 import { MetricCard } from "../components/MetricCard";
@@ -13,6 +14,7 @@ export default function TeamView() {
   const { data: summary, isLoading: summaryLoading } = useTeamSummary();
   const { data: metrics } = useMetrics();
   const { data: fitness } = useTeamFitness();
+  const { data: flagged } = useFlaggedSessions();
   const navigate = useNavigate();
 
   const [selectedMetricKey, setSelectedMetricKey] = useState("load");
@@ -42,6 +44,8 @@ export default function TeamView() {
 
   return (
     <div className="flex flex-col gap-8">
+      <NeedsChecking sessions={flagged ?? []} />
+
       {fitness && <SquadFitnessTable data={fitness} />}
 
       <section>

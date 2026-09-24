@@ -1,4 +1,5 @@
 import { getDb } from "../db/connection.js";
+import { GLITCH_SQL } from "./metrics.js";
 import { shiftDate } from "./readiness.js";
 
 /**
@@ -55,13 +56,14 @@ interface SessionRow {
   load: number | null;
   played: number;
   box_score: number;
+  glitch: number;
 }
 
 /** Every player with a tracked session, with their load vs the match group. Windows end at the latest tracked game. */
 export function computeFitness(): { asOf: string | null; players: PlayerFitness[] } {
   const rows = getDb()
     .prepare(
-      `SELECT s.player_id, p.canonical_name AS name, s.game_id, g.game_date, s.load, ${SESSION_ROLE_SQL}
+      `SELECT s.player_id, p.canonical_name AS name, s.game_id, g.game_date, s.load, ${SESSION_ROLE_SQL}, ${GLITCH_SQL}
        FROM gps_sessions s
        JOIN games g ON g.id = s.game_id
        JOIN players p ON p.id = s.player_id
@@ -71,12 +73,14 @@ export function computeFitness(): { asOf: string | null; players: PlayerFitness[
   if (rows.length === 0) return { asOf: null, players: [] };
 
   // Match load per game: the average load of players who logged minutes, or of
-  // everyone tracked when the game has no box score.
+  // everyone tracked when the game has no box score. Glitched sessions (tracker
+  // errors) are left out, and a player's own glitched game drops out of both
+  // his load and his comparison.
   const games = new Map<number, { date: string; match: number }>();
   const byGame = new Map<number, SessionRow[]>();
   for (const r of rows) byGame.set(r.game_id, [...(byGame.get(r.game_id) ?? []), r]);
   for (const [id, list] of byGame) {
-    const group = list[0].box_score ? list.filter((r) => r.played) : list;
+    const group = (list[0].box_score ? list.filter((r) => r.played) : list).filter((r) => !r.glitch);
     const loads = group.map((r) => r.load).filter((l): l is number => l !== null);
     games.set(id, { date: list[0].game_date, match: loads.length ? loads.reduce((a, b) => a + b, 0) / loads.length : 0 });
   }
@@ -88,7 +92,8 @@ export function computeFitness(): { asOf: string | null; players: PlayerFitness[
   const players = [...byPlayer.values()].map((list): PlayerFitness => {
     const windows = FITNESS_WINDOWS.map((days): FitnessWindow => {
       const from = shiftDate(asOf, -(days - 1));
-      const windowGames = [...games.entries()].filter(([, g]) => g.date >= from && g.date <= asOf);
+      const glitched = new Set(list.filter((r) => r.glitch).map((r) => r.game_id));
+      const windowGames = [...games.entries()].filter(([id, g]) => g.date >= from && g.date <= asOf && !glitched.has(id));
       const matchLoad = windowGames.reduce((sum, [, g]) => sum + g.match, 0);
       const ids = new Set(windowGames.map(([id]) => id));
       const load = list.filter((r) => ids.has(r.game_id)).reduce((sum, r) => sum + (r.load ?? 0), 0);

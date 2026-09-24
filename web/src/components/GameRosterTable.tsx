@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { GpsSession, MetricDef } from "../types";
 import { MinutesCell } from "./Fitness";
+import { SessionFlagTag } from "./SessionFlag";
 import { formatMetricValue } from "../lib/format";
 import { Card } from "./Card";
 
@@ -78,6 +79,7 @@ export function GameRosterTable({
               <td className="whitespace-nowrap px-4 py-3 font-medium text-text hover:text-owl-red">
                 {s.player_name}
                 {s.started === 1 && <span className="ml-1.5 text-[10px] font-normal uppercase tracking-wide text-teal">GS</span>}
+                <SessionFlagTag s={s} />
               </td>
               <td className="px-4 py-3 text-text-dim">
                 <MinutesCell s={s} />

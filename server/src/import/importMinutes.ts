@@ -32,6 +32,27 @@ function opponentsLookRelated(a: string | null, b: string): boolean {
   return na.includes(nb) || nb.includes(na);
 }
 
+/**
+ * Copies minutes (and started/position) from box scores already saved by the
+ * schedule sync into every GPS game on the same date. No network needed, so a
+ * newly uploaded GPS file gets its minutes immediately instead of waiting for
+ * the next minutes sync. Returns the number of rows written.
+ */
+export function fillMinutesFromBoxScores(): number {
+  return getDb()
+    .prepare(
+      `INSERT INTO minutes_played (game_id, player_id, minutes, started, position, source_url)
+       SELECT g.id, pgs.player_id, pgs.minutes, pgs.started, pgs.position, pgs.source_url
+       FROM games g
+       JOIN schedule_games sg ON sg.game_date = g.game_date
+       JOIN player_game_stats pgs ON pgs.schedule_game_id = sg.id
+       WHERE true
+       ON CONFLICT(game_id, player_id) DO UPDATE SET
+         minutes = excluded.minutes, started = excluded.started, position = excluded.position, source_url = excluded.source_url`,
+    )
+    .run().changes;
+}
+
 export async function syncMinutes(): Promise<SyncMinutesSummary> {
   const db = getDb();
   const localGames = db.prepare("SELECT id, game_date, opponent FROM games ORDER BY game_date").all() as LocalGame[];

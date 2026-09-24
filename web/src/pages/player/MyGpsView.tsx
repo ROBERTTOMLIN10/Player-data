@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useMetrics, useMyFitness, useMyGameGps, useMyProfile } from "../../api/client";
 import { FitnessCard, MinutesCell } from "../../components/Fitness";
+import { SessionFlagTag } from "../../components/SessionFlag";
 import { Card, SectionHeading } from "../../components/Card";
 import { TrendChart } from "../../components/TrendChart";
 import { formatDate, formatMetricValue } from "../../lib/format";
@@ -24,7 +25,8 @@ export default function MyGpsView() {
     return profile.teamTrend.map((t) => ({
       game_date: t.game_date,
       opponent: t.opponent,
-      you: (mine.get(t.game_id) as Record<string, unknown> | undefined)?.[metricKey] ?? null,
+      // A tracker glitch doesn't draw on the chart.
+      you: mine.get(t.game_id)?.flag?.kind === "glitch" ? null : ((mine.get(t.game_id) as Record<string, unknown> | undefined)?.[metricKey] ?? null),
       team: t[`avg_${metricKey}`],
     }));
   }, [profile, metricKey]);
@@ -118,6 +120,44 @@ export default function MyGpsView() {
         </Card>
       </section>
 
+      {profile.gameStats.length > 0 && (
+        <section>
+          <SectionHeading
+            title="My Minutes"
+            subtitle={`${Math.round(profile.gameStats.reduce((n, g) => n + (g.minutes ?? 0), 0))} minutes · ${profile.gameStats.filter((g) => g.started).length} starts, from the official box scores`}
+          />
+          <Card className="overflow-x-auto p-0">
+            <table className="w-full min-w-[420px] text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-dim">
+                  <th className="px-4 py-3 font-medium">Date</th>
+                  <th className="px-4 py-3 font-medium">Opponent</th>
+                  <th className="px-4 py-3 font-medium">Result</th>
+                  <th className="px-4 py-3 font-medium">Min</th>
+                  <th className="px-4 py-3 font-medium">G</th>
+                  <th className="px-4 py-3 font-medium">A</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...profile.gameStats].reverse().map((g) => (
+                  <tr key={g.id} className="border-b border-border/60 last:border-0">
+                    <td className="px-4 py-3 text-text-dim">{formatDate(g.game_date)}</td>
+                    <td className="px-4 py-3 font-medium">{g.opponent}</td>
+                    <td className="px-4 py-3 text-text-dim">{g.status ? `${g.status} ${g.team_score}-${g.opponent_score}` : "—"}</td>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      {g.minutes ? `${g.minutes}'` : <span className="text-text-dim">DNP</span>}
+                      {g.started === 1 && <span className="ml-1.5 text-[10px] uppercase tracking-wide text-teal">GS</span>}
+                    </td>
+                    <td className="px-4 py-3">{g.goals}</td>
+                    <td className="px-4 py-3">{g.assists}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        </section>
+      )}
+
       <section>
         <SectionHeading title="My Session Log" subtitle="Fitness = you didn't play, load from the warm-up and/or fitness work (it still counts)" />
         <Card className="overflow-x-auto p-0">
@@ -138,7 +178,10 @@ export default function MyGpsView() {
               {[...sessions].reverse().map((s) => (
                 <tr key={s.id} className="border-b border-border/60 last:border-0">
                   <td className="px-4 py-3 text-text-dim">{formatDate(s.game_date!)}</td>
-                  <td className="px-4 py-3 font-medium">{s.opponent ?? "—"}</td>
+                  <td className="px-4 py-3 font-medium">
+                    {s.opponent ?? "—"}
+                    <SessionFlagTag s={s} />
+                  </td>
                   <td className="px-4 py-3 text-text-dim">
                     <MinutesCell s={s} />
                   </td>

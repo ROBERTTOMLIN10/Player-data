@@ -17,6 +17,7 @@ export interface UploadRecord {
   playerCount: number;
   uploadedAt: string;
   status: "pending" | "imported";
+  replace?: boolean; // swaps out a file already in the app's GPS data
 }
 
 type Claude = { use(name: string): Promise<any> };
@@ -74,14 +75,28 @@ export async function listUploads(): Promise<UploadRecord[]> {
 }
 
 /** Handles the Data page's upload in the preview. Returns the same shape as the real upload endpoint. */
-export async function handlePreviewUpload(file: File, existingFiles: string[], schedule: { game_date: string; opponent: string }[]) {
+export async function handlePreviewUpload(
+  file: File,
+  existingFiles: string[],
+  schedule: { game_date: string; opponent: string }[],
+  replace = false,
+) {
   const fail = (message: string, status = 422) => ({ status, body: { status: "error", filename: file.name, message, warnings: [] as string[] } });
   if (!/\.xlsx$/i.test(file.name)) return fail("Only .xlsx files are accepted.");
   const named = parseGpsFilename(file.name);
   if (!named.opponent) return fail(`Name the file after the game, like "Memphis 2026.xlsx", and upload it again.`);
   const uploads = await listUploads();
-  if (existingFiles.includes(file.name) || uploads.some((u) => u.filename === file.name))
-    return fail(`A file named "${file.name}" was already uploaded. Rename it (e.g. include the date) if this is a different game.`, 409);
+  if (!replace && (existingFiles.includes(file.name) || uploads.some((u) => u.filename === file.name)))
+    return {
+      status: 409,
+      body: {
+        status: "error",
+        filename: file.name,
+        canReplace: true,
+        message: `A file named "${file.name}" was already uploaded. If this is a corrected file for the same game, replace it below. If it's a different game, rename it (e.g. add the date).`,
+        warnings: [] as string[],
+      },
+    };
 
   const bytes = new Uint8Array(await file.arrayBuffer());
   let rows: Record<string, unknown>[];
@@ -123,6 +138,7 @@ export async function handlePreviewUpload(file: File, existingFiles: string[], s
       playerCount: players,
       uploadedAt: new Date().toISOString(),
       status: "pending",
+      replace: replace || existingFiles.includes(file.name),
     };
     await db.doc(`gpsUploads/${docId(file.name)}`).set(record);
     window.dispatchEvent(new Event("preview-uploads-changed"));
@@ -138,7 +154,7 @@ export async function handlePreviewUpload(file: File, existingFiles: string[], s
         gameDate: record.gameDate,
         opponent: record.opponent,
         playerCount: players,
-        message: `Saved: ${players} players vs ${record.opponent} (${gameDate}). It joins the GPS pages at the next preview update ("update the preview").`,
+        message: `${replace ? "Replacement saved" : "Saved"}: ${players} players vs ${record.opponent} (${gameDate}). It ${replace ? "replaces the old file" : "joins the GPS pages"} at the next preview update ("update the preview").`,
         warnings,
       },
     };

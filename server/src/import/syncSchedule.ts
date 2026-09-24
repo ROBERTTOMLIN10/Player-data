@@ -1,6 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getDb } from "../db/connection.js";
+import { fillMinutesFromBoxScores } from "./importMinutes.js";
 import { fetchScheduleGames, type SidearmScheduleGame } from "./sidearmSchedule.js";
 import { fetchBoxscoreDetails } from "./sidearmBoxscore.js";
 import { matchSidearmPlayer } from "./matchSidearmPlayer.js";
@@ -247,6 +248,8 @@ export async function syncSchedule(): Promise<SyncScheduleSummary> {
     for (const u of unmatchedPlayers) console.log(u);
   }
 
+  // New box scores: give the matching GPS games their minutes right away.
+  fillMinutesFromBoxScores();
   return { status: "ok", message, gamesUpserted, gamesWithStatsSynced, playerRowsUpserted, anomalies, unmatchedPlayers };
 }
 

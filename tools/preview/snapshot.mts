@@ -20,6 +20,7 @@ import { syncMinutes } from "../../server/src/import/importMinutes.js";
 import { syncSeason, syncStatsAndRankings } from "../../server/src/jobs/ncaaSync.js";
 import { ncaaLogoUrl } from "../../server/src/ncaa/client.js";
 import { recordRanks } from "../../server/src/ncaa/store.js";
+import { fillMinutesFromBoxScores } from "../../server/src/import/importMinutes.js";
 import { shiftDate, teamToday } from "../../server/src/lib/readiness.js";
 
 type Row = Record<string, unknown>;
@@ -194,6 +195,8 @@ if (mode === "export") {
       if (/^(stats-|rankings-)/.test(key)) recordRanks(key, JSON.parse(String(row.json)), teamDate(String(row.updated_at)));
     }
   }
+  // GPS files added since the snapshot was taken: minutes from the saved box scores.
+  fillMinutesFromBoxScores();
   console.log(
     `loaded snapshot from ${snap.syncedAt}: ${snap.scheduleGames.length} games, ${snap.playerStats.length} player stat lines, ` +
       `${snap.ncaaGames?.length ?? 0} NCAA games, ${snap.ncaaCache?.length ?? 0} NCAA tables`,

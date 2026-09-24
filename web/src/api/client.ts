@@ -23,6 +23,7 @@ import type {
   NcaaRankings,
   MyFitness,
   TeamFitness,
+  FlaggedSession,
   NcaaScoreboard,
   NcaaStandings,
   NcaaStatsIndex,
@@ -76,6 +77,10 @@ export function logout() {
 }
 
 // --- Player's own view --------------------------------------------------------
+
+export function useFlaggedSessions() {
+  return useQuery({ queryKey: ["flaggedSessions"], queryFn: () => fetchJson<FlaggedSession[]>("/api/team/flags") });
+}
 
 export function useTeamFitness(enabled = true) {
   return useQuery({ queryKey: ["teamFitness"], queryFn: () => fetchJson<TeamFitness>("/api/team/fitness"), enabled });
@@ -256,11 +261,13 @@ export interface UploadTitanResult {
   playerCount?: number;
   message: string;
   warnings: string[];
+  canReplace?: boolean; // a file with this name exists; upload again with replace to swap it
 }
 
-export async function uploadTitanFile(file: File): Promise<UploadTitanResult> {
+export async function uploadTitanFile(file: File, replace = false): Promise<UploadTitanResult> {
   const formData = new FormData();
   formData.append("file", file);
+  if (replace) formData.append("replace", "true");
   const res = await fetch("/api/admin/upload-titan", { method: "POST", body: formData });
   const body = await res.json();
   if (!res.ok && res.status !== 422 && res.status !== 409) {

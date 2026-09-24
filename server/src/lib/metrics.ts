@@ -25,3 +25,13 @@ export const CORE_METRICS: MetricDef[] = [
 ];
 
 export const CORE_METRIC_KEYS = CORE_METRICS.map((m) => m.key);
+
+/**
+ * Tracker glitches: no player reaches this top speed (the fastest humans top
+ * out around 27 mph sprinting, college players around 20-23), so a session
+ * above it had a GPS jump that also inflates distance and load. Such sessions
+ * are flagged and left out of averages, rankings and fitness (the
+ * gps_sessions_valid view in schema.sql uses the same cut).
+ */
+export const GLITCH_TOP_SPEED_MPH = 25;
+export const GLITCH_SQL = `CASE WHEN s.top_speed_mph > ${GLITCH_TOP_SPEED_MPH} THEN 1 ELSE 0 END AS glitch`;

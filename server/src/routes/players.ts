@@ -1,12 +1,12 @@
 import { Router } from "express";
 import { getDb } from "../db/connection.js";
 import { SESSION_ROLE_SQL } from "../lib/fitness.js";
-import { CORE_METRIC_KEYS } from "../lib/metrics.js";
+import { CORE_METRIC_KEYS, GLITCH_TOP_SPEED_MPH } from "../lib/metrics.js";
+import { withFlags } from "../lib/sessionFlags.js";
 
 export const playersRouter = Router();
 
-const avgSelects = CORE_METRIC_KEYS.map((k) => `AVG(${k}) AS avg_${k}`).join(", ");
-const sumSelects = CORE_METRIC_KEYS.map((k) => `SUM(${k}) AS sum_${k}`).join(", ");
+const VALID = `(s.top_speed_mph IS NULL OR s.top_speed_mph <= ${GLITCH_TOP_SPEED_MPH})`;
 
 // Position is scraped per-game from Sidearm box scores (values like "fwd",
 // "mid", "def", "gk") and can vary game to game (subs, formation changes), so
@@ -73,12 +73,14 @@ export function getPlayerDetail(playerId: number) {
        WHERE s.player_id = ?
        ORDER BY g.game_date ASC`,
     )
-    .all(playerId);
+    .all(playerId) as { id: number }[];
 
   const seasonTotals = db
     .prepare(
       // Games played = logged minutes. Load from warm-up/fitness-only sessions still counts in the totals.
-      `SELECT ${avgSelects.replace(/AVG\(/g, "AVG(s.")}, ${sumSelects.replace(/SUM\(/g, "SUM(s.")},
+      // Averages and totals leave out glitched sessions (see GLITCH_TOP_SPEED_MPH).
+      `SELECT ${CORE_METRIC_KEYS.map((k) => `AVG(CASE WHEN ${VALID} THEN s.${k} END) AS avg_${k}`).join(", ")},
+              ${CORE_METRIC_KEYS.map((k) => `SUM(CASE WHEN ${VALID} THEN s.${k} END) AS sum_${k}`).join(", ")},
               COUNT(CASE WHEN mp.minutes > 0 THEN 1 END) AS games_played, COUNT(*) AS sessions
        FROM gps_sessions s
        LEFT JOIN minutes_played mp ON mp.game_id = s.game_id AND mp.player_id = s.player_id
@@ -106,5 +108,5 @@ export function getPlayerDetail(playerId: number) {
     )
     .get(playerId);
 
-  return { player, sessions, seasonTotals, gameStats, statTotals };
+  return { player, sessions: withFlags(sessions), seasonTotals, gameStats, statTotals };
 }
