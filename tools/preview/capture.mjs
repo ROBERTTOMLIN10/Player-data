@@ -25,7 +25,9 @@ for (const g of games) await get(coach, `/api/games/${g.id}`);
 const players = await get(coach, "/api/players");
 for (const p of players) { await get(coach, `/api/players/${p.id}`); for (const d of [14, 30, 90]) await get(coach, `/api/readiness/player/${p.id}?days=${d}`); }
 await get(coach, "/api/readiness/squad");
-await get(coach, "/api/admin/sync-status");
+const syncStatus = await get(coach, "/api/admin/sync-status");
+syncStatus.intervalMinutes = 30; // the test server runs with auto-sync effectively off; show the real default
+syncStatus.nextRunAt = null;
 await get(coach, "/api/admin/accounts");
 await get(coach, "/api/admin/reminders");
 // NCAA D1
