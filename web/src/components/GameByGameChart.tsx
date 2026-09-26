@@ -29,12 +29,14 @@ export function GameByGameChart({
   selectedGameId,
   onSelectGame,
   showTeam = true,
+  hint = "Tap a bar to open that game below",
 }: {
   data: GameBar[];
   metric: MetricDef;
   selectedGameId: number | null;
   onSelectGame: (gameId: number) => void;
   showTeam?: boolean;
+  hint?: string;
 }) {
   const fmt = (v: number | null | undefined) => formatMetricValue(v ?? null, metric);
   return (
@@ -51,7 +53,7 @@ export function GameByGameChart({
             <span className="inline-block h-0.5 w-4" style={{ background: TEAM }} /> Team avg
           </span>
         )}
-        <span className="ml-auto">Tap a bar to open that game below</span>
+        <span className="ml-auto">{hint}</span>
       </div>
       <div style={{ height: 260 }}>
         <ResponsiveContainer width="100%" height="100%">

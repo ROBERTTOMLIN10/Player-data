@@ -15,9 +15,3 @@ export function SessionFlagTag({ s }: { s: Pick<GpsSession, "flag"> }) {
     </span>
   );
 }
-
-/** Glitched sessions shouldn't draw on trend charts: blank their metrics. */
-export function hideGlitches<T extends Pick<GpsSession, "flag">>(s: T, keys: string[]): T {
-  if (s.flag?.kind !== "glitch") return s;
-  return { ...s, ...Object.fromEntries(keys.map((k) => [k, null])) };
-}

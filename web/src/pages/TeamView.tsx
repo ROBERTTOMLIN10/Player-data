@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useFlaggedSessions, useGameDetail, useGames, useMetrics, useTeamFitness, useTeamSummary } from "../api/client";
 import { NeedsChecking } from "../components/NeedsChecking";
 import { SquadFitnessTable } from "../components/Fitness";
@@ -18,9 +18,15 @@ export default function TeamView() {
   const navigate = useNavigate();
 
   const [selectedMetricKey, setSelectedMetricKey] = useState("load");
-  const [selectedGameId, setSelectedGameId] = useState<number | null>(null);
+  // ?game=<id> (e.g. from a bar on a player's game-by-game chart) opens that game.
+  const [searchParams] = useSearchParams();
+  const [selectedGameId, setSelectedGameId] = useState<number | null>(Number(searchParams.get("game")) || null);
 
   const { data: gameDetail } = useGameDetail(selectedGameId);
+  const openedFromLink = searchParams.has("game");
+  useEffect(() => {
+    if (openedFromLink && gameDetail) document.getElementById("game-detail")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [openedFromLink, gameDetail]);
 
   const selectedMetric = metrics?.find((m) => m.key === selectedMetricKey);
 
@@ -117,7 +123,7 @@ export default function TeamView() {
       </section>
 
       {selectedGameId && gameDetail && (
-        <section>
+        <section id="game-detail" className="scroll-mt-20">
           <SectionHeading
             title={`${gameDetail.game.opponent ?? "Game"} — ${formatDateLong(gameDetail.game.game_date)}`}
             subtitle="Click a player to open their season view"

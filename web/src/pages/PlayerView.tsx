@@ -1,14 +1,12 @@
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { usePlayerDetail, usePlayerReadiness, usePlayers, useMetrics, useTeamFitness } from "../api/client";
-import { FitnessCard, MinutesCell } from "../components/Fitness";
-import { hideGlitches, SessionFlagTag } from "../components/SessionFlag";
+import { usePlayerDetail, usePlayerReadiness, usePlayers, useMetrics, useTeamFitness, useTeamSummary } from "../api/client";
+import { GameByGameSection, SeasonStatsSection, SessionTable, type SeasonView } from "../components/SeasonStats";
+import { FitnessCard } from "../components/Fitness";
 import { Card, SectionHeading } from "../components/Card";
 import { TeamLogo } from "../components/TeamLogo";
-import { MetricCard } from "../components/MetricCard";
 import { RangePicker, ReadinessHistory } from "../components/ReadinessHistory";
-import { TrendChart } from "../components/TrendChart";
-import { formatDate, formatMetricValue } from "../lib/format";
+import { formatDate } from "../lib/format";
 
 export default function PlayerView() {
   const { playerId } = useParams();
@@ -21,16 +19,13 @@ export default function PlayerView() {
   const { data: fitness } = useTeamFitness(selectedId !== null);
   const myFitness = fitness?.players.find((p) => p.playerId === selectedId);
 
+  const { data: summary } = useTeamSummary();
   const [selectedMetricKey, setSelectedMetricKey] = useState("load");
-  const selectedMetric = metrics?.find((m) => m.key === selectedMetricKey);
-
-  const chartData = useMemo(
-    () =>
-      (detail?.sessions ?? []).map((s) => ({
-        ...hideGlitches(s, (metrics ?? []).map((m) => m.key)),
-        label: `${s.opponent ?? ""} ${s.game_date}`,
-      })),
-    [detail, metrics],
+  const [seasonView, setSeasonView] = useState<SeasonView>("avg");
+  const [logView, setLogView] = useState<"chart" | "table">("chart");
+  const teamByGame = useMemo(
+    () => new Map((summary?.trend ?? []).map((t) => [t.game_id, t as Record<string, unknown>])),
+    [summary],
   );
 
   if (!selectedId) {
@@ -77,73 +72,39 @@ export default function PlayerView() {
 
       {myFitness && fitness && <FitnessCard you={myFitness} thresholds={fitness.thresholds} asOf={fitness.asOf} coach />}
 
-      <section>
-        <SectionHeading title="Season Averages" subtitle="Per tracked session (games and fitness-only). Click a metric to chart its trend" />
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-          {metrics?.map((m) => (
-            <MetricCard
-              key={m.key}
-              metric={m}
-              value={detail.seasonTotals[`avg_${m.key}`]}
-              onClick={() => setSelectedMetricKey(m.key)}
-              active={m.key === selectedMetricKey}
-            />
-          ))}
-        </div>
-      </section>
+      <SeasonStatsSection
+        sessions={detail.sessions}
+        metrics={metrics ?? []}
+        view={seasonView}
+        onViewChange={setSeasonView}
+        averages={detail.seasonTotals}
+        activeKey={selectedMetricKey}
+        onPick={(key) => {
+          setSelectedMetricKey(key);
+          setLogView("chart");
+        }}
+        teamAverage={(k) => summary?.seasonAverages[`avg_${k}`]}
+        teamHigh={(k) => {
+          const best = summary?.highs.find((h) => h.metric === k)?.best;
+          return best ? { value: best.value, by: best.player_name } : null;
+        }}
+        who="Their"
+      />
 
-      <section>
-        <SectionHeading title={`${selectedMetric?.label ?? ""} Trend`} subtitle="Per-game values this season" />
-        <Card>
-          <TrendChart
-            data={chartData}
-            xKey="game_date"
-            xFormatter={formatDate}
-            metric={selectedMetric}
-            series={[{ dataKey: selectedMetricKey, name: detail.player.canonical_name, color: "#ff3f5e" }]}
-          />
-        </Card>
-      </section>
-
-      <section>
-        <SectionHeading title="Session Log" subtitle="Every tracked game. Fitness = didn't play, load from the warm-up and/or fitness work" />
-        <Card className="overflow-x-auto p-0">
-          <table className="w-full min-w-[640px] text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-dim">
-                <th className="px-4 py-3 font-medium">Date</th>
-                <th className="px-4 py-3 font-medium">Opponent</th>
-                <th className="px-4 py-3 font-medium">Min</th>
-                {metrics?.slice(0, 5).map((m) => (
-                  <th key={m.key} className="whitespace-nowrap px-4 py-3 font-medium">
-                    {m.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {detail.sessions.map((s) => (
-                <tr key={s.id} className="border-b border-border/60 last:border-0">
-                  <td className="px-4 py-3 text-text-dim">{formatDate(s.game_date!)}</td>
-                  <td className="px-4 py-3 font-medium">
-                    {s.opponent ?? "—"}
-                    {s.started === 1 && <span className="ml-1.5 text-[10px] font-normal uppercase tracking-wide text-teal">GS</span>}
-                    <SessionFlagTag s={s} />
-                  </td>
-                  <td className="px-4 py-3 text-text-dim">
-                    <MinutesCell s={s} />
-                  </td>
-                  {metrics?.slice(0, 5).map((m) => (
-                    <td key={m.key} className="px-4 py-3 text-text-dim">
-                      {formatMetricValue((s as any)[m.key], m)}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      </section>
+      <GameByGameSection
+        sessions={detail.sessions}
+        metrics={metrics ?? []}
+        teamByGame={teamByGame}
+        metricKey={selectedMetricKey}
+        onMetricChange={setSelectedMetricKey}
+        view={logView}
+        onViewChange={setLogView}
+        selectedGameId={null}
+        onSelectGame={(id) => navigate(`/gps?game=${id}`)}
+        table={<SessionTable sessions={detail.sessions} metrics={metrics ?? []} />}
+        subtitle="Every tracked game. Fitness = didn't play, load from the warm-up and/or fitness work (it still counts)."
+        hint="Tap a bar for that game's full squad breakdown"
+      />
 
       {detail.gameStats.length > 0 && (
         <section>
