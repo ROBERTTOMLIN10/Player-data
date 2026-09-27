@@ -19,3 +19,12 @@ export function positionGroup(position: string | null | undefined): PositionGrou
   if (!position) return "Unassigned";
   return GROUP_BY_CODE[position.toLowerCase()] ?? "Unassigned";
 }
+
+/** Players tab: back to front, with attackers named as coaches say it. */
+export const ROSTER_SECTIONS: { group: PositionGroup; label: string }[] = [
+  { group: "Defenders", label: "Defenders" },
+  { group: "Midfielders", label: "Midfielders" },
+  { group: "Forwards", label: "Attackers" },
+  { group: "Goalkeepers", label: "Goalkeepers" },
+  { group: "Unassigned", label: "Position not recorded yet" },
+];

@@ -7,6 +7,7 @@ import { Card, SectionHeading } from "../components/Card";
 import { TeamLogo } from "../components/TeamLogo";
 import { RangePicker, ReadinessHistory } from "../components/ReadinessHistory";
 import { formatDate } from "../lib/format";
+import { positionGroup, ROSTER_SECTIONS } from "../lib/positions";
 
 export default function PlayerView() {
   const { playerId } = useParams();
@@ -35,20 +36,36 @@ export default function PlayerView() {
         {playersLoading ? (
           <div className="py-10 text-center text-text-dim">Loading roster…</div>
         ) : (
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
-            {players?.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => navigate(`/players/${p.id}`)}
-                className="rounded-lg border border-border bg-surface-raised p-3 text-left transition-colors hover:border-owl-red"
-              >
-                <div className="font-medium">{p.canonical_name}</div>
-                <div className="text-xs text-text-dim">
-                  {p.games_played} games played
-                  {p.sessions && p.sessions > p.games_played ? ` · ${p.sessions - p.games_played} fitness` : ""}
-                </div>
-              </button>
-            ))}
+          <div className="flex flex-col gap-6">
+            {ROSTER_SECTIONS.map(({ group, label }) => {
+              const inGroup = (players ?? [])
+                .filter((p) => positionGroup(p.position) === group)
+                .sort((a, b) => a.canonical_name.localeCompare(b.canonical_name));
+              if (!inGroup.length) return null;
+              return (
+                <section key={group}>
+                  <div className="mb-2 flex items-baseline gap-2">
+                    <h3 className="font-display text-sm font-semibold uppercase tracking-wide text-text">{label}</h3>
+                    <span className="text-xs text-text-dim">{inGroup.length}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+                    {inGroup.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => navigate(`/players/${p.id}`)}
+                        className="rounded-lg border border-border bg-surface-raised p-3 text-left transition-colors hover:border-owl-red"
+                      >
+                        <div className="font-medium">{p.canonical_name}</div>
+                        <div className="text-xs text-text-dim">
+                          {p.games_played} game{p.games_played === 1 ? "" : "s"} played
+                          {p.sessions ? ` · ${p.sessions} tracked` : ""}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
           </div>
         )}
       </div>
