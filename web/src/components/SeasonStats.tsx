@@ -4,6 +4,7 @@ import { GameByGameChart, type GameBar } from "./GameByGameChart";
 import { useOpponentLogos } from "./DateLogoTick";
 import { MinutesCell } from "./Fitness";
 import { SessionFlagTag } from "./SessionFlag";
+import { TeamLogo } from "./TeamLogo";
 import { formatDate, formatMetricValue } from "../lib/format";
 import type { GpsSession, MetricDef } from "../types";
 
@@ -258,6 +259,7 @@ export function GameByGameSection({
 
 /** Every tracked game with all stats; flag tags and Fitness minutes. */
 export function SessionTable({ sessions, metrics }: { sessions: GpsSession[]; metrics: MetricDef[] }) {
+  const logoFor = useOpponentLogos();
   return (
     <Card className="overflow-x-auto p-0">
       <table className="w-full min-w-[560px] text-sm">
@@ -278,8 +280,11 @@ export function SessionTable({ sessions, metrics }: { sessions: GpsSession[]; me
             <tr key={s.id} className="border-b border-border/60 last:border-0">
               <td className="whitespace-nowrap px-4 py-3 text-text-dim">{formatDate(s.game_date!)}</td>
               <td className="whitespace-nowrap px-4 py-3 font-medium">
-                {s.opponent ?? "—"}
-                <SessionFlagTag s={s} />
+                <span className="flex items-center gap-2">
+                  <TeamLogo name={s.opponent ?? "Game"} url={logoFor(s.game_date!)} size="sm" />
+                  {s.opponent ?? "—"}
+                  <SessionFlagTag s={s} />
+                </span>
               </td>
               <td className="px-4 py-3 text-text-dim">
                 <MinutesCell s={s} />
