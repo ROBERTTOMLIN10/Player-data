@@ -15,6 +15,27 @@ export interface TrendSeries {
   dataKey: string;
   name: string;
   color: string;
+  faded?: boolean; // dimmed while another series is highlighted
+}
+
+/** X-axis tick: the date, with the opponent's logo underneath when there is one. */
+function DateLogoTick({ x, y, payload, xFormatter, logoFor }: {
+  x?: number;
+  y?: number;
+  payload?: { value: string };
+  xFormatter: (v: string) => string;
+  logoFor: (v: string) => string | null | undefined;
+}) {
+  const value = payload?.value ?? "";
+  const logo = logoFor(value);
+  return (
+    <g transform={`translate(${x ?? 0},${y ?? 0})`}>
+      <text dy={12} textAnchor="middle" fill="#9aa0ab" fontSize={12}>
+        {xFormatter(value)}
+      </text>
+      {logo && <image href={logo} x={-9} y={18} width={18} height={18} preserveAspectRatio="xMidYMid meet" />}
+    </g>
+  );
 }
 
 export function TrendChart<T extends Record<string, unknown>>({
@@ -27,6 +48,8 @@ export function TrendChart<T extends Record<string, unknown>>({
   referenceValue,
   referenceLabel,
   height = 260,
+  labelFor,
+  logoFor,
 }: {
   data: T[];
   xKey: string;
@@ -37,6 +60,8 @@ export function TrendChart<T extends Record<string, unknown>>({
   referenceValue?: number;
   referenceLabel?: string;
   height?: number;
+  labelFor?: (x: string) => string; // tooltip heading, e.g. "Sep 20 · Memphis"
+  logoFor?: (x: string) => string | null | undefined; // opponent logo under each date
 }) {
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -46,7 +71,9 @@ export function TrendChart<T extends Record<string, unknown>>({
           dataKey={xKey}
           tickFormatter={xFormatter}
           stroke="#9aa0ab"
-          tick={{ fontSize: 12 }}
+          tick={logoFor ? (props: object) => <DateLogoTick {...props} xFormatter={xFormatter} logoFor={logoFor} /> : { fontSize: 12 }}
+          height={logoFor ? 44 : 30}
+          interval={logoFor ? "preserveStartEnd" : undefined}
           tickLine={false}
           axisLine={{ stroke: "#2a2e37" }}
         />
@@ -73,8 +100,11 @@ export function TrendChart<T extends Record<string, unknown>>({
             borderRadius: 8,
             fontSize: 13,
           }}
-          labelFormatter={(v) => xFormatter(String(v))}
+          labelFormatter={(v) => (labelFor ? labelFor(String(v)) : xFormatter(String(v)))}
           formatter={(value: number, name: string) => [formatMetricValue(value, metric), name]}
+          itemSorter={(item) => -(Number(item.value) || 0)}
+          itemStyle={{ color: "#e9eaee", padding: 0 }}
+          labelStyle={{ color: "#e9eaee", fontWeight: 600, marginBottom: 4 }}
         />
         {series.map((s) => (
           <Line
@@ -84,7 +114,8 @@ export function TrendChart<T extends Record<string, unknown>>({
             name={s.name}
             stroke={s.color}
             strokeWidth={2.5}
-            dot={{ r: 4, fill: s.color, cursor: onPointClick ? "pointer" : "default" }}
+            strokeOpacity={s.faded ? 0.12 : 1}
+            dot={s.faded ? false : { r: 4, fill: s.color, cursor: onPointClick ? "pointer" : "default" }}
             activeDot={{
               r: 6,
               onClick: onPointClick ? (_: unknown, payload: any) => onPointClick(payload.payload) : undefined,
