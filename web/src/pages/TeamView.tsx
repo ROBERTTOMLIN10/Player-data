@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useFlaggedSessions, useGameDetail, useGames, useMetrics, useTeamFitness, useTeamSummary } from "../api/client";
+import { useFlaggedSessions, useGameDetail, useGames, useMetrics, useSchedule, useTeamFitness, useTeamSummary } from "../api/client";
 import { NeedsChecking } from "../components/NeedsChecking";
 import { SquadFitnessTable } from "../components/Fitness";
 import { Card, SectionHeading } from "../components/Card";
@@ -31,6 +31,9 @@ export default function TeamView() {
   const selectedMetric = metrics?.find((m) => m.key === selectedMetricKey);
 
   const trendData = useMemo(() => summary?.trend ?? [], [summary]);
+  const { data: schedule } = useSchedule();
+  const logoByDate = useMemo(() => new Map((schedule ?? []).map((g) => [g.game_date, g.opponent_logo_url])), [schedule]);
+  const opponentByDate = useMemo(() => new Map(trendData.map((t) => [t.game_date, t.opponent])), [trendData]);
 
   if (gamesLoading || summaryLoading) {
     return <div className="py-20 text-center text-text-dim">Loading team data…</div>;
@@ -81,6 +84,8 @@ export default function TeamView() {
             xFormatter={formatDate}
             metric={selectedMetric}
             series={[{ dataKey: `avg_${selectedMetricKey}`, name: "Team avg", color: "#ff3f5e" }]}
+            labelFor={(d) => `${formatDate(d)} · ${opponentByDate.get(d) ?? "Game"}`}
+            logoFor={(d) => logoByDate.get(d)}
             onPointClick={(point) => setSelectedGameId(point.game_id as number)}
           />
         </Card>
