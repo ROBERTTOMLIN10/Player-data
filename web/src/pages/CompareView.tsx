@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { DATE_LOGO_AXIS_HEIGHT, DateLogoTick } from "../components/DateLogoTick";
+import { Segmented, type SeasonView } from "../components/SeasonStats";
 import { useCompare, useMetrics, usePlayers, useSchedule } from "../api/client";
 import { Card, SectionHeading } from "../components/Card";
 import { TrendChart } from "../components/TrendChart";
@@ -8,6 +10,20 @@ import { formatDate, formatMetricValue } from "../lib/format";
 import { POSITION_GROUP_ORDER, positionGroup } from "../lib/positions";
 import type { Player } from "../types";
 
+type ChartType = "line" | "bars" | "total";
+const CHART_TYPES: { key: ChartType; label: string }[] = [
+  { key: "line", label: "Line" },
+  { key: "bars", label: "Bars" },
+  { key: "total", label: "Running total" },
+];
+// Stats that add up across games (a running total of top speed would mean nothing).
+const ADDITIVE = new Set(["load", "distance_mi", "active_time_min", "sprints_count", "sprints_distance_yd", "sprints_volume", "explosiveness_count"]);
+const SEASON_TABS: { key: SeasonView; label: string }[] = [
+  { key: "avg", label: "Averages" },
+  { key: "high", label: "Highs" },
+  { key: "low", label: "Lows" },
+];
+
 export default function CompareView() {
   const { data: players } = usePlayers();
   const { data: metrics } = useMetrics();
@@ -15,6 +31,8 @@ export default function CompareView() {
   const [selectedMetricKey, setSelectedMetricKey] = useState("load");
   const [showTeamAvg, setShowTeamAvg] = useState(true);
   const [highlightId, setHighlightId] = useState<number | null>(null);
+  const [chartType, setChartType] = useState<ChartType>("line");
+  const [seasonView, setSeasonView] = useState<SeasonView>("avg");
   const { data: schedule } = useSchedule();
 
   const { data: compareData } = useCompare(selectedPlayerIds);
@@ -55,6 +73,22 @@ export default function CompareView() {
   }, [compareData, selectedMetricKey]);
 
   const chartData = useMemo(() => [...gamesById.values()].sort((a, b) => a.game_date.localeCompare(b.game_date)), [gamesById]);
+  const canTotal = ADDITIVE.has(selectedMetricKey);
+  const effectiveChart: ChartType = chartType === "total" && !canTotal ? "line" : chartType;
+
+  // Running total per player: each game adds to the season so far (a missed game adds nothing).
+  const totalData = useMemo(() => {
+    const sums: Record<string, number> = {};
+    return chartData.map((row) => {
+      const out: Record<string, unknown> = { game_date: row.game_date, opponent: row.opponent };
+      for (const id of selectedPlayerIds) {
+        const v = row[`p_${id}`];
+        sums[id] = (sums[id] ?? 0) + (typeof v === "number" ? v : 0);
+        out[`p_${id}`] = sums[id];
+      }
+      return out;
+    });
+  }, [chartData, selectedPlayerIds]);
 
   const selectedPlayers = players?.filter((p) => selectedPlayerIds.includes(p.id)) ?? [];
 
@@ -69,16 +103,41 @@ export default function CompareView() {
 
   const barData = useMemo(() => {
     const order = new Map(selectedPlayers.map((p, i) => [p.canonical_name, i]));
-    const rows = (compareData?.seasonAverages ?? []).map((row) => ({
-      name: row.player_name,
-      value: (row as any)[`avg_${selectedMetricKey}`] ?? 0,
-      color: colorForIndex(order.get(row.player_name) ?? 0),
-    }));
-    if (showTeamAvg && compareData?.teamAverages) {
-      rows.push({ name: "Team Avg", value: (compareData.teamAverages as any)[`avg_${selectedMetricKey}`] ?? 0, color: "#9aa0ab" });
+    const rows: { name: string; value: number; color: string; detail?: string }[] = [];
+    if (seasonView === "avg") {
+      for (const row of compareData?.seasonAverages ?? []) {
+        rows.push({
+          name: row.player_name,
+          value: (row as any)[`avg_${selectedMetricKey}`] ?? 0,
+          color: colorForIndex(order.get(row.player_name) ?? 0),
+        });
+      }
+      if (showTeamAvg && compareData?.teamAverages) {
+        rows.push({ name: "Team Avg", value: (compareData.teamAverages as any)[`avg_${selectedMetricKey}`] ?? 0, color: "#9aa0ab" });
+      }
+    } else {
+      // Each player's best / lowest single game: games with minutes (a fitness-only
+      // session would always be the low), tracker glitches left out.
+      for (const p of selectedPlayers) {
+        const clean = (compareData?.sessions ?? []).filter(
+          (s) => s.player_id === p.id && s.flag?.kind !== "glitch" && typeof (s as any)[selectedMetricKey] === "number",
+        );
+        const played = clean.filter((s) => s.played);
+        const pool = played.length ? played : clean;
+        if (!pool.length) continue;
+        const pick = pool.reduce((b, s) =>
+          seasonView === "high" ? ((s as any)[selectedMetricKey] > (b as any)[selectedMetricKey] ? s : b) : (s as any)[selectedMetricKey] < (b as any)[selectedMetricKey] ? s : b,
+        );
+        rows.push({
+          name: p.canonical_name,
+          value: (pick as any)[selectedMetricKey],
+          color: colorForIndex(order.get(p.canonical_name) ?? 0),
+          detail: `${pick.opponent ?? "Game"} · ${formatDate(pick.game_date!)}`,
+        });
+      }
     }
     return rows.sort((a, b) => b.value - a.value);
-  }, [compareData, selectedMetricKey, showTeamAvg, selectedPlayers]);
+  }, [compareData, selectedMetricKey, showTeamAvg, selectedPlayers, seasonView]);
   const horizontal = barData.length > 7; // many players: names down the side
 
   return (
@@ -161,13 +220,71 @@ export default function CompareView() {
           </section>
 
           <section>
-            <SectionHeading
-              title={`${selectedMetric?.label ?? ""} Over Time`}
-              subtitle="Hover a dot for every player's value that game (highest first). Hover a name below to highlight their line."
-            />
+            <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+              <SectionHeading
+                title={`${selectedMetric?.label ?? ""} ${effectiveChart === "total" ? "Running Total" : "Over Time"}`}
+                subtitle={
+                  effectiveChart === "total"
+                    ? "Season total so far after each game. Hover for every player's total (highest first)."
+                    : "Hover a game for every player's value (highest first). Hover a name below to highlight them."
+                }
+              />
+              <div className="mb-3 flex flex-col items-end gap-1">
+                <Segmented value={effectiveChart} options={CHART_TYPES} onChange={setChartType} label="Chart type" />
+                {chartType === "total" && !canTotal && (
+                  <span className="text-[11px] text-text-dim">Running total works for stats that add up (load, distance, sprints…)</span>
+                )}
+              </div>
+            </div>
             <Card className="flex flex-col gap-3">
+              {effectiveChart === "bars" ? (
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart data={chartData} margin={{ top: 8, right: 12, bottom: 0, left: 0 }} barCategoryGap="18%">
+                    <CartesianGrid stroke="#2a2e37" strokeDasharray="3 3" vertical={false} />
+                    <XAxis
+                      dataKey="game_date"
+                      tick={(props: object) => (
+                        <DateLogoTick {...props} xFormatter={formatDate} logoFor={(d) => opponentByDate.get(d)?.logo} />
+                      )}
+                      height={DATE_LOGO_AXIS_HEIGHT}
+                      interval={0}
+                      tickLine={false}
+                      axisLine={{ stroke: "#2a2e37" }}
+                    />
+                    <YAxis
+                      stroke="#9aa0ab"
+                      tick={{ fontSize: 12 }}
+                      tickLine={false}
+                      axisLine={false}
+                      width={44}
+                      tickFormatter={(v) => formatMetricValue(v, selectedMetric ? { ...selectedMetric, decimals: 0, unit: "" } : undefined)}
+                    />
+                    <Tooltip
+                      cursor={{ fill: "rgba(255,255,255,0.04)" }}
+                      contentStyle={{ background: "#1c1f26", border: "1px solid #2a2e37", borderRadius: 8, fontSize: 13 }}
+                      labelFormatter={(d) => `${formatDate(String(d))} · ${opponentByDate.get(String(d))?.opponent ?? "Game"}`}
+                      formatter={(value: number, name: string) => [formatMetricValue(value, selectedMetric), name]}
+                      itemSorter={(item) => -(Number(item.value) || 0)}
+                      itemStyle={{ color: "#e9eaee", padding: 0 }}
+                      labelStyle={{ color: "#e9eaee", fontWeight: 600, marginBottom: 4 }}
+                    />
+                    {selectedPlayers.map((p, i) => (
+                      <Bar
+                        key={p.id}
+                        dataKey={`p_${p.id}`}
+                        name={p.canonical_name}
+                        fill={colorForIndex(i)}
+                        fillOpacity={highlightId !== null && highlightId !== p.id ? 0.15 : 1}
+                        radius={[3, 3, 0, 0]}
+                        maxBarSize={22}
+                        isAnimationActive={false}
+                      />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
               <TrendChart
-                data={chartData}
+                data={effectiveChart === "total" ? totalData : chartData}
                 xKey="game_date"
                 xFormatter={formatDate}
                 labelFor={(d) => `${formatDate(d)} · ${opponentByDate.get(d)?.opponent ?? "Game"}`}
@@ -179,9 +296,12 @@ export default function CompareView() {
                   color: colorForIndex(i),
                   faded: highlightId !== null && highlightId !== p.id,
                 }))}
-                referenceValue={showTeamAvg ? (compareData?.teamAverages as any)?.[`avg_${selectedMetricKey}`] : undefined}
+                referenceValue={
+                  showTeamAvg && effectiveChart === "line" ? (compareData?.teamAverages as any)?.[`avg_${selectedMetricKey}`] : undefined
+                }
                 referenceLabel="Team avg"
               />
+              )}
               <div className="flex flex-wrap gap-x-3 gap-y-1.5" onMouseLeave={() => setHighlightId(null)}>
                 {selectedPlayers.map((p, i) => (
                   <button
@@ -202,17 +322,29 @@ export default function CompareView() {
           </section>
 
           <section>
-            <div className="mb-3 flex items-center justify-between">
-              <SectionHeading title="Season Average Comparison" />
-              <label className="flex items-center gap-2 text-sm text-text-dim">
-                <input
-                  type="checkbox"
-                  checked={showTeamAvg}
-                  onChange={(e) => setShowTeamAvg(e.target.checked)}
-                  className="accent-owl-red"
-                />
-                Show team average
-              </label>
+            <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+              <SectionHeading
+                title={`Season ${SEASON_TABS.find((t) => t.key === seasonView)!.label} Comparison`}
+                subtitle={
+                  seasonView === "avg"
+                    ? "Per tracked session"
+                    : `Each player's ${seasonView === "high" ? "best" : "lowest"} single game (games played; fitness-only and tracker glitches left out). Hover for the game.`
+                }
+              />
+              <div className="mb-3 flex flex-wrap items-center gap-3">
+                {seasonView === "avg" && (
+                  <label className="flex items-center gap-2 text-sm text-text-dim">
+                    <input
+                      type="checkbox"
+                      checked={showTeamAvg}
+                      onChange={(e) => setShowTeamAvg(e.target.checked)}
+                      className="accent-owl-red"
+                    />
+                    Show team average
+                  </label>
+                )}
+                <Segmented value={seasonView} options={SEASON_TABS} onChange={setSeasonView} label="Season comparison" />
+              </div>
             </div>
             <Card>
               <ResponsiveContainer width="100%" height={horizontal ? Math.max(260, barData.length * 26 + 20) : 260}>
@@ -250,7 +382,12 @@ export default function CompareView() {
                   <Tooltip
                     cursor={{ fill: "rgba(255,255,255,0.04)" }}
                     contentStyle={{ background: "#1c1f26", border: "1px solid #2a2e37", borderRadius: 8, fontSize: 13 }}
-                    formatter={(value: number) => [formatMetricValue(value, selectedMetric), selectedMetric?.label ?? ""]}
+                    formatter={(value: number, _name: string, item: { payload?: { detail?: string } }) => [
+                      `${formatMetricValue(value, selectedMetric)}${item.payload?.detail ? ` (${item.payload.detail})` : ""}`,
+                      selectedMetric?.label ?? "",
+                    ]}
+                    itemStyle={{ color: "#e9eaee" }}
+                    labelStyle={{ color: "#e9eaee", fontWeight: 600 }}
                   />
                   <Bar dataKey="value" radius={horizontal ? [0, 4, 4, 0] : [4, 4, 0, 0]} maxBarSize={horizontal ? 18 : 48} isAnimationActive={false}>
                     {barData.map((row) => (

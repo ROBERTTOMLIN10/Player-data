@@ -1,6 +1,7 @@
 import { Bar, CartesianGrid, Cell, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { formatDate, formatMetricValue } from "../lib/format";
 import type { MetricDef } from "../types";
+import { DATE_LOGO_AXIS_HEIGHT, DateLogoTick } from "./DateLogoTick";
 
 /**
  * One bar per tracked game for the chosen stat, with the team average as a
@@ -30,6 +31,7 @@ export function GameByGameChart({
   onSelectGame,
   showTeam = true,
   hint = "Tap a bar to open that game below",
+  logoFor,
 }: {
   data: GameBar[];
   metric: MetricDef;
@@ -37,6 +39,7 @@ export function GameByGameChart({
   onSelectGame: (gameId: number) => void;
   showTeam?: boolean;
   hint?: string;
+  logoFor?: (date: string) => string | null | undefined; // opponent logo under each date
 }) {
   const fmt = (v: number | null | undefined) => formatMetricValue(v ?? null, metric);
   return (
@@ -62,7 +65,12 @@ export function GameByGameChart({
             <XAxis
               dataKey="game_date"
               tickFormatter={(d: string) => formatDate(d)}
-              tick={{ fill: TEAM, fontSize: 11 }}
+              tick={
+                logoFor
+                  ? (props: object) => <DateLogoTick {...props} xFormatter={(d) => formatDate(d)} logoFor={logoFor} />
+                  : { fill: TEAM, fontSize: 11 }
+              }
+              height={logoFor ? DATE_LOGO_AXIS_HEIGHT : 30}
               axisLine={{ stroke: GRID }}
               tickLine={false}
               interval="preserveStartEnd"

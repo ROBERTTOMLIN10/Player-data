@@ -2,6 +2,7 @@ import { Router } from "express";
 import { getDb } from "../db/connection.js";
 import { CORE_METRIC_KEYS } from "../lib/metrics.js";
 import { withFlags } from "../lib/sessionFlags.js";
+import { SESSION_ROLE_SQL } from "../lib/fitness.js";
 
 export const compareRouter = Router();
 
@@ -21,10 +22,11 @@ compareRouter.get("/", (req, res) => {
 
   const sessions = db
     .prepare(
-      `SELECT s.*, p.canonical_name AS player_name, g.game_date, g.opponent
+      `SELECT s.*, p.canonical_name AS player_name, g.game_date, g.opponent, mp.minutes AS minutes_played, ${SESSION_ROLE_SQL}
        FROM gps_sessions s
        JOIN players p ON p.id = s.player_id
        JOIN games g ON g.id = s.game_id
+       LEFT JOIN minutes_played mp ON mp.game_id = s.game_id AND mp.player_id = s.player_id
        WHERE s.player_id IN (${placeholders})
        ORDER BY g.game_date ASC`,
     )

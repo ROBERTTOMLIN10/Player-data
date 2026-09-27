@@ -1,6 +1,7 @@
 import { useMemo, type ReactNode } from "react";
 import { Card, SectionHeading } from "./Card";
 import { GameByGameChart, type GameBar } from "./GameByGameChart";
+import { useOpponentLogos } from "./DateLogoTick";
 import { MinutesCell } from "./Fitness";
 import { SessionFlagTag } from "./SessionFlag";
 import { formatDate, formatMetricValue } from "../lib/format";
@@ -201,6 +202,7 @@ export function GameByGameSection({
   subtitle: string;
   hint?: string;
 }) {
+  const logoFor = useOpponentLogos();
   const chartMetrics = useMemo(() => [MINUTES_METRIC, ...metrics], [metrics]);
   const metric = chartMetrics.find((m) => m.key === metricKey) ?? chartMetrics[1] ?? chartMetrics[0];
   const bars = useMemo(() => sessionBars(sessions, metric, teamByGame), [sessions, metric, teamByGame]);
@@ -244,6 +246,7 @@ export function GameByGameSection({
             onSelectGame={onSelectGame}
             showTeam={metric.key !== "minutes"}
             hint={hint}
+            logoFor={logoFor}
           />
         </Card>
       ) : (
