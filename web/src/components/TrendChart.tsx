@@ -9,6 +9,7 @@ import {
   YAxis,
 } from "recharts";
 import type { MetricDef } from "../types";
+import { DATE_LOGO_AXIS_HEIGHT, DateLogoTick } from "./DateLogoTick";
 import { formatMetricValue } from "../lib/format";
 
 export interface TrendSeries {
@@ -16,26 +17,6 @@ export interface TrendSeries {
   name: string;
   color: string;
   faded?: boolean; // dimmed while another series is highlighted
-}
-
-/** X-axis tick: the date, with the opponent's logo underneath when there is one. */
-function DateLogoTick({ x, y, payload, xFormatter, logoFor }: {
-  x?: number;
-  y?: number;
-  payload?: { value: string };
-  xFormatter: (v: string) => string;
-  logoFor: (v: string) => string | null | undefined;
-}) {
-  const value = payload?.value ?? "";
-  const logo = logoFor(value);
-  return (
-    <g transform={`translate(${x ?? 0},${y ?? 0})`}>
-      <text dy={12} textAnchor="middle" fill="#9aa0ab" fontSize={12}>
-        {xFormatter(value)}
-      </text>
-      {logo && <image href={logo} x={-9} y={18} width={18} height={18} preserveAspectRatio="xMidYMid meet" />}
-    </g>
-  );
 }
 
 export function TrendChart<T extends Record<string, unknown>>({
@@ -72,7 +53,7 @@ export function TrendChart<T extends Record<string, unknown>>({
           tickFormatter={xFormatter}
           stroke="#9aa0ab"
           tick={logoFor ? (props: object) => <DateLogoTick {...props} xFormatter={xFormatter} logoFor={logoFor} /> : { fontSize: 12 }}
-          height={logoFor ? 44 : 30}
+          height={logoFor ? DATE_LOGO_AXIS_HEIGHT : 30}
           interval={logoFor ? "preserveStartEnd" : undefined}
           tickLine={false}
           axisLine={{ stroke: "#2a2e37" }}
