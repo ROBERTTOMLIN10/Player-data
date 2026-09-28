@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useFlaggedSessions, useGameDetail, useGames, useMetrics, useTeamFitness, useTeamSummary } from "../api/client";
 import { NeedsChecking } from "../components/NeedsChecking";
 import { SquadFitnessTable } from "../components/Fitness";
+import { TeamLogo } from "../components/TeamLogo";
 import { useOpponentLogos } from "../components/DateLogoTick";
 import { Card, SectionHeading } from "../components/Card";
 import { MetricCard } from "../components/MetricCard";
@@ -114,7 +115,12 @@ export default function TeamView() {
                   }`}
                 >
                   <td className="px-4 py-3 text-text-dim">{formatDate(g.game_date)}</td>
-                  <td className="px-4 py-3 font-medium">{g.opponent ?? "—"}</td>
+                  <td className="px-4 py-3 font-medium">
+                    <span className="flex items-center gap-2">
+                      <TeamLogo name={g.opponent ?? "Game"} url={logoFor(g.game_date)} size="sm" />
+                      {g.opponent ?? "—"}
+                    </span>
+                  </td>
                   <td className="px-4 py-3">{g.player_count}</td>
                   <td className="px-4 py-3">{formatMetricValue(g.avg_load as number, { key: "load", label: "Load", unit: "", decimals: 0 })}</td>
                   <td className="px-4 py-3">
@@ -129,10 +135,15 @@ export default function TeamView() {
 
       {selectedGameId && gameDetail && (
         <section id="game-detail" className="scroll-mt-20">
-          <SectionHeading
-            title={`${gameDetail.game.opponent ?? "Game"} — ${formatDateLong(gameDetail.game.game_date)}`}
-            subtitle="Click a player to open their season view"
-          />
+          <div className="mb-3 flex items-center gap-3">
+            <TeamLogo name={gameDetail.game.opponent ?? "Game"} url={logoFor(gameDetail.game.game_date)} size="md" />
+            <div className="-mb-3">
+              <SectionHeading
+                title={`${gameDetail.game.opponent ?? "Game"} — ${formatDateLong(gameDetail.game.game_date)}`}
+                subtitle="Click a player to open their season view"
+              />
+            </div>
+          </div>
           <GameRosterTable
             sessions={gameDetail.sessions}
             metrics={metrics ?? []}
@@ -154,7 +165,8 @@ export default function TeamView() {
                     {formatMetricValue(h.best!.value, { key: h.metric, label: h.label, unit: h.unit, decimals: 1 })}
                   </div>
                   <div className="mt-1 text-xs text-teal">{h.best!.player_name}</div>
-                  <div className="text-xs text-text-dim">
+                  <div className="mt-0.5 flex items-center gap-1.5 text-xs text-text-dim">
+                    <TeamLogo name={h.best!.opponent ?? "Game"} url={logoFor(h.best!.game_date)} size="sm" />
                     vs {h.best!.opponent ?? "—"} · {formatDate(h.best!.game_date)}
                   </div>
                 </Card>

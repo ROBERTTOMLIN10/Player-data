@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useMetrics, useMyFitness, useMyGameGps, useMyProfile } from "../../api/client";
 import { FitnessCard } from "../../components/Fitness";
+import { TeamLogo } from "../../components/TeamLogo";
+import { useOpponentLogos } from "../../components/DateLogoTick";
 import { Card, SectionHeading } from "../../components/Card";
 import { GameByGameSection, SeasonStatsSection, SessionTable, type SeasonView } from "../../components/SeasonStats";
 import { formatDate, formatMetricValue } from "../../lib/format";
@@ -10,6 +12,7 @@ import type { MetricDef, MyProfile } from "../../types";
 export default function MyGpsView() {
   const { data: profile, isLoading } = useMyProfile();
   const { data: fitness } = useMyFitness();
+  const logoFor = useOpponentLogos();
   const { data: metrics } = useMetrics();
   const [metricKey, setMetricKey] = useState("load");
   const [gameId, setGameId] = useState<number | null>(null);
@@ -81,10 +84,18 @@ export default function MyGpsView() {
       <section id="game-breakdown" className="scroll-mt-20">
         <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
           <SectionHeading title="Game Breakdown" subtitle="Every player's number for one game. Red is you." />
+          <div className="mb-3 flex items-center gap-2">
+            {selectedGameId !== null && (
+              <TeamLogo
+                name={sessions.find((s) => s.game_id === selectedGameId)?.opponent ?? "Game"}
+                url={logoFor(sessions.find((s) => s.game_id === selectedGameId)?.game_date ?? "")}
+                size="md"
+              />
+            )}
           <select
             value={selectedGameId ?? ""}
             onChange={(e) => setGameId(Number(e.target.value))}
-            className="mb-3 rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-text outline-none focus:border-owl-red"
+            className="rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-text outline-none focus:border-owl-red"
           >
             {[...sessions].reverse().map((s) => (
               <option key={s.game_id} value={s.game_id}>
@@ -92,6 +103,7 @@ export default function MyGpsView() {
               </option>
             ))}
           </select>
+          </div>
         </div>
         <Card>
           <GameDistribution gameId={selectedGameId} metric={breakdownMetric} />
@@ -120,7 +132,12 @@ export default function MyGpsView() {
                 {[...profile.gameStats].reverse().map((g) => (
                   <tr key={g.id} className="border-b border-border/60 last:border-0">
                     <td className="px-4 py-3 text-text-dim">{formatDate(g.game_date)}</td>
-                    <td className="px-4 py-3 font-medium">{g.opponent}</td>
+                    <td className="px-4 py-3 font-medium">
+                      <span className="flex items-center gap-2">
+                        <TeamLogo name={g.opponent} url={g.opponent_logo_url} size="sm" />
+                        {g.opponent}
+                      </span>
+                    </td>
                     <td className="px-4 py-3 text-text-dim">{g.status ? `${g.status} ${g.team_score}-${g.opponent_score}` : "—"}</td>
                     <td className="whitespace-nowrap px-4 py-3">
                       {g.minutes ? `${g.minutes}'` : <span className="text-text-dim">DNP</span>}
