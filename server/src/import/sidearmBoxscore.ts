@@ -291,8 +291,10 @@ export async function fetchBoxscoreDetails(url: string): Promise<SidearmBoxscore
     const rawName = String(chosen.name);
     const shots = isRecord(chosen.shots) ? chosen.shots : {};
     const penalties = isRecord(chosen.penalties) ? chosen.penalties : {};
-    const isGoalie = chosen.isAGoalie === true;
-    const goalie = isRecord(chosen.goalie) ? chosen.goalie : null;
+    // A keeper can be listed twice (field + goalkeeping lines); take the keeper stats from whichever has them.
+    const goalieRow = rows.find((r) => r.isAGoalie === true && isRecord(r.goalie)) ?? rows.find((r) => r.isAGoalie === true);
+    const isGoalie = Boolean(goalieRow);
+    const goalie = goalieRow && isRecord(goalieRow.goalie) ? goalieRow.goalie : null;
 
     results.push({
       rawName,

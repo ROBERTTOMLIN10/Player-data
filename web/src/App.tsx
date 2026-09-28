@@ -3,10 +3,10 @@ import { Navigate, NavLink, Route, Routes } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { logout, useMe } from "./api/client";
 import type { Me } from "./types";
+import CoachHomeView from "./pages/CoachHomeView";
 import HomeView from "./pages/HomeView";
 import NcaaView from "./pages/NcaaView";
 import TeamView from "./pages/TeamView";
-import TeamStatsView from "./pages/TeamStatsView";
 import PlayerView from "./pages/PlayerView";
 import CompareView from "./pages/CompareView";
 import AdminView from "./pages/AdminView";
@@ -51,9 +51,6 @@ function CoachApp({ me }: { me: Me }) {
           <NavLink to="/gps" className={navLinkClass}>
             GPS
           </NavLink>
-          <NavLink to="/team-stats" className={navLinkClass}>
-            Team Stats
-          </NavLink>
           <NavLink to="/ncaa" className={navLinkClass}>
             NCAA D1
           </NavLink>
@@ -70,10 +67,10 @@ function CoachApp({ me }: { me: Me }) {
       }
     >
       <Routes>
-        <Route path="/" element={<HomeView />} />
+        <Route path="/" element={<CoachHomeView />} />
         <Route path="/readiness" element={<ReadinessView />} />
         <Route path="/gps" element={<TeamView />} />
-        <Route path="/team-stats" element={<TeamStatsView />} />
+        <Route path="/team-stats" element={<Navigate to="/?view=stats" replace />} />
         <Route path="/ncaa" element={<NcaaView />} />
         <Route path="/players" element={<PlayerView />} />
         <Route path="/players/:playerId" element={<PlayerView />} />

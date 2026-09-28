@@ -49,33 +49,43 @@ export default function TeamStatsView() {
       </section>
 
       <section>
-        <SectionHeading title="Top Scorers" subtitle="Season goals/assists/points leaders" />
+        <SectionHeading title="Player Stats" subtitle="Every player on the roster, points leaders first" />
         <Card className="overflow-x-auto p-0">
-          <table className="w-full min-w-[560px] text-sm">
+          <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-dim">
                 <th className="px-4 py-3 font-medium">Player</th>
                 <th className="px-4 py-3 font-medium">GP</th>
+                <th className="px-4 py-3 font-medium">GS</th>
+                <th className="px-4 py-3 font-medium">Min</th>
                 <th className="px-4 py-3 font-medium">G</th>
                 <th className="px-4 py-3 font-medium">A</th>
                 <th className="px-4 py-3 font-medium">Pts</th>
+                <th className="px-4 py-3 font-medium">Sh</th>
+                <th className="px-4 py-3 font-medium">SOG</th>
                 <th className="px-4 py-3 font-medium">Cards</th>
               </tr>
             </thead>
             <tbody>
               {data.topScorers
-                .filter((p) => p.points > 0 || p.yellow_cards > 0 || p.red_cards > 0)
                 .map((p) => (
                   <tr
-                    key={p.player_id}
-                    onClick={() => navigate(`/players/${p.player_id}`)}
-                    className="cursor-pointer border-b border-border/60 transition-colors last:border-0 hover:bg-surface-raised"
+                    key={p.player_id ?? `gk-${p.player_name}`}
+                    onClick={p.player_id ? () => navigate(`/players/${p.player_id}`) : undefined}
+                    className={`border-b border-border/60 last:border-0 ${p.player_id ? "cursor-pointer transition-colors hover:bg-surface-raised" : ""}`}
                   >
-                    <td className="px-4 py-3 font-medium">{p.player_name}</td>
+                    <td className="px-4 py-3 font-medium">
+                      {p.player_name}
+                      {p.is_goalkeeper ? <span className="ml-2 text-xs font-normal text-text-dim">GK</span> : null}
+                    </td>
                     <td className="px-4 py-3 text-text-dim">{p.games_played}</td>
+                    <td className="px-4 py-3 text-text-dim">{p.games_started}</td>
+                    <td className="px-4 py-3 text-text-dim">{p.minutes}</td>
                     <td className="px-4 py-3">{p.goals}</td>
                     <td className="px-4 py-3">{p.assists}</td>
                     <td className="px-4 py-3 font-semibold text-teal">{p.points}</td>
+                    <td className="px-4 py-3 text-text-dim">{p.shots}</td>
+                    <td className="px-4 py-3 text-text-dim">{p.shots_on_goal}</td>
                     <td className="px-4 py-3">
                       {p.yellow_cards > 0 && (
                         <span className="mr-1 inline-block h-3 w-2.5 rounded-sm bg-gold" title={`${p.yellow_cards} yellow`} />
@@ -91,6 +101,47 @@ export default function TeamStatsView() {
           </table>
         </Card>
       </section>
+
+      {data.goalkeepers && data.goalkeepers.length > 0 && (
+        <section>
+          <SectionHeading title="Goalkeeping" subtitle="From the box scores (keepers don't wear trackers)" />
+          <Card className="overflow-x-auto p-0">
+            <table className="w-full min-w-[560px] text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-dim">
+                  <th className="px-4 py-3 font-medium">Goalkeeper</th>
+                  <th className="px-4 py-3 font-medium">GP</th>
+                  <th className="px-4 py-3 font-medium">GS</th>
+                  <th className="px-4 py-3 font-medium">Min</th>
+                  <th className="px-4 py-3 font-medium">Saves</th>
+                  <th className="px-4 py-3 font-medium">GA</th>
+                  <th className="px-4 py-3 font-medium">GAA</th>
+                  <th className="px-4 py-3 font-medium">Save %</th>
+                  <th className="px-4 py-3 font-medium">Shutouts</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.goalkeepers.map((k) => {
+                  const faced = k.saves + k.goals_allowed;
+                  return (
+                    <tr key={k.player_name} className="border-b border-border/60 last:border-0">
+                      <td className="px-4 py-3 font-medium">{k.player_name}</td>
+                      <td className="px-4 py-3 text-text-dim">{k.games_played}</td>
+                      <td className="px-4 py-3 text-text-dim">{k.games_started}</td>
+                      <td className="px-4 py-3 text-text-dim">{k.minutes}</td>
+                      <td className="px-4 py-3 font-semibold text-teal">{k.saves}</td>
+                      <td className="px-4 py-3">{k.goals_allowed}</td>
+                      <td className="px-4 py-3">{k.minutes > 0 ? ((k.goals_allowed * 90) / k.minutes).toFixed(2) : "—"}</td>
+                      <td className="px-4 py-3">{faced > 0 ? `${Math.round((k.saves / faced) * 100)}%` : "—"}</td>
+                      <td className="px-4 py-3">{k.shutouts}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </Card>
+        </section>
+      )}
 
       <section>
         <SectionHeading title="Game-by-Game" subtitle="Team box score totals for each completed game" />

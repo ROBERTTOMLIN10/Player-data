@@ -171,14 +171,19 @@ export interface TeamStatsGameLog {
 }
 
 export interface TeamStatsTopScorer {
-  player_id: number;
+  player_id: number | null; // null: a goalkeeper from the box scores (no tracker, not a player in the app)
   player_name: string;
+  is_goalkeeper: number;
   goals: number;
   assists: number;
   points: number;
   yellow_cards: number;
   red_cards: number;
   games_played: number;
+  games_started: number;
+  minutes: number;
+  shots: number;
+  shots_on_goal: number;
 }
 
 export interface TeamStats {
@@ -195,6 +200,17 @@ export interface TeamStats {
   record: { wins: number | null; losses: number | null; ties: number | null };
   gameLog: TeamStatsGameLog[];
   topScorers: TeamStatsTopScorer[];
+  goalkeepers?: TeamStatsGoalkeeper[];
+}
+
+export interface TeamStatsGoalkeeper {
+  player_name: string;
+  games_played: number;
+  games_started: number;
+  minutes: number;
+  saves: number;
+  goals_allowed: number;
+  shutouts: number;
 }
 
 export interface ZoneMetric {

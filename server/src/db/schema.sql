@@ -184,6 +184,29 @@ CREATE TABLE IF NOT EXISTS player_game_stats (
 CREATE INDEX IF NOT EXISTS idx_player_game_stats_player ON player_game_stats(player_id);
 CREATE INDEX IF NOT EXISTS idx_player_game_stats_game ON player_game_stats(schedule_game_id);
 
+-- Box score lines for goalkeepers who aren't players in the app (keepers don't
+-- wear trackers, so they never appear in a GPS file). Team Stats only; keyed by
+-- the name as fausports.com prints it ("First Last").
+CREATE TABLE IF NOT EXISTS goalkeeper_game_stats (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  schedule_game_id INTEGER NOT NULL REFERENCES schedule_games(id) ON DELETE CASCADE,
+  player_name TEXT NOT NULL,
+  minutes REAL,
+  started INTEGER NOT NULL DEFAULT 0,
+  goals INTEGER NOT NULL DEFAULT 0,
+  assists INTEGER NOT NULL DEFAULT 0,
+  points INTEGER NOT NULL DEFAULT 0,
+  shots INTEGER NOT NULL DEFAULT 0,
+  shots_on_goal INTEGER NOT NULL DEFAULT 0,
+  yellow_cards INTEGER NOT NULL DEFAULT 0,
+  red_cards INTEGER NOT NULL DEFAULT 0,
+  saves INTEGER,
+  goals_allowed INTEGER,
+  shutout INTEGER NOT NULL DEFAULT 0,
+  source_url TEXT,
+  UNIQUE(schedule_game_id, player_name)
+);
+
 -- Team-level totals for both sides of a completed schedule game (FAU + opponent),
 -- for the team stats page's game-by-game box scores.
 CREATE TABLE IF NOT EXISTS game_team_totals (
