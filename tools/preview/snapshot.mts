@@ -31,7 +31,7 @@ interface Snapshot {
   teamTotals: Row[]; // _game = schedule key
   playerStats: Row[]; // _game = schedule key, _player = canonical name
   keeperStats?: Row[]; // _game = schedule key (keepers who aren't players in the app)
-  rosterGoalkeepers?: Row[];
+  rosterPlayers?: Row[]; // _player = canonical name (null: keeper not in the app)
   minutes: Row[]; // _game = games.source_file, _player = canonical name
   logos?: Record<string, string>; // logo URL -> data: URI (the preview can't load outside images)
   ncaaGames?: Row[]; // NCAA D1 scoreboard rows (all of this season)
@@ -99,7 +99,10 @@ if (mode === "export") {
       )
       .all()
       .map((r) => strip(r as Row, "schedule_game_id")),
-    rosterGoalkeepers: db.prepare("SELECT * FROM roster_goalkeepers").all() as Row[],
+    rosterPlayers: db
+      .prepare("SELECT r.*, p.canonical_name AS _player FROM roster_players r LEFT JOIN players p ON p.id = r.player_id")
+      .all()
+      .map((r) => strip(r as Row, "player_id")),
     minutes: db
       .prepare(
         `SELECT m.*, g.source_file AS _game, p.canonical_name AS _player
@@ -189,7 +192,8 @@ if (mode === "export") {
       const id = scheduleId(_game);
       if (id) insert("goalkeeper_game_stats", { ...row, schedule_game_id: id }, "schedule_game_id, player_name");
     }
-    for (const row of snap.rosterGoalkeepers ?? []) insert("roster_goalkeepers", row, "player_name");
+    for (const { _player, ...row } of snap.rosterPlayers ?? [])
+      insert("roster_players", { ...row, player_id: _player ? playerId(_player) : null }, "player_name");
     for (const row of snap.ncaaGames ?? []) insert("ncaa_games", row, "contest_id");
     for (const row of snap.ncaaCache ?? []) insert("ncaa_cache", row, "key");
     for (const row of snap.ncaaRankHistory ?? []) insert("ncaa_rank_history", row, "key, day, entity");

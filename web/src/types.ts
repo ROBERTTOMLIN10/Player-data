@@ -61,6 +61,7 @@ export interface Player {
   games_played: number; // logged minutes
   sessions?: number; // tracked GPS sessions, including fitness-only
   position: string | null; // 'fwd' | 'mid' | 'def' | 'gk' | null (not yet known)
+  jersey_number?: string | null; // squad number from the fausports.com roster
 }
 
 export interface PlayerGameStat {
@@ -102,7 +103,7 @@ export interface PlayerStatTotals {
 }
 
 export interface PlayerDetail {
-  player: { id: number; canonical_name: string; created_at: string; position: string | null };
+  player: { id: number; canonical_name: string; created_at: string; position: string | null; jersey_number?: string | null };
   sessions: GpsSession[];
   seasonTotals: Record<string, number | null>;
   gameStats: PlayerGameStat[];
@@ -174,6 +175,7 @@ export interface TeamStatsTopScorer {
   player_id: number | null; // null: a goalkeeper from the box scores (no tracker, not a player in the app)
   player_name: string;
   is_goalkeeper: number;
+  jersey_number: string | null;
   goals: number;
   assists: number;
   points: number;

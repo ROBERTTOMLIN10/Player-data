@@ -86,6 +86,8 @@ teamRouter.get("/stats", (_req, res) => {
   const topScorers = db
     .prepare(
       `SELECT player_id, player_name, is_goalkeeper,
+              (SELECT r.jersey_number FROM roster_players r
+               WHERE r.player_id = t.player_id OR (t.player_id IS NULL AND r.player_name = t.player_name)) AS jersey_number,
               COALESCE(SUM(${PLAYED}), 0) AS games_played,
               COALESCE(SUM(started), 0) AS games_started,
               ROUND(COALESCE(SUM(minutes), 0)) AS minutes,
@@ -100,8 +102,8 @@ teamRouter.get("/stats", (_req, res) => {
          FROM goalkeeper_game_stats
          UNION ALL
          SELECT NULL, player_name, 1, ${COLS.map(() => "0").join(", ")}
-         FROM roster_goalkeepers
-       )
+         FROM roster_players WHERE UPPER(position_short) = 'GK' AND player_id IS NULL
+       ) t
        GROUP BY COALESCE(player_id, 'gk:' || player_name)
        ORDER BY points DESC, goals DESC, minutes DESC, player_name ASC`,
     )
@@ -116,8 +118,11 @@ teamRouter.get("/stats", (_req, res) => {
               ROUND(COALESCE(SUM(k.minutes), 0)) AS minutes,
               COALESCE(SUM(k.saves), 0) AS saves, COALESCE(SUM(k.goals_allowed), 0) AS goals_allowed,
               COALESCE(SUM(k.shutout), 0) AS shutouts
-       FROM (SELECT player_name FROM roster_goalkeepers UNION SELECT player_name FROM goalkeeper_game_stats) n
-       LEFT JOIN roster_goalkeepers r ON r.player_name = n.player_name
+       FROM (
+         SELECT player_name FROM roster_players WHERE UPPER(position_short) = 'GK' AND player_id IS NULL
+         UNION SELECT player_name FROM goalkeeper_game_stats
+       ) n
+       LEFT JOIN roster_players r ON r.player_name = n.player_name
        LEFT JOIN goalkeeper_game_stats k ON k.player_name = n.player_name
        GROUP BY n.player_name
        ORDER BY minutes DESC, CAST(r.jersey_number AS INTEGER) ASC, n.player_name ASC`,

@@ -75,6 +75,7 @@ export default function TeamStatsView() {
                     className={`border-b border-border/60 last:border-0 ${p.player_id ? "cursor-pointer transition-colors hover:bg-surface-raised" : ""}`}
                   >
                     <td className="px-4 py-3 font-medium">
+                      {p.jersey_number && <span className="mr-2 text-xs font-normal text-text-dim">#{p.jersey_number}</span>}
                       {p.player_name}
                       {p.is_goalkeeper ? <span className="ml-2 text-xs font-normal text-text-dim">GK</span> : null}
                     </td>

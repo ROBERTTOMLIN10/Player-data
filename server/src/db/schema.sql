@@ -207,10 +207,14 @@ CREATE TABLE IF NOT EXISTS goalkeeper_game_stats (
   UNIQUE(schedule_game_id, player_name)
 );
 
--- Goalkeepers on this season's fausports.com roster, so Team Stats lists every
--- keeper even before they've played. Replaced on each schedule sync.
-CREATE TABLE IF NOT EXISTS roster_goalkeepers (
+-- This season's fausports.com roster (squad numbers, positions), replaced on
+-- each schedule sync. player_id links outfield players to the app (added as
+-- players if they aren't in a GPS file yet); goalkeepers who aren't players in
+-- the app (no tracker) have player_id NULL and show in Team Stats only.
+CREATE TABLE IF NOT EXISTS roster_players (
   player_name TEXT PRIMARY KEY,
+  player_id INTEGER REFERENCES players(id) ON DELETE SET NULL,
+  position_short TEXT,
   jersey_number TEXT,
   academic_year TEXT
 );

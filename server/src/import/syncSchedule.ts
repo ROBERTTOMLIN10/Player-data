@@ -5,7 +5,7 @@ import { fillMinutesFromBoxScores } from "./importMinutes.js";
 import { fetchScheduleGames, type SidearmScheduleGame } from "./sidearmSchedule.js";
 import { fetchBoxscoreDetails } from "./sidearmBoxscore.js";
 import { matchSidearmPlayer } from "./matchSidearmPlayer.js";
-import { fetchRoster, isGoalkeeper } from "./sidearmRoster.js";
+import { fetchRoster, syncRoster } from "./sidearmRoster.js";
 
 export interface SyncScheduleSummary {
   status: "ok" | "error";
@@ -281,18 +281,10 @@ export async function syncSchedule(): Promise<SyncScheduleSummary> {
     for (const u of unmatchedPlayers) console.log(u);
   }
 
-  // Goalkeepers on the roster, so Team Stats lists every keeper (even before
-  // they've played). A roster failure doesn't fail the schedule sync.
+  // The roster: squad numbers and positions, and every player listed even
+  // before they've featured. A roster failure doesn't fail the schedule sync.
   try {
-    const keepers = (await fetchRoster()).filter(isGoalkeeper);
-    if (keepers.length > 0) {
-      const insert = db.prepare("INSERT INTO roster_goalkeepers (player_name, jersey_number, academic_year) VALUES (?, ?, ?)");
-      db.transaction(() => {
-        db.prepare("DELETE FROM roster_goalkeepers").run();
-        for (const k of keepers) insert.run(k.name, k.jerseyNumber, k.academicYear);
-      })();
-      console.log(`Roster goalkeepers: ${keepers.map((k) => k.name).join(", ")}`);
-    }
+    syncRoster(db, await fetchRoster());
   } catch (err) {
     console.error(`Roster not synced: ${(err as Error).message}`);
   }

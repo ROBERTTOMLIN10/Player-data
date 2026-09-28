@@ -55,10 +55,14 @@ export default function PlayerView() {
                         onClick={() => navigate(`/players/${p.id}`)}
                         className="rounded-lg border border-border bg-surface-raised p-3 text-left transition-colors hover:border-owl-red"
                       >
-                        <div className="font-medium">{p.canonical_name}</div>
+                        <div className="font-medium">
+                          {p.jersey_number && <span className="mr-1.5 text-xs font-normal text-text-dim">#{p.jersey_number}</span>}
+                          {p.canonical_name}
+                        </div>
                         <div className="text-xs text-text-dim">
-                          {p.games_played} game{p.games_played === 1 ? "" : "s"} played
-                          {p.sessions ? ` · ${p.sessions} tracked` : ""}
+                          {p.sessions
+                            ? `${p.games_played} game${p.games_played === 1 ? "" : "s"} played · ${p.sessions} tracked`
+                            : "No GPS data yet"}
                         </div>
                       </button>
                     ))}
@@ -79,7 +83,7 @@ export default function PlayerView() {
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <SectionHeading title={detail.player.canonical_name} subtitle={`${detail.seasonTotals.games_played ?? 0} games played · ${detail.sessions.length} tracked sessions this season`} />
+        <SectionHeading title={`${detail.player.jersey_number ? `#${detail.player.jersey_number} ` : ""}${detail.player.canonical_name}`} subtitle={`${detail.seasonTotals.games_played ?? 0} games played · ${detail.sessions.length} tracked sessions this season`} />
         <button onClick={() => navigate("/players")} className="text-sm text-text-dim hover:text-owl-red">
           ← All players
         </button>
@@ -89,39 +93,47 @@ export default function PlayerView() {
 
       {myFitness && fitness && <FitnessCard you={myFitness} thresholds={fitness.thresholds} asOf={fitness.asOf} coach />}
 
-      <SeasonStatsSection
-        sessions={detail.sessions}
-        metrics={metrics ?? []}
-        view={seasonView}
-        onViewChange={setSeasonView}
-        averages={detail.seasonTotals}
-        activeKey={selectedMetricKey}
-        onPick={(key) => {
-          setSelectedMetricKey(key);
-          setLogView("chart");
-        }}
-        teamAverage={(k) => summary?.seasonAverages[`avg_${k}`]}
-        teamHigh={(k) => {
-          const best = summary?.highs.find((h) => h.metric === k)?.best;
-          return best ? { value: best.value, by: best.player_name } : null;
-        }}
-        who="Their"
-      />
+      {detail.sessions.length === 0 ? (
+        <Card className="text-sm text-text-dim">
+          No GPS data yet. Their stats will show here once a GPS file includes them.
+        </Card>
+      ) : (
+        <>
+          <SeasonStatsSection
+            sessions={detail.sessions}
+            metrics={metrics ?? []}
+            view={seasonView}
+            onViewChange={setSeasonView}
+            averages={detail.seasonTotals}
+            activeKey={selectedMetricKey}
+            onPick={(key) => {
+              setSelectedMetricKey(key);
+              setLogView("chart");
+            }}
+            teamAverage={(k) => summary?.seasonAverages[`avg_${k}`]}
+            teamHigh={(k) => {
+              const best = summary?.highs.find((h) => h.metric === k)?.best;
+              return best ? { value: best.value, by: best.player_name } : null;
+            }}
+            who="Their"
+          />
 
-      <GameByGameSection
-        sessions={detail.sessions}
-        metrics={metrics ?? []}
-        teamByGame={teamByGame}
-        metricKey={selectedMetricKey}
-        onMetricChange={setSelectedMetricKey}
-        view={logView}
-        onViewChange={setLogView}
-        selectedGameId={null}
-        onSelectGame={(id) => navigate(`/gps?game=${id}`)}
-        table={<SessionTable sessions={detail.sessions} metrics={metrics ?? []} />}
-        subtitle="Every tracked game. Fitness = didn't play, load from the warm-up and/or fitness work (it still counts)."
-        hint="Tap a bar for that game's full squad breakdown"
-      />
+          <GameByGameSection
+            sessions={detail.sessions}
+            metrics={metrics ?? []}
+            teamByGame={teamByGame}
+            metricKey={selectedMetricKey}
+            onMetricChange={setSelectedMetricKey}
+            view={logView}
+            onViewChange={setLogView}
+            selectedGameId={null}
+            onSelectGame={(id) => navigate(`/gps?game=${id}`)}
+            table={<SessionTable sessions={detail.sessions} metrics={metrics ?? []} />}
+            subtitle="Every tracked game. Fitness = didn't play, load from the warm-up and/or fitness work (it still counts)."
+            hint="Tap a bar for that game's full squad breakdown"
+          />
+        </>
+      )}
 
       {detail.gameStats.length > 0 && (
         <section>

@@ -1,5 +1,8 @@
+import type { getDb } from "../db/connection.js";
 import { ROSTER_PATH, SIDEARM_BASE_URL } from "./sidearmConfig.js";
 import { fetchAndParseNuxtPage } from "./nuxtPayload.js";
+import { matchSidearmPlayer } from "./matchSidearmPlayer.js";
+import { normalizePlayerName } from "./nameNormalization.js";
 
 export interface SidearmRosterPlayer {
   name: string; // "First Last", as the box scores are matched
@@ -29,3 +32,37 @@ export async function fetchRoster(): Promise<SidearmRosterPlayer[]> {
 }
 
 export const isGoalkeeper = (p: SidearmRosterPlayer) => p.positionShort?.toUpperCase() === "GK";
+
+/**
+ * Replaces roster_players with this roster. Each name is matched to an app
+ * player the same way box scores are (exact alias, then a unique last name).
+ * Outfield players not in the app yet (no GPS file, e.g. not trained with a
+ * tracker) are added as players so they're listed everywhere; their GPS data
+ * joins them once a file includes them. Goalkeepers wear no tracker, so an
+ * unmatched keeper is not added (Team Stats only).
+ */
+export function syncRoster(db: ReturnType<typeof getDb>, roster: SidearmRosterPlayer[]) {
+  if (roster.length === 0) return;
+  const added: string[] = [];
+  db.transaction(() => {
+    const insert = db.prepare(
+      "INSERT INTO roster_players (player_name, player_id, position_short, jersey_number, academic_year) VALUES (?, ?, ?, ?, ?)",
+    );
+    db.prepare("DELETE FROM roster_players").run();
+    for (const p of roster) {
+      let playerId = matchSidearmPlayer(db, p.name).playerId;
+      if (!playerId && !isGoalkeeper(p)) {
+        db.prepare("INSERT OR IGNORE INTO players (canonical_name) VALUES (?)").run(p.name);
+        playerId = (db.prepare("SELECT id FROM players WHERE canonical_name = ?").get(p.name) as { id: number }).id;
+        db.prepare("INSERT OR IGNORE INTO player_aliases (player_id, normalized_alias, raw_alias) VALUES (?, ?, ?)").run(
+          playerId,
+          normalizePlayerName(p.name),
+          p.name,
+        );
+        added.push(p.name);
+      }
+      insert.run(p.name, playerId, p.positionShort, p.jerseyNumber, p.academicYear);
+    }
+  })();
+  console.log(`Roster: ${roster.length} players${added.length ? `; added from the roster (no GPS file yet): ${added.join(", ")}` : ""}`);
+}
