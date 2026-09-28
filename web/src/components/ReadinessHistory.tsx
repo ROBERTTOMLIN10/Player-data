@@ -11,23 +11,41 @@ import type { MetricDef, PlayerReadinessHistory } from "../types";
 // No unit so axis ticks stay compact ("80", not "80 %"); the chart title says it's a percentage.
 const SCORE_METRIC: MetricDef = { key: "readiness_score", label: "Readiness %", unit: "", decimals: 0 };
 
+function shiftIso(iso: string, n: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
 /** Trend chart + day-by-day list of check-ins (newest first). */
-export function ReadinessHistory({ history, emptyText }: { history: PlayerReadinessHistory; emptyText: string }) {
+export function ReadinessHistory({ history, emptyText, days }: { history: PlayerReadinessHistory; emptyText: string; days?: number }) {
   const [openId, setOpenId] = useState<number | null>(null);
   // Game days get the opponent's logo on the axis and in the tooltip.
   const logoFor = useOpponentLogos();
   const opponentFor = useOpponentNames();
   const entries = history.entries;
 
-  const chartData = useMemo(
-    () => [...entries].reverse().map((e) => ({ entry_date: e.entry_date, readiness_score: e.readiness_score })),
-    [entries],
-  );
+  // Every day in the range gets a spot on the chart (blank when there was no
+  // check-in), so game days always appear even if the player skipped that day.
+  const chartData = useMemo(() => {
+    const byDate = new Map(entries.map((e) => [e.entry_date, e.readiness_score]));
+    const oldest = entries.length ? entries[entries.length - 1].entry_date : history.today;
+    const start = days ? shiftIso(history.today, -(days - 1)) : oldest;
+    const out: { entry_date: string; readiness_score: number | null }[] = [];
+    for (let d = start; d <= history.today; d = shiftIso(d, 1)) {
+      out.push({ entry_date: d, readiness_score: byDate.get(d) ?? null });
+    }
+    // Skip an empty lead-in (e.g. the summer before preseason on the 90-day view).
+    const first = out.findIndex((p) => p.readiness_score !== null || opponentFor(p.entry_date));
+    return first > 0 ? out.slice(first) : out;
+  }, [entries, history.today, days, opponentFor]);
   // Label the first and last day plus every game day (so game logos always show); normal labels when there were no games.
+  // Long ranges get too crowded for logos, so they use plain date labels (game days are still named in the tooltip).
+  const crowded = chartData.length > 45;
   const gameDays = chartData.filter((d) => opponentFor(d.entry_date)).map((d) => d.entry_date);
   const daysApart = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 864e5;
   const farFromGames = (d: string) => gameDays.every((g) => daysApart(d, g) > 2); // keep labels from overlapping
-  const gameDayTicks = gameDays.length
+  const gameDayTicks = gameDays.length && !crowded
     ? [chartData[0].entry_date, chartData[chartData.length - 1].entry_date]
         .filter(farFromGames)
         .concat(gameDays)
@@ -66,7 +84,7 @@ export function ReadinessHistory({ history, emptyText }: { history: PlayerReadin
             referenceValue={75}
             referenceLabel="Good"
             height={240}
-            logoFor={logoFor}
+            logoFor={crowded ? undefined : logoFor}
             ticks={gameDayTicks}
             labelFor={(d) => (opponentFor(d) ? `${formatDate(d)} · Game day vs ${opponentFor(d)}` : formatDate(d))}
           />
