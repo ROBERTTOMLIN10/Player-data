@@ -16,7 +16,7 @@ export default function MyHistoryView() {
       {isLoading || !data ? (
         <div className="py-16 text-center text-text-dim">Loading…</div>
       ) : (
-        <ReadinessHistory history={data} emptyText="No check-ins in this period yet." />
+        <ReadinessHistory history={data} days={days} emptyText="No check-ins in this period yet." />
       )}
     </div>
   );

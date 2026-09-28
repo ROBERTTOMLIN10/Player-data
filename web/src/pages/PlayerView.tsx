@@ -212,7 +212,7 @@ function PlayerReadinessSection({ playerId }: { playerId: number }) {
         <RangePicker days={days} onChange={setDays} />
       </div>
       {data ? (
-        <ReadinessHistory history={data} emptyText="No check-ins in this period." />
+        <ReadinessHistory history={data} days={days} emptyText="No check-ins in this period." />
       ) : (
         <div className="py-8 text-center text-text-dim">Loading…</div>
       )}

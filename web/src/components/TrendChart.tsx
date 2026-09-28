@@ -31,6 +31,7 @@ export function TrendChart<T extends Record<string, unknown>>({
   height = 260,
   labelFor,
   logoFor,
+  ticks,
 }: {
   data: T[];
   xKey: string;
@@ -43,6 +44,7 @@ export function TrendChart<T extends Record<string, unknown>>({
   height?: number;
   labelFor?: (x: string) => string; // tooltip heading, e.g. "Sep 20 · Memphis"
   logoFor?: (x: string) => string | null | undefined; // opponent logo under each date
+  ticks?: string[]; // x values to label (e.g. game days on a day-by-day chart); default: auto
 }) {
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -54,7 +56,8 @@ export function TrendChart<T extends Record<string, unknown>>({
           stroke="#9aa0ab"
           tick={logoFor ? (props: object) => <DateLogoTick {...props} xFormatter={xFormatter} logoFor={logoFor} /> : { fontSize: 12 }}
           height={logoFor ? DATE_LOGO_AXIS_HEIGHT : 30}
-          interval={logoFor ? "preserveStartEnd" : undefined}
+          ticks={ticks}
+          interval={ticks ? 0 : logoFor ? "preserveStartEnd" : undefined}
           tickLine={false}
           axisLine={{ stroke: "#2a2e37" }}
         />
