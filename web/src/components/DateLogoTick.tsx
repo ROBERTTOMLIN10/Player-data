@@ -30,3 +30,10 @@ export function useOpponentLogos(): (date: string) => string | null | undefined 
   const byDate = useMemo(() => new Map((schedule ?? []).map((g) => [g.game_date, g.opponent_logo_url])), [schedule]);
   return (date: string) => byDate.get(date);
 }
+
+/** Opponent name by game date (from the schedule), e.g. for tooltip headings on day-by-day charts. */
+export function useOpponentNames(): (date: string) => string | undefined {
+  const { data: schedule } = useSchedule();
+  const byDate = useMemo(() => new Map((schedule ?? []).map((g) => [g.game_date, g.opponent])), [schedule]);
+  return (date: string) => byDate.get(date);
+}

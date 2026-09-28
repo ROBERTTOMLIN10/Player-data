@@ -12,9 +12,8 @@ import CompareView from "./pages/CompareView";
 import AdminView from "./pages/AdminView";
 import ReadinessView from "./pages/ReadinessView";
 import LoginView from "./pages/LoginView";
-import CheckInView from "./pages/player/CheckInView";
+import ReadinessTabView from "./pages/player/ReadinessTabView";
 import MyGpsView from "./pages/player/MyGpsView";
-import MyHistoryView from "./pages/player/MyHistoryView";
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   `shrink-0 px-2 py-2 text-xs font-medium tracking-wide uppercase transition-colors sm:px-3 sm:text-sm ${
@@ -94,7 +93,7 @@ function PlayerApp({ me }: { me: Me }) {
       nav={
         <>
           <NavLink to="/" end className={navLinkClass}>
-            Check-in
+            Readiness
           </NavLink>
           <NavLink to="/home" className={navLinkClass}>
             Home
@@ -105,19 +104,16 @@ function PlayerApp({ me }: { me: Me }) {
           <NavLink to="/my-gps" className={navLinkClass}>
             My GPS
           </NavLink>
-          <NavLink to="/history" className={navLinkClass}>
-            History
-          </NavLink>
         </>
       }
     >
       <Routes>
-        {/* Check-in stays the landing page: the morning reminder opens straight into it. */}
-        <Route path="/" element={<CheckInView me={me} />} />
+        {/* Readiness (check-in first) stays the landing page: the morning reminder opens straight into it. */}
+        <Route path="/" element={<ReadinessTabView me={me} />} />
         <Route path="/home" element={<HomeView />} />
         <Route path="/ncaa" element={<NcaaView />} />
         <Route path="/my-gps" element={<MyGpsView />} />
-        <Route path="/history" element={<MyHistoryView />} />
+        <Route path="/history" element={<Navigate to="/?view=history" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Shell>

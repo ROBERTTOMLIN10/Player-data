@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Card } from "./Card";
 import { ReadinessSummary } from "./ReadinessSummary";
 import { TrendChart } from "./TrendChart";
+import { useOpponentLogos, useOpponentNames } from "./DateLogoTick";
 import { regionLabel, SEVERITY_STYLE } from "../lib/bodyRegions";
 import { formatDate, formatDateLong } from "../lib/format";
 import { scoreBand, STATUS_STYLE } from "../lib/readiness";
@@ -13,12 +14,25 @@ const SCORE_METRIC: MetricDef = { key: "readiness_score", label: "Readiness %", 
 /** Trend chart + day-by-day list of check-ins (newest first). */
 export function ReadinessHistory({ history, emptyText }: { history: PlayerReadinessHistory; emptyText: string }) {
   const [openId, setOpenId] = useState<number | null>(null);
+  // Game days get the opponent's logo on the axis and in the tooltip.
+  const logoFor = useOpponentLogos();
+  const opponentFor = useOpponentNames();
   const entries = history.entries;
 
   const chartData = useMemo(
     () => [...entries].reverse().map((e) => ({ entry_date: e.entry_date, readiness_score: e.readiness_score })),
     [entries],
   );
+  // Label the first and last day plus every game day (so game logos always show); normal labels when there were no games.
+  const gameDays = chartData.filter((d) => opponentFor(d.entry_date)).map((d) => d.entry_date);
+  const daysApart = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 864e5;
+  const farFromGames = (d: string) => gameDays.every((g) => daysApart(d, g) > 2); // keep labels from overlapping
+  const gameDayTicks = gameDays.length
+    ? [chartData[0].entry_date, chartData[chartData.length - 1].entry_date]
+        .filter(farFromGames)
+        .concat(gameDays)
+        .sort()
+    : undefined;
   const stats = useMemo(() => {
     const avg = entries.length ? Math.round(entries.reduce((a, e) => a + e.readiness_score, 0) / entries.length) : null;
     const regionTally = new Map<string, number>();
@@ -51,7 +65,10 @@ export function ReadinessHistory({ history, emptyText }: { history: PlayerReadin
             series={[{ dataKey: "readiness_score", name: "Readiness", color: "#2dd4bf" }]}
             referenceValue={75}
             referenceLabel="Good"
-            height={220}
+            height={240}
+            logoFor={logoFor}
+            ticks={gameDayTicks}
+            labelFor={(d) => (opponentFor(d) ? `${formatDate(d)} · Game day vs ${opponentFor(d)}` : formatDate(d))}
           />
         </Card>
       )}
