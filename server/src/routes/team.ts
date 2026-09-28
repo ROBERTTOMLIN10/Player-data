@@ -79,16 +79,20 @@ teamRouter.get("/stats", (_req, res) => {
     )
     .all();
 
+  // Every player on the roster, even without a box score line yet (zeros).
   const topScorers = db
     .prepare(
       `SELECT p.id AS player_id, p.canonical_name AS player_name,
-              SUM(pgs.goals) AS goals, SUM(pgs.assists) AS assists, SUM(pgs.points) AS points,
-              SUM(pgs.yellow_cards) AS yellow_cards, SUM(pgs.red_cards) AS red_cards,
-              COUNT(*) AS games_played
-       FROM player_game_stats pgs
-       JOIN players p ON p.id = pgs.player_id
+              COALESCE(SUM(CASE WHEN pgs.minutes IS NULL OR pgs.minutes > 0 THEN 1 ELSE 0 END), 0) AS games_played,
+              COALESCE(SUM(pgs.started), 0) AS games_started,
+              ROUND(COALESCE(SUM(pgs.minutes), 0)) AS minutes,
+              COALESCE(SUM(pgs.goals), 0) AS goals, COALESCE(SUM(pgs.assists), 0) AS assists, COALESCE(SUM(pgs.points), 0) AS points,
+              COALESCE(SUM(pgs.shots), 0) AS shots, COALESCE(SUM(pgs.shots_on_goal), 0) AS shots_on_goal,
+              COALESCE(SUM(pgs.yellow_cards), 0) AS yellow_cards, COALESCE(SUM(pgs.red_cards), 0) AS red_cards
+       FROM players p
+       LEFT JOIN player_game_stats pgs ON pgs.player_id = p.id
        GROUP BY p.id
-       ORDER BY points DESC, goals DESC`,
+       ORDER BY points DESC, goals DESC, minutes DESC, p.canonical_name ASC`,
     )
     .all();
 

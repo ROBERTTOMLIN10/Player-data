@@ -49,22 +49,25 @@ export default function TeamStatsView() {
       </section>
 
       <section>
-        <SectionHeading title="Top Scorers" subtitle="Season goals/assists/points leaders" />
+        <SectionHeading title="Player Stats" subtitle="Every player on the roster, points leaders first" />
         <Card className="overflow-x-auto p-0">
-          <table className="w-full min-w-[560px] text-sm">
+          <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-dim">
                 <th className="px-4 py-3 font-medium">Player</th>
                 <th className="px-4 py-3 font-medium">GP</th>
+                <th className="px-4 py-3 font-medium">GS</th>
+                <th className="px-4 py-3 font-medium">Min</th>
                 <th className="px-4 py-3 font-medium">G</th>
                 <th className="px-4 py-3 font-medium">A</th>
                 <th className="px-4 py-3 font-medium">Pts</th>
+                <th className="px-4 py-3 font-medium">Sh</th>
+                <th className="px-4 py-3 font-medium">SOG</th>
                 <th className="px-4 py-3 font-medium">Cards</th>
               </tr>
             </thead>
             <tbody>
               {data.topScorers
-                .filter((p) => p.points > 0 || p.yellow_cards > 0 || p.red_cards > 0)
                 .map((p) => (
                   <tr
                     key={p.player_id}
@@ -73,9 +76,13 @@ export default function TeamStatsView() {
                   >
                     <td className="px-4 py-3 font-medium">{p.player_name}</td>
                     <td className="px-4 py-3 text-text-dim">{p.games_played}</td>
+                    <td className="px-4 py-3 text-text-dim">{p.games_started}</td>
+                    <td className="px-4 py-3 text-text-dim">{p.minutes}</td>
                     <td className="px-4 py-3">{p.goals}</td>
                     <td className="px-4 py-3">{p.assists}</td>
                     <td className="px-4 py-3 font-semibold text-teal">{p.points}</td>
+                    <td className="px-4 py-3 text-text-dim">{p.shots}</td>
+                    <td className="px-4 py-3 text-text-dim">{p.shots_on_goal}</td>
                     <td className="px-4 py-3">
                       {p.yellow_cards > 0 && (
                         <span className="mr-1 inline-block h-3 w-2.5 rounded-sm bg-gold" title={`${p.yellow_cards} yellow`} />

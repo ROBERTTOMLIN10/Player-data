@@ -179,6 +179,10 @@ export interface TeamStatsTopScorer {
   yellow_cards: number;
   red_cards: number;
   games_played: number;
+  games_started: number;
+  minutes: number;
+  shots: number;
+  shots_on_goal: number;
 }
 
 export interface TeamStats {
