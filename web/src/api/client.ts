@@ -28,6 +28,10 @@ import type {
   NcaaStandings,
   NcaaStatsIndex,
   NcaaTable,
+  PlayerRpe,
+  RpeSession,
+  RpeSessionSummary,
+  RpeTrends,
 } from "../types";
 
 /** Thrown on 401 so the app can drop back to the sign-in screen. */
@@ -126,6 +130,46 @@ export interface PushConfig {
 
 export function usePushConfig() {
   return useQuery({ queryKey: ["pushConfig"], queryFn: () => fetchJson<PushConfig>("/api/me/push/config"), staleTime: Infinity });
+}
+
+// --- RPE ----------------------------------------------------------------------
+
+export function useMyRpe(days = 30) {
+  return useQuery({ queryKey: ["myRpe", days], queryFn: () => fetchJson<PlayerRpe>(`/api/me/rpe?days=${days}`) });
+}
+
+export function useRpeSession(date: string | null, session: number) {
+  return useQuery({
+    queryKey: ["rpeSession", date, session],
+    queryFn: () => fetchJson<RpeSession>(`/api/rpe/session?session=${session}${date ? `&date=${date}` : ""}`),
+  });
+}
+
+export function saveRpe(input: { player_id?: number; keeper_name?: string; date: string; session: number; rpe: number | "na" | null }) {
+  return sendJson<typeof input>("/api/rpe/score", "PUT", input);
+}
+
+export function submitRpeSession(date: string, session: number) {
+  return sendJson<{ date: string; session: number }>("/api/rpe/session/submit", "POST", { date, session });
+}
+
+export function useRpeSessions() {
+  return useQuery({
+    queryKey: ["rpeSessions"],
+    queryFn: () => fetchJson<{ today: string; sessions: RpeSessionSummary[] }>("/api/rpe/sessions"),
+  });
+}
+
+export function useRpeTrends() {
+  return useQuery({ queryKey: ["rpeTrends"], queryFn: () => fetchJson<RpeTrends>("/api/rpe/trends") });
+}
+
+export function usePlayerRpe(playerId: number | null, days = 30) {
+  return useQuery({
+    queryKey: ["playerRpe", playerId, days],
+    queryFn: () => fetchJson<PlayerRpe>(`/api/rpe/player/${playerId}?days=${days}`),
+    enabled: playerId !== null,
+  });
 }
 
 // --- Coach readiness + accounts ---------------------------------------------

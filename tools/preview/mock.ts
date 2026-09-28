@@ -89,6 +89,34 @@ function squadFor(date: string | null) {
   };
 }
 
+// RPE logging sheets, kept in memory so taps in the preview stick (captured days as a base, other days empty).
+const rpeSheets = new Map<string, any>();
+function rpeSession(date: string, session: number) {
+  const id = `${date}#${session}`;
+  if (!rpeSheets.has(id)) {
+    const base = data[`/api/rpe/session?session=${session}&date=${date}`] ?? (date === TODAY ? data[`/api/rpe/session?session=${session}`] : null);
+    const today = data["/api/rpe/session?session=1"];
+    rpeSheets.set(
+      id,
+      clone(
+        base ?? {
+          ...today,
+          date,
+          session,
+          sessions: [],
+          game: null,
+          summary: { expected: today.players.length, logged: 0, na: 0, average: null },
+          players: today.players.map((p: any) => ({ ...p, rpe: null, na: false, flags: [], readiness: null })),
+          keeperSummary: { expected: today.keepers.length, logged: 0, na: 0, average: null },
+          keepers: today.keepers.map((k: any) => ({ ...k, rpe: null, na: false, flags: [] })),
+          submitted: null,
+        },
+      ),
+    );
+  }
+  return rpeSheets.get(id);
+}
+
 function withMyEntry(history: any, decorate = false) {
   const h = clone(history);
   if (myEntry) {
@@ -169,6 +197,36 @@ function route(method: string, path: string, q: URLSearchParams, body: any): Res
     const id = Number(path.split("/").pop());
     const h = data[key] ?? { today: TODAY, entries: [] };
     return json(id === PLAYER_ID ? withMyEntry(h, true) : h);
+  }
+  if (path === "/api/rpe/session") return json(rpeSession(q.get("date") ?? TODAY, Number(q.get("session")) === 2 ? 2 : 1));
+  if (path === "/api/rpe/session/submit" && method === "POST") {
+    const sheet = rpeSession(body.date, body.session);
+    const left = [...sheet.players, ...sheet.keepers].filter((p: any) => p.rpe === null && !p.na);
+    if (left.length) return json({ error: `Still to log: ${left.map((p: any) => p.name).join(", ")}.` }, 400);
+    sheet.submitted = { submitted_at: nowSql(), submitted_by: "coach@fau.edu" };
+    return json({ date: body.date, session: body.session, submitted: sheet.submitted });
+  }
+  if (path === "/api/rpe/score" && method === "PUT") {
+    const sheet = rpeSession(body.date, body.session);
+    const row = body.keeper_name
+      ? sheet.keepers.find((k: any) => k.name === body.keeper_name)
+      : sheet.players.find((p: any) => p.player_id === body.player_id);
+    if (row) Object.assign(row, { rpe: typeof body.rpe === "number" ? body.rpe : null, na: body.rpe === "na" });
+    const summarise = (list: any[]) => {
+      const scored = list.filter((p: any) => p.rpe !== null);
+      const na = list.filter((p: any) => p.na).length;
+      return {
+        expected: list.length,
+        logged: scored.length + na,
+        na,
+        average: scored.length ? Math.round((scored.reduce((a: number, p: any) => a + p.rpe, 0) / scored.length) * 10) / 10 : null,
+      };
+    };
+    sheet.summary = summarise(sheet.players);
+    sheet.keeperSummary = summarise(sheet.keepers);
+    if (!sheet.sessions.includes(body.session) && sheet.summary.logged + sheet.keeperSummary.logged)
+      sheet.sessions = [...sheet.sessions, body.session].sort();
+    return json(body);
   }
   if (path === "/api/compare") return json(compare((q.get("playerIds") ?? "").split(",").map(Number)));
   if (path === "/api/admin/reminders") {

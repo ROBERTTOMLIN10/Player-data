@@ -297,6 +297,52 @@ CREATE TABLE IF NOT EXISTS readiness_checkins (
 
 CREATE INDEX IF NOT EXISTS idx_readiness_checkins_date ON readiness_checkins(entry_date);
 
+-- Post-training RPE (rate of perceived exertion, 1 = very easy, 10 = maximal),
+-- logged by a coach asking each player after the session. One per player per
+-- session: session 1 normally, session 2 on pre-season double days. Logging
+-- again for the same session corrects the score. did_not_train (rpe NULL) is
+-- "N/A": the player didn't train (injured, out), kept out of every average.
+CREATE TABLE IF NOT EXISTS rpe_scores (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  session_date TEXT NOT NULL, -- YYYY-MM-DD, team local date
+  session INTEGER NOT NULL DEFAULT 1 CHECK (session IN (1, 2)),
+  rpe INTEGER CHECK (rpe BETWEEN 1 AND 10),
+  did_not_train INTEGER NOT NULL DEFAULT 0,
+  logged_by TEXT, -- coach email
+  logged_at TEXT NOT NULL DEFAULT (datetime('now')),
+  CHECK (rpe IS NOT NULL OR did_not_train = 1),
+  UNIQUE(player_id, session_date, session)
+);
+
+CREATE INDEX IF NOT EXISTS idx_rpe_scores_date ON rpe_scores(session_date);
+
+-- RPE for goalkeepers on the roster who aren't players in the app (they wear
+-- no tracker), keyed by roster name. Kept apart so keeper scores never mix
+-- into the outfield squad's averages.
+CREATE TABLE IF NOT EXISTS keeper_rpe_scores (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  keeper_name TEXT NOT NULL,
+  session_date TEXT NOT NULL,
+  session INTEGER NOT NULL DEFAULT 1 CHECK (session IN (1, 2)),
+  rpe INTEGER CHECK (rpe BETWEEN 1 AND 10),
+  did_not_train INTEGER NOT NULL DEFAULT 0, -- N/A, as for players
+  logged_by TEXT,
+  logged_at TEXT NOT NULL DEFAULT (datetime('now')),
+  CHECK (rpe IS NOT NULL OR did_not_train = 1),
+  UNIQUE(keeper_name, session_date, session)
+);
+
+-- A coach submits a session once every player's RPE is in. Players see their
+-- score for a session only after it's submitted.
+CREATE TABLE IF NOT EXISTS rpe_session_submissions (
+  session_date TEXT NOT NULL,
+  session INTEGER NOT NULL CHECK (session IN (1, 2)),
+  submitted_by TEXT,
+  submitted_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (session_date, session)
+);
+
 -- Body-map selections for a check-in: one row per sore/bothered region.
 -- region ids match server/src/lib/bodyRegions.ts (e.g. 'quad_l').
 CREATE TABLE IF NOT EXISTS readiness_soreness (

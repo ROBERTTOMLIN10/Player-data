@@ -519,3 +519,87 @@ export interface FlaggedSession {
   top_speed_mph: number | null;
   flag: { kind: "glitch" | "spike"; reason: string };
 }
+
+// --- RPE (post-training rate of perceived exertion, 1–10) --------------------
+
+export interface RpeScore {
+  player_id: number;
+  session_date: string;
+  session: number; // 1, or 2 on a pre-season double day
+  rpe: number;
+}
+
+export interface RpeAverages {
+  week: number | null; // 7-day
+  month: number | null; // Last Month
+  weekSessions: number;
+  monthSessions: number;
+}
+
+export interface PlayerRpe {
+  today: string;
+  entries: RpeScore[]; // newest first
+  latest: RpeScore | null;
+  averages: RpeAverages;
+  flags?: string[]; // coaches only
+}
+
+export interface RpeSquadRow {
+  player_id: number;
+  name: string;
+  position: string | null;
+  jersey_number: string | null;
+}
+
+export interface RpeSessionPlayer extends RpeSquadRow {
+  rpe: number | null;
+  na: boolean; // N/A: didn't train (kept out of averages)
+  averages: RpeAverages;
+  readiness: { status: string; score: number } | null;
+  flags: string[];
+}
+
+export interface RpeSession {
+  date: string;
+  today: string;
+  session: number;
+  sessions: number[]; // sessions with scores on this date
+  game: { opponent: string } | null;
+  summary: { expected: number; logged: number; na: number; average: number | null }; // outfield only; logged includes N/A
+  players: RpeSessionPlayer[];
+  keeperSummary: { expected: number; logged: number; na: number; average: number | null };
+  keepers: RpeSessionKeeper[];
+  submitted: { submitted_at: string; submitted_by: string | null } | null; // players see scores once submitted
+}
+
+/** A roster goalkeeper (not a player in the app): logged and averaged separately. */
+export interface RpeSessionKeeper {
+  name: string;
+  jersey_number: string | null;
+  rpe: number | null;
+  na: boolean;
+  averages: RpeAverages;
+  flags: string[];
+}
+
+export interface RpeSessionSummary {
+  date: string;
+  session: number;
+  average: number | null; // outfield
+  logged: number; // outfield scores
+  keeperAverage: number | null;
+  keepersLogged: number;
+  na: number; // didn't train (players + keepers)
+  flagged: number;
+  submitted: boolean;
+}
+
+export interface RpeTrends {
+  today: string;
+  lastSession: string | null;
+  players: (RpeSquadRow & { last: RpeScore | null; averages: RpeAverages; flags: string[] })[];
+  keepers: { name: string; jersey_number: string | null; last: RpeScore | null; averages: RpeAverages; flags: string[] }[];
+  daily: { date: string; average: number | null; logged: number; keepers: number | null }[];
+  squad: RpeAverages; // outfield
+  keeperAverages: RpeAverages;
+}

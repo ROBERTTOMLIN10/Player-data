@@ -32,6 +32,7 @@ export function TrendChart<T extends Record<string, unknown>>({
   labelFor,
   logoFor,
   ticks,
+  yDomain,
 }: {
   data: T[];
   xKey: string;
@@ -45,6 +46,7 @@ export function TrendChart<T extends Record<string, unknown>>({
   labelFor?: (x: string) => string; // tooltip heading, e.g. "Sep 20 · Memphis"
   logoFor?: (x: string) => string | null | undefined; // opponent logo under each date
   ticks?: string[]; // x values to label (e.g. game days on a day-by-day chart); default: auto
+  yDomain?: [number, number]; // fixed y range (e.g. 0–10 for RPE); default: auto
 }) {
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -67,6 +69,8 @@ export function TrendChart<T extends Record<string, unknown>>({
           tickLine={false}
           axisLine={false}
           width={44}
+          domain={yDomain}
+          ticks={yDomain ? Array.from({ length: 6 }, (_, i) => yDomain[0] + ((yDomain[1] - yDomain[0]) / 5) * i) : undefined}
           tickFormatter={(v) => formatMetricValue(v, metric ? { ...metric, decimals: 0, unit: "" } : undefined)}
         />
         {referenceValue !== undefined && (

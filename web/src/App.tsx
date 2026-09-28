@@ -7,10 +7,10 @@ import CoachHomeView from "./pages/CoachHomeView";
 import HomeView from "./pages/HomeView";
 import NcaaView from "./pages/NcaaView";
 import TeamView from "./pages/TeamView";
-import PlayerView from "./pages/PlayerView";
-import CompareView from "./pages/CompareView";
+import PlayersTabView from "./pages/PlayersTabView";
 import AdminView from "./pages/AdminView";
 import ReadinessView from "./pages/ReadinessView";
+import RpeView from "./pages/RpeView";
 import LoginView from "./pages/LoginView";
 import ReadinessTabView from "./pages/player/ReadinessTabView";
 import MyGpsView from "./pages/player/MyGpsView";
@@ -48,6 +48,9 @@ function CoachApp({ me }: { me: Me }) {
           <NavLink to="/readiness" className={navLinkClass}>
             Readiness
           </NavLink>
+          <NavLink to="/rpe" className={navLinkClass}>
+            RPE
+          </NavLink>
           <NavLink to="/gps" className={navLinkClass}>
             GPS
           </NavLink>
@@ -56,9 +59,6 @@ function CoachApp({ me }: { me: Me }) {
           </NavLink>
           <NavLink to="/players" className={navLinkClass}>
             Players
-          </NavLink>
-          <NavLink to="/compare" className={navLinkClass}>
-            Compare
           </NavLink>
           <NavLink to="/data" className={navLinkClass}>
             Data
@@ -69,12 +69,13 @@ function CoachApp({ me }: { me: Me }) {
       <Routes>
         <Route path="/" element={<CoachHomeView />} />
         <Route path="/readiness" element={<ReadinessView />} />
+        <Route path="/rpe" element={<RpeView />} />
         <Route path="/gps" element={<TeamView />} />
         <Route path="/team-stats" element={<Navigate to="/?view=stats" replace />} />
         <Route path="/ncaa" element={<NcaaView />} />
-        <Route path="/players" element={<PlayerView />} />
-        <Route path="/players/:playerId" element={<PlayerView />} />
-        <Route path="/compare" element={<CompareView />} />
+        <Route path="/players" element={<PlayersTabView />} />
+        <Route path="/players/:playerId" element={<PlayersTabView />} />
+        <Route path="/compare" element={<Navigate to="/players?view=compare" replace />} />
         <Route path="/data" element={<AdminView />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
