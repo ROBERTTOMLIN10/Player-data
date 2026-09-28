@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { usePlayerDetail, usePlayerReadiness, usePlayers, useMetrics, useTeamFitness, useTeamSummary } from "../api/client";
+import { usePlayerDetail, usePlayerReadiness, usePlayerRpe, usePlayers, useMetrics, useTeamFitness, useTeamSummary } from "../api/client";
 import { GameByGameSection, SeasonStatsSection, SessionTable, type SeasonView } from "../components/SeasonStats";
 import { FitnessCard } from "../components/Fitness";
 import { Card, SectionHeading } from "../components/Card";
 import { TeamLogo } from "../components/TeamLogo";
 import { RangePicker, ReadinessHistory } from "../components/ReadinessHistory";
+import { RpeHistory } from "../components/RpeHistory";
 import { formatDate } from "../lib/format";
 import { positionGroup, ROSTER_SECTIONS } from "../lib/positions";
 
@@ -90,6 +91,8 @@ export default function PlayerView() {
       </div>
 
       <PlayerReadinessSection playerId={selectedId} />
+
+      <PlayerRpeSection playerId={selectedId} />
 
       {myFitness && fitness && <FitnessCard you={myFitness} thresholds={fitness.thresholds} asOf={fitness.asOf} coach />}
 
@@ -225,6 +228,29 @@ function PlayerReadinessSection({ playerId }: { playerId: number }) {
       </div>
       {data ? (
         <ReadinessHistory history={data} days={days} emptyText="No check-ins in this period." />
+      ) : (
+        <div className="py-8 text-center text-text-dim">Loading…</div>
+      )}
+    </section>
+  );
+}
+
+function PlayerRpeSection({ playerId }: { playerId: number }) {
+  const [days, setDays] = useState(30);
+  const { data } = usePlayerRpe(playerId, days);
+  return (
+    <section>
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <SectionHeading title="RPE" subtitle="How hard each training session felt (1 very easy – 10 maximal)" />
+        <RangePicker days={days} onChange={setDays} />
+      </div>
+      {data ? (
+        <div className="flex flex-col gap-3">
+          {data.flags && data.flags.length > 0 && (
+            <Card className="border-gold/40 text-sm text-gold">{data.flags.join(" · ")}</Card>
+          )}
+          <RpeHistory data={data} emptyText="No RPE scores in this period. Log them on the RPE tab after training." />
+        </div>
       ) : (
         <div className="py-8 text-center text-text-dim">Loading…</div>
       )}

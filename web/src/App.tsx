@@ -11,6 +11,7 @@ import PlayerView from "./pages/PlayerView";
 import CompareView from "./pages/CompareView";
 import AdminView from "./pages/AdminView";
 import ReadinessView from "./pages/ReadinessView";
+import RpeView from "./pages/RpeView";
 import LoginView from "./pages/LoginView";
 import ReadinessTabView from "./pages/player/ReadinessTabView";
 import MyGpsView from "./pages/player/MyGpsView";
@@ -48,6 +49,9 @@ function CoachApp({ me }: { me: Me }) {
           <NavLink to="/readiness" className={navLinkClass}>
             Readiness
           </NavLink>
+          <NavLink to="/rpe" className={navLinkClass}>
+            RPE
+          </NavLink>
           <NavLink to="/gps" className={navLinkClass}>
             GPS
           </NavLink>
@@ -69,6 +73,7 @@ function CoachApp({ me }: { me: Me }) {
       <Routes>
         <Route path="/" element={<CoachHomeView />} />
         <Route path="/readiness" element={<ReadinessView />} />
+        <Route path="/rpe" element={<RpeView />} />
         <Route path="/gps" element={<TeamView />} />
         <Route path="/team-stats" element={<Navigate to="/?view=stats" replace />} />
         <Route path="/ncaa" element={<NcaaView />} />

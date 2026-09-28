@@ -89,6 +89,31 @@ function squadFor(date: string | null) {
   };
 }
 
+// RPE logging sheets, kept in memory so taps in the preview stick (captured days as a base, other days empty).
+const rpeSheets = new Map<string, any>();
+function rpeSession(date: string, session: number) {
+  const id = `${date}#${session}`;
+  if (!rpeSheets.has(id)) {
+    const base = data[`/api/rpe/session?session=${session}&date=${date}`] ?? (date === TODAY ? data[`/api/rpe/session?session=${session}`] : null);
+    const today = data["/api/rpe/session?session=1"];
+    rpeSheets.set(
+      id,
+      clone(
+        base ?? {
+          ...today,
+          date,
+          session,
+          sessions: [],
+          game: null,
+          summary: { expected: today.players.length, logged: 0, average: null },
+          players: today.players.map((p: any) => ({ ...p, rpe: null, flags: [], readiness: null })),
+        },
+      ),
+    );
+  }
+  return rpeSheets.get(id);
+}
+
 function withMyEntry(history: any, decorate = false) {
   const h = clone(history);
   if (myEntry) {
@@ -169,6 +194,20 @@ function route(method: string, path: string, q: URLSearchParams, body: any): Res
     const id = Number(path.split("/").pop());
     const h = data[key] ?? { today: TODAY, entries: [] };
     return json(id === PLAYER_ID ? withMyEntry(h, true) : h);
+  }
+  if (path === "/api/rpe/session") return json(rpeSession(q.get("date") ?? TODAY, Number(q.get("session")) === 2 ? 2 : 1));
+  if (path === "/api/rpe/score" && method === "PUT") {
+    const sheet = rpeSession(body.date, body.session);
+    const row = sheet.players.find((p: any) => p.player_id === body.player_id);
+    if (row) row.rpe = body.rpe;
+    const logged = sheet.players.filter((p: any) => p.rpe !== null);
+    sheet.summary = {
+      ...sheet.summary,
+      logged: logged.length,
+      average: logged.length ? Math.round((logged.reduce((a: number, p: any) => a + p.rpe, 0) / logged.length) * 10) / 10 : null,
+    };
+    if (!sheet.sessions.includes(body.session) && logged.length) sheet.sessions = [...sheet.sessions, body.session].sort();
+    return json(body);
   }
   if (path === "/api/compare") return json(compare((q.get("playerIds") ?? "").split(",").map(Number)));
   if (path === "/api/admin/reminders") {

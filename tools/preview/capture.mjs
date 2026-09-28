@@ -26,6 +26,16 @@ for (const g of games) await get(coach, `/api/games/${g.id}`);
 const players = await get(coach, "/api/players");
 for (const p of players) { await get(coach, `/api/players/${p.id}`); for (const d of [14, 30, 90]) await get(coach, `/api/readiness/player/${p.id}?days=${d}`); }
 await get(coach, "/api/readiness/squad");
+// RPE
+const rpeToday = await get(coach, "/api/rpe/session?session=1");
+await get(coach, "/api/rpe/session?session=2");
+for (let i = 1; i <= 14; i++) {
+  const d = new Date(`${rpeToday.today}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - i);
+  await get(coach, `/api/rpe/session?session=1&date=${d.toISOString().slice(0, 10)}`);
+}
+await get(coach, "/api/rpe/trends");
+for (const p of rpeToday.players) for (const d of [14, 30, 90]) await get(coach, `/api/rpe/player/${p.player_id}?days=${d}`);
 const syncStatus = await get(coach, "/api/admin/sync-status");
 syncStatus.intervalMinutes = 30; // the test server runs with auto-sync effectively off; show the real default
 syncStatus.nextRunAt = null;
@@ -51,6 +61,7 @@ for (const g of games) await get(player, `/api/me/gps/${g.id}`);
 await get(player, "/api/me/readiness/today");
 for (const d of [14, 30, 90]) await get(player, `/api/me/readiness/history?days=${d}`);
 await get(player, "/api/me/push/config");
+for (const d of [14, 30, 90]) await get(player, `/api/me/rpe?days=${d}`);
 // Logos: swap each logo URL for a short token and keep one embedded copy of
 // each image (mock.ts swaps them back when serving), since the preview page
 // can't load images from other sites and repeating them would bloat it.

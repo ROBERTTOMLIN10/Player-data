@@ -8,6 +8,7 @@ import { getReminderSettings } from "../jobs/morningReminder.js";
 import { removeSubscription, saveSubscription, vapidPublicKey } from "../lib/push.js";
 import { gameOnDate, getCheckins, readinessScore, shiftDate, teamToday } from "../lib/readiness.js";
 import { getPlayerDetail } from "./players.js";
+import { playerRpe } from "./rpe.js";
 
 /**
  * Everything a signed-in player can see: their own profile/GPS/readiness, plus
@@ -169,6 +170,12 @@ meRouter.get("/readiness/history", (req, res) => {
   const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 365);
   const today = teamToday();
   res.json({ today, entries: getCheckins(playerId, shiftDate(today, -(days - 1)), today) });
+});
+
+// Their post-training RPE: latest score, 7-day and Last Month averages, history.
+meRouter.get("/rpe", (req, res) => {
+  const { flags: _coachOnly, ...mine } = playerRpe(req.user!.playerId!, Math.min(Math.max(Number(req.query.days) || 30, 1), 365));
+  res.json(mine);
 });
 
 // --- Morning reminder notifications ------------------------------------------

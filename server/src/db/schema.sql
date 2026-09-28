@@ -297,6 +297,23 @@ CREATE TABLE IF NOT EXISTS readiness_checkins (
 
 CREATE INDEX IF NOT EXISTS idx_readiness_checkins_date ON readiness_checkins(entry_date);
 
+-- Post-training RPE (rate of perceived exertion, 1 = very easy, 10 = maximal),
+-- logged by a coach asking each player after the session. One per player per
+-- session: session 1 normally, session 2 on pre-season double days. Logging
+-- again for the same session corrects the score.
+CREATE TABLE IF NOT EXISTS rpe_scores (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  session_date TEXT NOT NULL, -- YYYY-MM-DD, team local date
+  session INTEGER NOT NULL DEFAULT 1 CHECK (session IN (1, 2)),
+  rpe INTEGER NOT NULL CHECK (rpe BETWEEN 1 AND 10),
+  logged_by TEXT, -- coach email
+  logged_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(player_id, session_date, session)
+);
+
+CREATE INDEX IF NOT EXISTS idx_rpe_scores_date ON rpe_scores(session_date);
+
 -- Body-map selections for a check-in: one row per sore/bothered region.
 -- region ids match server/src/lib/bodyRegions.ts (e.g. 'quad_l').
 CREATE TABLE IF NOT EXISTS readiness_soreness (

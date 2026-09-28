@@ -26,4 +26,25 @@ for (const [i, p] of players.entries()) {
   const r = await req("/me/readiness/today", { method: "PUT", cookie: pc, body: { readiness_rating: rt, sleep_hours: h, sleep_quality: sq, energy: en, muscle_soreness: so, stress: st, mood: mo, notes: i === 2 ? "Might need to sit out of sprint work" : null, soreness: sore.map(([region, severity, note]) => ({ region, severity, note })) } });
   if (!r.res.ok) console.log("fail", r.data);
 }
+
+// RPE: a month of post-training scores (no games, no Sundays), today half logged.
+const { data: sheet } = await req("/rpe/session", { cookie: coach });
+const { data: schedule } = await req("/schedule", { cookie: coach });
+const gameDays = new Set(schedule.map((g) => g.game_date));
+const shift = (iso, n) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const noise = (a, b) => ((a * 7919 + b * 104729) % 5) - 2; // steady made-up spread, -2..2
+for (let back = 30; back >= 0; back--) {
+  const date = shift(sheet.today, -back);
+  if (gameDays.has(date) || new Date(`${date}T00:00:00Z`).getUTCDay() === 0) continue;
+  const dayAfterGame = gameDays.has(shift(date, -1));
+  const base = dayAfterGame ? 3 : 6;
+  for (const [i, p] of sheet.players.entries()) {
+    if (back === 0 && i % 2 === 1) continue; // today: half the squad still to log
+    let rpe = Math.min(10, Math.max(1, base + (back === 0 ? Math.sign(noise(p.player_id, back)) : noise(p.player_id, back))));
+    if (back === 0 && p.player_id === players[2]?.player_id) rpe = 8; // hard session on low readiness
+    if (back === 0 && i === 4) rpe = 10; // well above usual
+    await req("/rpe/score", { method: "PUT", cookie: coach, body: { player_id: p.player_id, date, session: 1, rpe } });
+  }
+}
+
 console.log(`p${players[0].player_id}@fau.edu`); // first seeded player = the preview's player

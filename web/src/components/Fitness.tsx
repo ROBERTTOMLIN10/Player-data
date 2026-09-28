@@ -1,9 +1,10 @@
 import { useNavigate } from "react-router-dom";
+import { windowLabel } from "../lib/windows";
 import { Card, SectionHeading } from "./Card";
 import type { FitnessStatus, FitnessWindow, GpsSession, PlayerFitness, TeamFitness } from "../types";
 
 /**
- * Fitness vs the match group: a player's GPS load over the last 7 / 28 days as
+ * Fitness vs the match group: a player's GPS load over the 7-day and Last Month windows as
  * a % of what the players getting minutes averaged in the same games. Load
  * from warm-up and fitness work (no minutes) counts too.
  */
@@ -51,7 +52,7 @@ export function SquadFitnessTable({ data }: { data: TeamFitness }) {
     <section>
       <SectionHeading
         title="Fitness vs Match Group"
-        subtitle={`Load over the last 7 and 28 days as a % of what players getting minutes averaged (to ${data.asOf}). Amber under ${data.thresholds.amber}%, red under ${data.thresholds.red}%.`}
+        subtitle={`Load over the 7-day and Last Month windows as a % of what players getting minutes averaged (to ${data.asOf}). Amber under ${data.thresholds.amber}%, red under ${data.thresholds.red}%.`}
       />
       <Card className="overflow-x-auto p-0">
         <table className="w-full min-w-[560px] text-sm tabular-nums">
@@ -61,7 +62,7 @@ export function SquadFitnessTable({ data }: { data: TeamFitness }) {
               <th className="px-4 py-3 font-medium">Games</th>
               {data.players[0].windows.map((w) => (
                 <th key={w.days} className="px-4 py-3 text-right font-medium">
-                  {w.days} days
+                  {windowLabel(w.days)}
                 </th>
               ))}
             </tr>
@@ -118,7 +119,7 @@ export function FitnessCard({ you, thresholds, asOf, title = "Fitness vs Match G
       <Card className="flex flex-wrap items-center gap-6">
         {you.windows.map((w) => (
           <div key={w.days} className="flex flex-col">
-            <span className="text-xs font-medium uppercase tracking-wide text-text-dim">Last {w.days} days</span>
+            <span className="text-xs font-medium uppercase tracking-wide text-text-dim">{windowLabel(w.days)}</span>
             <span className="text-3xl">
               <FitnessPct w={w} />
             </span>
