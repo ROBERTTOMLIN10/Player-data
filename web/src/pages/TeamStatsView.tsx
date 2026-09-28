@@ -104,7 +104,7 @@ export default function TeamStatsView() {
 
       {data.goalkeepers && data.goalkeepers.length > 0 && (
         <section>
-          <SectionHeading title="Goalkeeping" subtitle="From the box scores (keepers don't wear trackers)" />
+          <SectionHeading title="Goalkeeping" subtitle="Every keeper on the roster, from the box scores (keepers don't wear trackers)" />
           <Card className="overflow-x-auto p-0">
             <table className="w-full min-w-[560px] text-sm">
               <thead>
@@ -125,7 +125,10 @@ export default function TeamStatsView() {
                   const faced = k.saves + k.goals_allowed;
                   return (
                     <tr key={k.player_name} className="border-b border-border/60 last:border-0">
-                      <td className="px-4 py-3 font-medium">{k.player_name}</td>
+                      <td className="px-4 py-3 font-medium">
+                        {k.jersey_number && <span className="mr-2 text-xs font-normal text-text-dim">#{k.jersey_number}</span>}
+                        {k.player_name}
+                      </td>
                       <td className="px-4 py-3 text-text-dim">{k.games_played}</td>
                       <td className="px-4 py-3 text-text-dim">{k.games_started}</td>
                       <td className="px-4 py-3 text-text-dim">{k.minutes}</td>

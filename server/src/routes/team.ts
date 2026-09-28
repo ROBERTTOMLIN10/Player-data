@@ -98,21 +98,29 @@ teamRouter.get("/stats", (_req, res) => {
          UNION ALL
          SELECT NULL, player_name, 1, ${COLS.join(", ")}
          FROM goalkeeper_game_stats
+         UNION ALL
+         SELECT NULL, player_name, 1, ${COLS.map(() => "0").join(", ")}
+         FROM roster_goalkeepers
        )
        GROUP BY COALESCE(player_id, 'gk:' || player_name)
        ORDER BY points DESC, goals DESC, minutes DESC, player_name ASC`,
     )
     .all();
 
+  // Every keeper on the roster or in a box score, including ones yet to play.
+  const KEEPER_PLAYED = "CASE WHEN k.id IS NOT NULL AND (k.minutes IS NULL OR k.minutes > 0) THEN 1 ELSE 0 END";
   const goalkeepers = db
     .prepare(
-      `SELECT player_name,
-              SUM(${PLAYED}) AS games_played, SUM(started) AS games_started, ROUND(COALESCE(SUM(minutes), 0)) AS minutes,
-              COALESCE(SUM(saves), 0) AS saves, COALESCE(SUM(goals_allowed), 0) AS goals_allowed, SUM(shutout) AS shutouts
-       FROM goalkeeper_game_stats
-       GROUP BY player_name
-       HAVING SUM(${PLAYED}) > 0
-       ORDER BY minutes DESC, player_name ASC`,
+      `SELECT n.player_name, r.jersey_number,
+              SUM(${KEEPER_PLAYED}) AS games_played, COALESCE(SUM(k.started), 0) AS games_started,
+              ROUND(COALESCE(SUM(k.minutes), 0)) AS minutes,
+              COALESCE(SUM(k.saves), 0) AS saves, COALESCE(SUM(k.goals_allowed), 0) AS goals_allowed,
+              COALESCE(SUM(k.shutout), 0) AS shutouts
+       FROM (SELECT player_name FROM roster_goalkeepers UNION SELECT player_name FROM goalkeeper_game_stats) n
+       LEFT JOIN roster_goalkeepers r ON r.player_name = n.player_name
+       LEFT JOIN goalkeeper_game_stats k ON k.player_name = n.player_name
+       GROUP BY n.player_name
+       ORDER BY minutes DESC, CAST(r.jersey_number AS INTEGER) ASC, n.player_name ASC`,
     )
     .all();
 

@@ -205,6 +205,7 @@ export interface TeamStats {
 
 export interface TeamStatsGoalkeeper {
   player_name: string;
+  jersey_number: string | null;
   games_played: number;
   games_started: number;
   minutes: number;

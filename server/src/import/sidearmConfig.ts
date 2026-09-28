@@ -5,6 +5,7 @@
  */
 export const SIDEARM_BASE_URL = "https://fausports.com";
 export const SCHEDULE_PATH = "/sports/mens-soccer/schedule";
+export const ROSTER_PATH = "/sports/mens-soccer/roster";
 
 /** Matches how FAU's own team name appears in Sidearm's boxscore JSON (varies: "Fla. Atlantic", "Florida Atlantic", "FAU"). */
 export const FAU_TEAM_NAME_PATTERN = /\bfla\.?\s*atlantic\b|\bflorida atlantic\b|\bfau\b/i;

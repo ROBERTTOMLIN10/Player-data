@@ -207,6 +207,14 @@ CREATE TABLE IF NOT EXISTS goalkeeper_game_stats (
   UNIQUE(schedule_game_id, player_name)
 );
 
+-- Goalkeepers on this season's fausports.com roster, so Team Stats lists every
+-- keeper even before they've played. Replaced on each schedule sync.
+CREATE TABLE IF NOT EXISTS roster_goalkeepers (
+  player_name TEXT PRIMARY KEY,
+  jersey_number TEXT,
+  academic_year TEXT
+);
+
 -- Team-level totals for both sides of a completed schedule game (FAU + opponent),
 -- for the team stats page's game-by-game box scores.
 CREATE TABLE IF NOT EXISTS game_team_totals (
