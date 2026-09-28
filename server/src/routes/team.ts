@@ -79,24 +79,44 @@ teamRouter.get("/stats", (_req, res) => {
     )
     .all();
 
-  // Every player on the roster, even without a box score line yet (zeros).
+  // Every player on the roster, even without a box score line yet (zeros), plus
+  // goalkeepers from the box scores (they wear no tracker, so they aren't players in the app).
+  const PLAYED = "CASE WHEN minutes IS NULL OR minutes > 0 THEN 1 ELSE 0 END";
+  const COLS = ["minutes", "started", "goals", "assists", "points", "shots", "shots_on_goal", "yellow_cards", "red_cards"];
   const topScorers = db
     .prepare(
-      `SELECT p.id AS player_id, p.canonical_name AS player_name,
-              COALESCE(SUM(CASE WHEN pgs.minutes IS NULL OR pgs.minutes > 0 THEN 1 ELSE 0 END), 0) AS games_played,
-              COALESCE(SUM(pgs.started), 0) AS games_started,
-              ROUND(COALESCE(SUM(pgs.minutes), 0)) AS minutes,
-              COALESCE(SUM(pgs.goals), 0) AS goals, COALESCE(SUM(pgs.assists), 0) AS assists, COALESCE(SUM(pgs.points), 0) AS points,
-              COALESCE(SUM(pgs.shots), 0) AS shots, COALESCE(SUM(pgs.shots_on_goal), 0) AS shots_on_goal,
-              COALESCE(SUM(pgs.yellow_cards), 0) AS yellow_cards, COALESCE(SUM(pgs.red_cards), 0) AS red_cards
-       FROM players p
-       LEFT JOIN player_game_stats pgs ON pgs.player_id = p.id
-       GROUP BY p.id
-       ORDER BY points DESC, goals DESC, minutes DESC, p.canonical_name ASC`,
+      `SELECT player_id, player_name, is_goalkeeper,
+              COALESCE(SUM(${PLAYED}), 0) AS games_played,
+              COALESCE(SUM(started), 0) AS games_started,
+              ROUND(COALESCE(SUM(minutes), 0)) AS minutes,
+              COALESCE(SUM(goals), 0) AS goals, COALESCE(SUM(assists), 0) AS assists, COALESCE(SUM(points), 0) AS points,
+              COALESCE(SUM(shots), 0) AS shots, COALESCE(SUM(shots_on_goal), 0) AS shots_on_goal,
+              COALESCE(SUM(yellow_cards), 0) AS yellow_cards, COALESCE(SUM(red_cards), 0) AS red_cards
+       FROM (
+         SELECT p.id AS player_id, p.canonical_name AS player_name, 0 AS is_goalkeeper, ${COLS.map((c) => `pgs.${c}`).join(", ")}
+         FROM players p LEFT JOIN player_game_stats pgs ON pgs.player_id = p.id
+         UNION ALL
+         SELECT NULL, player_name, 1, ${COLS.join(", ")}
+         FROM goalkeeper_game_stats
+       )
+       GROUP BY COALESCE(player_id, 'gk:' || player_name)
+       ORDER BY points DESC, goals DESC, minutes DESC, player_name ASC`,
     )
     .all();
 
-  res.json({ seasonTotals, record, gameLog, topScorers });
+  const goalkeepers = db
+    .prepare(
+      `SELECT player_name,
+              SUM(${PLAYED}) AS games_played, SUM(started) AS games_started, ROUND(COALESCE(SUM(minutes), 0)) AS minutes,
+              COALESCE(SUM(saves), 0) AS saves, COALESCE(SUM(goals_allowed), 0) AS goals_allowed, SUM(shutout) AS shutouts
+       FROM goalkeeper_game_stats
+       GROUP BY player_name
+       HAVING SUM(${PLAYED}) > 0
+       ORDER BY minutes DESC, player_name ASC`,
+    )
+    .all();
+
+  res.json({ seasonTotals, record, gameLog, topScorers, goalkeepers });
 });
 
 /** Coaches: every player's load vs the players getting minutes (see lib/fitness.ts). */

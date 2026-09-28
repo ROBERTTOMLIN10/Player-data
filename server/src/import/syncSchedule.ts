@@ -120,6 +120,18 @@ export async function syncSchedule(): Promise<SyncScheduleSummary> {
       raw_json = excluded.raw_json
   `);
 
+  // Keepers who aren't players in the app (no tracker, so no GPS file): Team Stats only.
+  const keeperCols = [
+    "minutes", "started", "goals", "assists", "points", "shots", "shots_on_goal",
+    "yellow_cards", "red_cards", "saves", "goals_allowed", "shutout", "source_url",
+  ];
+  const upsertKeeperStats = db.prepare(`
+    INSERT INTO goalkeeper_game_stats (schedule_game_id, player_name, ${keeperCols.join(", ")})
+    VALUES (@schedule_game_id, @player_name, ${keeperCols.map((c) => `@${c}`).join(", ")})
+    ON CONFLICT(schedule_game_id, player_name) DO UPDATE SET
+      ${keeperCols.map((c) => `${c} = excluded.${c}`).join(", ")}
+  `);
+
   const upsertTeamTotals = db.prepare(`
     INSERT INTO game_team_totals (
       schedule_game_id, side, team_name, goals, assists, points, shots, shots_on_goal,
@@ -168,6 +180,26 @@ export async function syncSchedule(): Promise<SyncScheduleSummary> {
 
         const match = matchSidearmPlayer(db, row.firstLast);
         if (!match.playerId) {
+          if (row.isGoalie || row.position?.toLowerCase() === "gk") {
+            upsertKeeperStats.run({
+              schedule_game_id: scheduleGameId,
+              player_name: row.firstLast,
+              minutes: row.minutes,
+              started: row.started ? 1 : 0,
+              goals: row.goals,
+              assists: row.assists,
+              points: row.points,
+              shots: row.shots,
+              shots_on_goal: row.shotsOnGoal,
+              yellow_cards: row.yellowCards,
+              red_cards: row.redCards,
+              saves: row.saves,
+              goals_allowed: row.goalsAllowed,
+              shutout: row.shutout ? 1 : 0,
+              source_url: sg.boxscoreUrl,
+            });
+            continue;
+          }
           unmatchedPlayers.push(`  [${sg.gameDate} vs ${sg.opponent}] "${row.rawName}": ${match.note}`);
           continue;
         }
