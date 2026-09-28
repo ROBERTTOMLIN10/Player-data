@@ -76,14 +76,23 @@ meRouter.get("/gps/:gameId", (req, res) => {
 
   const cols = CORE_METRIC_KEYS.map((k) => `s.${k}`).join(", ");
   const rows = db
-    .prepare(`SELECT s.player_id, ${cols}, ${GLITCH_SQL} FROM gps_sessions s WHERE s.game_id = ? ORDER BY s.load DESC`)
+    .prepare(
+      `SELECT s.player_id, ${cols}, mp.minutes AS minutes, ${GLITCH_SQL}
+       FROM gps_sessions s
+       LEFT JOIN minutes_played mp ON mp.game_id = s.game_id AND mp.player_id = s.player_id
+       WHERE s.game_id = ? ORDER BY s.load DESC`,
+    )
     .all(gameId) as Array<Record<string, number | null> & { player_id: number }>;
 
   const strip = ({ player_id: _id, ...metrics }: Record<string, number | null> & { player_id: number }) => metrics;
   const mine = rows.find((r) => r.player_id === playerId);
   // Teammates' glitched sessions would distort the chart, so they're left out.
   const others = rows.filter((r) => r.player_id !== playerId && !r.glitch).map(strip);
-  const teamAverages = db.prepare(`SELECT ${avgSelects} FROM gps_sessions_valid WHERE game_id = ?`).get(gameId);
+  const teamAverages = db.prepare(`SELECT ${avgSelects} FROM gps_sessions_valid WHERE game_id = ?`).get(gameId) as Record<string, number | null>;
+  // Minutes: averaged over the players who got on the pitch.
+  teamAverages.avg_minutes = (
+    db.prepare("SELECT AVG(minutes) AS m FROM minutes_played WHERE game_id = ? AND minutes > 0").get(gameId) as { m: number | null }
+  ).m;
 
   res.json({ game, you: mine ? strip(mine) : null, others, teamAverages });
 });

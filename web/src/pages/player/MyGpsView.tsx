@@ -5,7 +5,7 @@ import { FitnessCard } from "../../components/Fitness";
 import { TeamLogo } from "../../components/TeamLogo";
 import { useOpponentLogos } from "../../components/DateLogoTick";
 import { Card, SectionHeading } from "../../components/Card";
-import { GameByGameSection, SeasonStatsSection, SessionTable, type SeasonView } from "../../components/SeasonStats";
+import { GameByGameSection, MINUTES_METRIC, SeasonStatsSection, SessionTable, type SeasonView } from "../../components/SeasonStats";
 import { formatDate, formatMetricValue } from "../../lib/format";
 import type { MetricDef, MyProfile } from "../../types";
 
@@ -22,8 +22,10 @@ export default function MyGpsView() {
     () => new Map((profile?.teamTrend ?? []).map((t) => [t.game_id, t as Record<string, unknown>])),
     [profile],
   );
-  // The game breakdown compares GPS stats only.
-  const breakdownMetric = metrics?.find((m) => m.key === metricKey) ?? metrics?.find((m) => m.key === "load");
+  // The game breakdown: minutes plus every GPS stat, each with you vs the team.
+  const breakdownMetrics = useMemo(() => [MINUTES_METRIC, ...(metrics ?? [])], [metrics]);
+  const [breakdownKey, setBreakdownKey] = useState("load");
+  const breakdownMetric = breakdownMetrics.find((m) => m.key === breakdownKey) ?? breakdownMetrics.find((m) => m.key === "load");
 
   if (isLoading || !profile) return <div className="py-20 text-center text-text-dim">Loading your GPS…</div>;
 
@@ -105,7 +107,24 @@ export default function MyGpsView() {
           </select>
           </div>
         </div>
-        <Card>
+        <Card className="flex flex-col gap-3">
+          <div className="scrollbar-thin -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1" role="tablist" aria-label="Stat for the game breakdown">
+            {breakdownMetrics.map((m) => (
+              <button
+                key={m.key}
+                role="tab"
+                aria-selected={m.key === breakdownMetric?.key}
+                onClick={() => setBreakdownKey(m.key)}
+                className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                  m.key === breakdownMetric?.key
+                    ? "border-owl-red bg-owl-red text-white"
+                    : "border-border text-text-dim hover:border-text-dim hover:text-text"
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
           <GameDistribution gameId={selectedGameId} metric={breakdownMetric} />
         </Card>
       </section>
@@ -166,6 +185,8 @@ function GameDistribution({ gameId, metric }: { gameId: number | null; metric?: 
     ...(data.you ? [{ value: data.you[metric.key], you: true }] : []),
   ]
     .filter((r): r is { value: number; you: boolean } => r.value !== null && r.value !== undefined)
+    // Minutes: only players who got on the pitch (you're kept either way).
+    .filter((r) => metric.key !== "minutes" || r.value > 0 || r.you)
     .sort((a, b) => b.value - a.value)
     .map((r, i) => ({ ...r, slot: i + 1 }));
   const yourRank = rows.find((r) => r.you)?.slot;

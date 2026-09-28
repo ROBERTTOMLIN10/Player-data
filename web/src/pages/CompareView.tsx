@@ -17,7 +17,7 @@ const CHART_TYPES: { key: ChartType; label: string }[] = [
   { key: "total", label: "Running total" },
 ];
 // Stats that add up across games (a running total of top speed would mean nothing).
-const ADDITIVE = new Set(["load", "distance_mi", "active_time_min", "sprints_count", "sprints_distance_yd", "sprints_volume", "explosiveness_count"]);
+const ADDITIVE = new Set(["load", "distance_mi", "sprints_count", "sprints_distance_yd", "sprints_volume", "explosiveness_count"]);
 const SEASON_TABS: { key: SeasonView; label: string }[] = [
   { key: "avg", label: "Averages" },
   { key: "high", label: "Highs" },
