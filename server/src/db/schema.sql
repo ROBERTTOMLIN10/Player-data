@@ -314,6 +314,20 @@ CREATE TABLE IF NOT EXISTS rpe_scores (
 
 CREATE INDEX IF NOT EXISTS idx_rpe_scores_date ON rpe_scores(session_date);
 
+-- RPE for goalkeepers on the roster who aren't players in the app (they wear
+-- no tracker), keyed by roster name. Kept apart so keeper scores never mix
+-- into the outfield squad's averages.
+CREATE TABLE IF NOT EXISTS keeper_rpe_scores (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  keeper_name TEXT NOT NULL,
+  session_date TEXT NOT NULL,
+  session INTEGER NOT NULL DEFAULT 1 CHECK (session IN (1, 2)),
+  rpe INTEGER NOT NULL CHECK (rpe BETWEEN 1 AND 10),
+  logged_by TEXT,
+  logged_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(keeper_name, session_date, session)
+);
+
 -- Body-map selections for a check-in: one row per sore/bothered region.
 -- region ids match server/src/lib/bodyRegions.ts (e.g. 'quad_l').
 CREATE TABLE IF NOT EXISTS readiness_soreness (

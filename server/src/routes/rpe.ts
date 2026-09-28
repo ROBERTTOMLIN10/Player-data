@@ -1,7 +1,17 @@
 import { Router } from "express";
 import { z } from "zod";
 import { getDb } from "../db/connection.js";
-import { averagesFor, planningFlags, readinessStatusOn, scoresFor, type RpeScore } from "../lib/rpe.js";
+import {
+  averagesFor,
+  keeperScoresFor,
+  planningFlags,
+  readinessStatusOn,
+  rosterKeepers,
+  scoresFor,
+  type KeeperRpeScore,
+  type RpeEntry,
+  type RpeScore,
+} from "../lib/rpe.js";
 import { gameOnDate, isIsoDate, shiftDate, teamToday } from "../lib/readiness.js";
 import { POSITION_SUBQUERY } from "./players.js";
 
@@ -31,6 +41,18 @@ function squad(): SquadRow[] {
 
 const sessionOf = (v: unknown) => (Number(v) === 2 ? 2 : 1);
 
+const averageOf = (list: number[]) => (list.length ? Math.round((list.reduce((a, b) => a + b, 0) / list.length) * 10) / 10 : null);
+
+function groupBy<T, K>(list: T[], key: (x: T) => K): Map<K, T[]> {
+  const out = new Map<K, T[]>();
+  for (const x of list) out.set(key(x), [...(out.get(key(x)) ?? []), x]);
+  return out;
+}
+
+/** Scores up to and including this session (so flags for a past session only use what was known then). */
+const upTo = <T extends RpeEntry>(list: T[], date: string, session: number) =>
+  list.filter((s) => s.session_date < date || (s.session_date === date && s.session <= session));
+
 // One session's logging sheet: every player, their score (or not yet), averages and planning flags.
 rpeRouter.get("/session", (req, res) => {
   const today = teamToday();
@@ -57,8 +79,22 @@ rpeRouter.get("/session", (req, res) => {
     };
   });
   const logged = rows.filter((r) => r.rpe !== null);
+
+  // Goalkeepers: logged the same way, averaged on their own.
+  const keeperHistory = groupBy(keeperScoresFor(shiftDate(date, -60), date), (s) => s.keeper_name);
+  const keepers = rosterKeepers().map((k) => {
+    const mine = upTo(keeperHistory.get(k.name) ?? [], date, session);
+    const score = mine.find((s) => s.session_date === date && s.session === session) ?? null;
+    return { ...k, rpe: score?.rpe ?? null, averages: averagesFor(mine, date), flags: planningFlags(score, mine, null) };
+  });
+  const keepersLogged = keepers.filter((k) => k.rpe !== null);
+
   const sessions = (
-    getDb().prepare("SELECT DISTINCT session FROM rpe_scores WHERE session_date = ? ORDER BY session").all(date) as { session: number }[]
+    getDb()
+      .prepare(
+        `SELECT session FROM rpe_scores WHERE session_date = ? UNION SELECT session FROM keeper_rpe_scores WHERE session_date = ? ORDER BY session`,
+      )
+      .all(date, date) as { session: number }[]
   ).map((s) => s.session);
   res.json({
     date,
@@ -66,17 +102,16 @@ rpeRouter.get("/session", (req, res) => {
     session,
     sessions,
     game: gameOnDate(date),
-    summary: {
-      expected: rows.length,
-      logged: logged.length,
-      average: logged.length ? Math.round((logged.reduce((a, r) => a + r.rpe!, 0) / logged.length) * 10) / 10 : null,
-    },
+    summary: { expected: rows.length, logged: logged.length, average: averageOf(logged.map((r) => r.rpe!)) },
     players: rows,
+    keeperSummary: { expected: keepers.length, logged: keepersLogged.length, average: averageOf(keepersLogged.map((k) => k.rpe!)) },
+    keepers,
   });
 });
 
 const scoreInput = z.object({
-  player_id: z.number().int(),
+  player_id: z.number().int().optional(),
+  keeper_name: z.string().min(1).optional(), // a roster goalkeeper who isn't a player in the app
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   session: z.union([z.literal(1), z.literal(2)]).default(1),
   rpe: z.number().int().min(1).max(10).nullable(), // null clears it
@@ -86,10 +121,23 @@ const scoreInput = z.object({
 rpeRouter.put("/score", (req, res) => {
   const parsed = scoreInput.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "RPE must be a whole number from 1 to 10." });
-  const { player_id, date, session, rpe } = parsed.data;
+  const { player_id, keeper_name, date, session, rpe } = parsed.data;
   if (date > teamToday()) return res.status(400).json({ error: "Can't log RPE for a future session." });
   const db = getDb();
-  if (!db.prepare("SELECT 1 FROM players WHERE id = ?").get(player_id)) return res.status(404).json({ error: "Player not found." });
+  if (keeper_name !== undefined) {
+    if (!rosterKeepers().some((k) => k.name === keeper_name)) return res.status(404).json({ error: "Goalkeeper not found." });
+    if (rpe === null) {
+      db.prepare("DELETE FROM keeper_rpe_scores WHERE keeper_name = ? AND session_date = ? AND session = ?").run(keeper_name, date, session);
+    } else {
+      db.prepare(
+        `INSERT INTO keeper_rpe_scores (keeper_name, session_date, session, rpe, logged_by) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(keeper_name, session_date, session) DO UPDATE SET rpe = excluded.rpe, logged_by = excluded.logged_by, logged_at = datetime('now')`,
+      ).run(keeper_name, date, session, rpe, req.user?.email ?? null);
+    }
+    return res.json({ keeper_name, date, session, rpe });
+  }
+  if (player_id === undefined || !db.prepare("SELECT 1 FROM players WHERE id = ?").get(player_id))
+    return res.status(404).json({ error: "Player not found." });
   if (rpe === null) {
     db.prepare("DELETE FROM rpe_scores WHERE player_id = ? AND session_date = ? AND session = ?").run(player_id, date, session);
   } else {
@@ -122,14 +170,35 @@ rpeRouter.get("/trends", (_req, res) => {
     };
   });
 
-  const byDay = new Map<string, number[]>();
-  for (const s of history.filter((s) => s.session_date > shiftDate(today, -28)))
-    byDay.set(s.session_date, [...(byDay.get(s.session_date) ?? []), s.rpe]);
-  const daily = [...byDay]
-    .map(([date, list]) => ({ date, average: Math.round((list.reduce((a, b) => a + b, 0) / list.length) * 10) / 10, logged: list.length }))
-    .sort((a, b) => a.date.localeCompare(b.date));
+  // Goalkeepers, on their own.
+  const keeperHistory: KeeperRpeScore[] = keeperScoresFor(shiftDate(today, -60), today);
+  const byKeeper = groupBy(keeperHistory, (s) => s.keeper_name);
+  const keepers = rosterKeepers().map((k) => {
+    const mine = byKeeper.get(k.name) ?? [];
+    const last = mine[0] ?? null;
+    return { ...k, last, averages: averagesFor(mine, today), flags: last ? planningFlags(last, mine, null) : [] };
+  });
 
-  res.json({ today, lastSession: lastDate, players: rows, daily, squad: averagesFor(history, today) });
+  // Daily averages over the last month: outfield squad, and keepers as their own line.
+  const recent = (list: RpeEntry[]) => groupBy(list.filter((s) => s.session_date > shiftDate(today, -28)), (s) => s.session_date);
+  const outfieldDays = recent(history);
+  const keeperDays = recent(keeperHistory);
+  const daily = [...new Set([...outfieldDays.keys(), ...keeperDays.keys()])].sort().map((date) => ({
+    date,
+    average: averageOf((outfieldDays.get(date) ?? []).map((s) => s.rpe)),
+    logged: (outfieldDays.get(date) ?? []).length,
+    keepers: averageOf((keeperDays.get(date) ?? []).map((s) => s.rpe)),
+  }));
+
+  res.json({
+    today,
+    lastSession: lastDate,
+    players: rows,
+    keepers,
+    daily,
+    squad: averagesFor(history, today),
+    keeperAverages: averagesFor(keeperHistory, today),
+  });
 });
 
 /** One player's scores over the last `days` days, with averages and flags (shared with the player's own view). */

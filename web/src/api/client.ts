@@ -144,7 +144,7 @@ export function useRpeSession(date: string | null, session: number) {
   });
 }
 
-export function saveRpe(input: { player_id: number; date: string; session: number; rpe: number | null }) {
+export function saveRpe(input: { player_id?: number; keeper_name?: string; date: string; session: number; rpe: number | null }) {
   return sendJson<typeof input>("/api/rpe/score", "PUT", input);
 }
 

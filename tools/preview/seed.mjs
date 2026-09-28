@@ -45,6 +45,11 @@ for (let back = 30; back >= 0; back--) {
     if (back === 0 && i === 4) rpe = 10; // well above usual
     await req("/rpe/score", { method: "PUT", cookie: coach, body: { player_id: p.player_id, date, session: 1, rpe } });
   }
+  for (const [i, k] of sheet.keepers.entries()) {
+    if (back === 0 && i === 1) continue; // one keeper still to log today
+    const rpe = Math.min(10, Math.max(1, base - 1 + noise(i + 3, back)));
+    await req("/rpe/score", { method: "PUT", cookie: coach, body: { keeper_name: k.name, date, session: 1, rpe } });
+  }
 }
 
 console.log(`p${players[0].player_id}@fau.edu`); // first seeded player = the preview's player

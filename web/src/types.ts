@@ -564,14 +564,27 @@ export interface RpeSession {
   session: number;
   sessions: number[]; // sessions with scores on this date
   game: { opponent: string } | null;
-  summary: { expected: number; logged: number; average: number | null };
+  summary: { expected: number; logged: number; average: number | null }; // outfield only
   players: RpeSessionPlayer[];
+  keeperSummary: { expected: number; logged: number; average: number | null };
+  keepers: RpeSessionKeeper[];
+}
+
+/** A roster goalkeeper (not a player in the app): logged and averaged separately. */
+export interface RpeSessionKeeper {
+  name: string;
+  jersey_number: string | null;
+  rpe: number | null;
+  averages: RpeAverages;
+  flags: string[];
 }
 
 export interface RpeTrends {
   today: string;
   lastSession: string | null;
   players: (RpeSquadRow & { last: RpeScore | null; averages: RpeAverages; flags: string[] })[];
-  daily: { date: string; average: number; logged: number }[];
-  squad: RpeAverages;
+  keepers: { name: string; jersey_number: string | null; last: RpeScore | null; averages: RpeAverages; flags: string[] }[];
+  daily: { date: string; average: number | null; logged: number; keepers: number | null }[];
+  squad: RpeAverages; // outfield
+  keeperAverages: RpeAverages;
 }
