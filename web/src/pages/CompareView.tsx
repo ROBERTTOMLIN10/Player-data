@@ -375,7 +375,7 @@ export default function CompareView() {
                         tickLine={false}
                         axisLine={false}
                         width={44}
-                        tickFormatter={(v) => formatMetricValue(v, selectedMetric ? { ...selectedMetric, decimals: 0 } : undefined)}
+                        tickFormatter={(v) => formatMetricValue(v, selectedMetric ? { ...selectedMetric, decimals: 0, unit: "" } : undefined)}
                       />
                     </>
                   )}
