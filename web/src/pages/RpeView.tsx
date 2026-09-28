@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { saveRpe, submitRpeSession, useRpeSession, useRpeTrends } from "../api/client";
+import { saveRpe, submitRpeSession, useRpeSession, useRpeSessions, useRpeTrends } from "../api/client";
 import { Card, SectionHeading } from "../components/Card";
 import { RpePill, sessionLabel } from "../components/RpeHistory";
 import { Segmented } from "../components/SeasonStats";
@@ -16,13 +16,17 @@ type Target = { player_id: number } | { keeper_name: string };
 const isTarget = (row: RpeSessionPlayer | RpeSessionKeeper, t: Target) =>
   "player_id" in t ? "player_id" in row && row.player_id === t.player_id : !("player_id" in row) && row.name === t.keeper_name;
 
-const averageOf = (list: { rpe: number | null }[]) => {
-  const logged = list.filter((x) => x.rpe !== null);
+/** Logged counts N/A (they've been asked); the average only uses scores. */
+const averageOf = (list: { rpe: number | null; na: boolean }[]) => {
+  const scored = list.filter((x) => x.rpe !== null);
   return {
-    logged: logged.length,
-    average: logged.length ? Math.round((logged.reduce((a, x) => a + x.rpe!, 0) / logged.length) * 10) / 10 : null,
+    logged: scored.length + list.filter((x) => x.na).length,
+    na: list.filter((x) => x.na).length,
+    average: scored.length ? Math.round((scored.reduce((a, x) => a + x.rpe!, 0) / scored.length) * 10) / 10 : null,
   };
 };
+
+type LogValue = number | "na" | null;
 
 type View = "log" | "trends";
 const VIEWS: { key: View; label: string }[] = [
@@ -59,9 +63,16 @@ export default function RpeView() {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex justify-center">
-        <Segmented value={view} options={VIEWS} onChange={(v) => set({ view: v === "log" ? null : v })} label="RPE" />
+        <Segmented value={view} options={VIEWS} onChange={(v) => set({ view: v === "log" ? null : v, sd: null, s: null })} label="RPE" />
       </div>
-      {view === "trends" ? <Trends /> : <LogSession date={params.get("date")} session={params.get("session") === "2" ? 2 : 1} set={set} />}
+      {view === "trends" ? (
+        <Trends
+          open={params.get("sd") ? { date: params.get("sd")!, session: params.get("s") === "2" ? 2 : 1 } : null}
+          onOpen={(x) => set({ sd: x?.date ?? null, s: x && x.session === 2 ? "2" : null })}
+        />
+      ) : (
+        <LogSession date={params.get("date")} session={params.get("session") === "2" ? 2 : 1} set={set} />
+      )}
     </div>
   );
 }
@@ -75,8 +86,8 @@ function LogSession({ date, session, set }: { date: string | null; session: numb
   const [submitting, setSubmitting] = useState(false);
 
   // Alphabetical by first name (names are stored first name first), keepers in their own list.
-  const byName = <T extends { name: string; rpe: number | null }>(list: T[]) =>
-    list.filter((p) => filter === "all" || p.rpe === null).sort((a, b) => a.name.localeCompare(b.name));
+  const byName = <T extends { name: string; rpe: number | null; na: boolean }>(list: T[]) =>
+    list.filter((p) => filter === "all" || (p.rpe === null && !p.na)).sort((a, b) => a.name.localeCompare(b.name));
   const players = byName(data?.players ?? []);
   const keepers = byName(data?.keepers ?? []);
 
@@ -95,6 +106,7 @@ function LogSession({ date, session, set }: { date: string | null; session: numb
     try {
       await submitRpeSession(data!.date, session);
       await queryClient.invalidateQueries({ queryKey: ["rpeSession"] });
+      queryClient.invalidateQueries({ queryKey: ["rpeSessions"] });
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -102,14 +114,16 @@ function LogSession({ date, session, set }: { date: string | null; session: numb
     }
   }
 
-  async function log(name: string, target: Target, rpe: number | null) {
+  async function log(name: string, target: Target, value: LogValue) {
+    const rpe = typeof value === "number" ? value : null;
+    const na = value === "na";
     setError(null);
     const previous = queryClient.getQueryData<RpeSession>(key);
     // Show it straight away; the server's averages and flags follow on refetch.
     queryClient.setQueryData<RpeSession>(key, (old) => {
       if (!old) return old;
-      const players = old.players.map((x) => (isTarget(x, target) ? { ...x, rpe } : x));
-      const keepers = old.keepers.map((x) => (isTarget(x, target) ? { ...x, rpe } : x));
+      const players = old.players.map((x) => (isTarget(x, target) ? { ...x, rpe, na } : x));
+      const keepers = old.keepers.map((x) => (isTarget(x, target) ? { ...x, rpe, na } : x));
       return {
         ...old,
         players,
@@ -119,7 +133,8 @@ function LogSession({ date, session, set }: { date: string | null; session: numb
       };
     });
     try {
-      await saveRpe({ ...target, date: data!.date, session, rpe });
+      await saveRpe({ ...target, date: data!.date, session, rpe: value });
+      queryClient.invalidateQueries({ queryKey: ["rpeSessions"] });
       queryClient.invalidateQueries({ queryKey: ["rpeSession"] });
       queryClient.invalidateQueries({ queryKey: ["rpeTrends"] });
       if ("player_id" in target) queryClient.invalidateQueries({ queryKey: ["playerRpe", target.player_id] });
@@ -245,7 +260,7 @@ function LogSession({ date, session, set }: { date: string | null; session: numb
         {data.submitted ? (
           <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
             <span className="text-teal">
-              ✓ Session {session} submitted {submittedTime(data.submitted.submitted_at)} · players can see their scores
+              ✓ {session === 2 ? "Session 2" : "Session"} submitted {submittedTime(data.submitted.submitted_at)} · players can see their scores
             </span>
             {remaining === 0 && (
               <button onClick={submit} disabled={submitting} className="text-xs text-text-dim hover:text-text">
@@ -264,7 +279,7 @@ function LogSession({ date, session, set }: { date: string | null; session: numb
               disabled={remaining > 0 || submitting}
               className="shrink-0 rounded-md bg-owl-red px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-owl-red-light disabled:cursor-not-allowed disabled:bg-surface-raised disabled:text-text-dim"
             >
-              {submitting ? "Submitting…" : `Submit session ${session}`}
+              {submitting ? "Submitting…" : session === 2 ? "Submit session 2" : "Submit session"}
             </button>
           </div>
         )}
@@ -282,7 +297,7 @@ function submittedTime(sqlUtc: string) {
 
 const bandHex = (avg: number | null) => (avg ? RPE_STYLE[rpeBand(Math.round(avg))].hex : undefined);
 
-function PlayerRow({ p, onLog }: { p: RpeSessionPlayer | RpeSessionKeeper; onLog: (rpe: number | null) => void }) {
+function PlayerRow({ p, onLog }: { p: RpeSessionPlayer | RpeSessionKeeper; onLog: (value: LogValue) => void }) {
   const status = "readiness" in p && p.readiness ? p.readiness : null;
   const readiness = status ? STATUS_STYLE[status.status as ReadinessStatus] : null;
   return (
@@ -301,11 +316,17 @@ function PlayerRow({ p, onLog }: { p: RpeSessionPlayer | RpeSessionKeeper; onLog
           )}
         </div>
         <div className="text-xs text-text-dim">
-          {p.rpe !== null ? <span style={{ color: RPE_STYLE[rpeBand(p.rpe)].hex }}>{rpeLabel(p.rpe)}</span> : "Not logged"}
+          {p.rpe !== null ? (
+            <span style={{ color: RPE_STYLE[rpeBand(p.rpe)].hex }}>{rpeLabel(p.rpe)}</span>
+          ) : p.na ? (
+            <span className="text-text">Didn't train</span>
+          ) : (
+            "Not logged"
+          )}
           {" · "}7-day {formatRpe(p.averages.week)} · Last Month {formatRpe(p.averages.month)}
         </div>
       </div>
-      <div className="grid flex-1 grid-cols-10 gap-1" role="radiogroup" aria-label={`${p.name}'s RPE`}>
+      <div className="grid flex-1 grid-cols-11 gap-1" role="radiogroup" aria-label={`${p.name}'s RPE`}>
         {RPE_SCALE.map(({ value, label }) => {
           const on = p.rpe === value;
           return (
@@ -323,6 +344,17 @@ function PlayerRow({ p, onLog }: { p: RpeSessionPlayer | RpeSessionKeeper; onLog
             </button>
           );
         })}
+        <button
+          role="radio"
+          aria-checked={p.na}
+          title={p.na ? "Didn't train (tap again to clear)" : "N/A: didn't train (injured, out). Kept out of averages."}
+          onClick={() => onLog(p.na ? null : "na")}
+          className={`h-10 rounded-md text-[11px] font-semibold transition-colors ${
+            p.na ? "bg-text-dim text-ink" : "border border-dashed border-border bg-surface text-text-dim hover:border-text-dim hover:text-text"
+          }`}
+        >
+          N/A
+        </button>
       </div>
     </div>
   );
@@ -352,16 +384,11 @@ function Tile({ label, value, color }: { label: string; value: string; color?: s
   );
 }
 
-function Trends() {
+function Trends({ open, onOpen }: { open: { date: string; session: number } | null; onOpen: (s: { date: string; session: number } | null) => void }) {
   const { data, isLoading } = useRpeTrends();
+  const { data: list } = useRpeSessions();
+  if (open) return <SessionDetail date={open.date} session={open.session} onBack={() => onOpen(null)} />;
   if (isLoading || !data) return <div className="py-20 text-center text-text-dim">Loading RPE…</div>;
-
-  const players = [...data.players].sort(
-    (a, b) =>
-      Number(b.flags.length > 0) - Number(a.flags.length > 0) ||
-      (b.averages.week ?? -1) - (a.averages.week ?? -1) ||
-      a.name.localeCompare(b.name),
-  );
 
   return (
     <div className="flex flex-col gap-5">
@@ -369,12 +396,11 @@ function Trends() {
         title="RPE Trends"
         subtitle={data.lastSession ? `Last session logged ${formatDateLong(data.lastSession)}` : "No sessions logged yet"}
       />
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Tile label="Outfield 7-day" value={formatRpe(data.squad.week)} color={bandHex(data.squad.week)} />
         <Tile label="Outfield Last Month" value={formatRpe(data.squad.month)} />
         <Tile label="Keepers 7-day" value={formatRpe(data.keeperAverages.week)} color={bandHex(data.keeperAverages.week)} />
         <Tile label="Keepers Last Month" value={formatRpe(data.keeperAverages.month)} />
-        <Tile label="Flagged" value={String([...players, ...data.keepers].filter((p) => p.flags.length).length)} />
       </div>
 
       {data.daily.length > 1 && (
@@ -401,6 +427,7 @@ function Trends() {
             referenceLabel="Month avg"
             height={220}
             yDomain={[0, 10]}
+            onPointClick={(p) => onOpen({ date: p.date, session: 1 })}
             labelFor={(d) => {
               const day = data.daily.find((x) => x.date === d);
               return `${formatDate(d)}${day ? ` · ${day.logged} logged` : ""}`;
@@ -409,12 +436,118 @@ function Trends() {
         </Card>
       )}
 
+      <section>
+        <div className="mb-2 flex items-baseline gap-2">
+          <h3 className="font-display text-sm font-semibold uppercase tracking-wide text-text">Sessions</h3>
+          <span className="text-xs text-text-dim">tap a session to see every player's score</span>
+        </div>
+        <Card className="overflow-x-auto p-0">
+          <table className="w-full min-w-0 text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-dim">
+                <th className="px-3 py-3 sm:px-4 font-medium">Date</th>
+                <th className="px-3 py-3 sm:px-4 font-medium">Avg RPE</th>
+                <th className="px-3 py-3 sm:px-4 font-medium">Keepers</th>
+                <th className="px-3 py-3 sm:px-4 font-medium">Flags</th>
+                <th className="hidden px-3 py-3 sm:table-cell sm:px-4" />
+              </tr>
+            </thead>
+            <tbody>
+              {(list?.sessions ?? []).map((x) => (
+                <tr
+                  key={`${x.date}#${x.session}`}
+                  onClick={() => onOpen({ date: x.date, session: x.session })}
+                  className="cursor-pointer border-b border-border/60 transition-colors last:border-0 hover:bg-surface-raised"
+                >
+                  <td className="px-3 py-3 sm:px-4">
+                    <div className="font-medium">
+                      <span className="sm:hidden">{sessionLabel({ session_date: x.date, session: x.session })}</span>
+                      <span className="hidden sm:inline">{sessionLabel({ session_date: x.date, session: x.session }, true)}</span>
+                    </div>
+                    <div className="text-xs text-text-dim">
+                      {x.logged + x.keepersLogged} logged{x.na ? ` · ${x.na} N/A` : ""}
+                      {!x.submitted && <span className="ml-1 text-gold">· not submitted</span>}
+                    </div>
+                  </td>
+                  <td className="px-3 py-3 sm:px-4 font-semibold" style={{ color: bandHex(x.average) }}>
+                    {formatRpe(x.average)}
+                  </td>
+                  <td className="px-3 py-3 sm:px-4" style={{ color: bandHex(x.keeperAverage) }}>
+                    {formatRpe(x.keeperAverage)}
+                  </td>
+                  <td className="px-3 py-3 sm:px-4">{x.flagged ? <span className="text-gold">{x.flagged} flagged</span> : <span className="text-text-dim">—</span>}</td>
+                  <td className="hidden px-3 py-3 text-right text-text-dim sm:table-cell sm:px-4">›</td>
+                </tr>
+              ))}
+              {list && list.sessions.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-6 text-center text-text-dim">
+                    No sessions logged yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </Card>
+      </section>
+    </div>
+  );
+}
+
+/** One past session: every player's and keeper's score, with their 7-day and Last Month averages as of that day. */
+function SessionDetail({ date, session, onBack }: { date: string; session: number; onBack: () => void }) {
+  const { data, isLoading } = useRpeSession(date, session);
+  if (isLoading || !data) return <div className="py-20 text-center text-text-dim">Loading session…</div>;
+  const players = [...data.players].sort((a, b) => a.name.localeCompare(b.name));
+  const keepers = [...data.keepers].sort((a, b) => a.name.localeCompare(b.name));
+  const flagged = [...players, ...keepers].filter((p) => p.flags.length).length;
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <SectionHeading
+          title={sessionLabel({ session_date: date, session }, true)}
+          subtitle={`${data.submitted ? "Submitted" : "Not submitted yet"}${data.game ? ` · Game day vs ${data.game.opponent}` : ""}`}
+        />
+        <button onClick={onBack} className="mb-3 text-sm text-text-dim hover:text-owl-red">
+          ← All sessions
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <Tile label="Outfield avg" value={formatRpe(data.summary.average)} color={bandHex(data.summary.average)} />
+        <Tile label="Keepers avg" value={formatRpe(data.keeperSummary.average)} color={bandHex(data.keeperSummary.average)} />
+        <Tile label="Didn't train" value={String(data.summary.na + data.keeperSummary.na)} />
+        <Tile label="Flagged" value={String(flagged)} />
+      </div>
+      <ScoreTable title="Players" rows={players} link />
+      {keepers.length > 0 && <ScoreTable title="Goalkeepers" subtitle="averaged separately from the outfield squad" rows={keepers} />}
+    </div>
+  );
+}
+
+function ScoreTable({
+  title,
+  subtitle,
+  rows,
+  link = false,
+}: {
+  title: string;
+  subtitle?: string;
+  rows: (RpeSessionPlayer | RpeSessionKeeper)[];
+  link?: boolean;
+}) {
+  return (
+    <section>
+      <div className="mb-2 flex items-baseline gap-2">
+        <h3 className="font-display text-sm font-semibold uppercase tracking-wide text-text">{title}</h3>
+        <span className="text-xs text-text-dim">{subtitle ?? rows.length}</span>
+      </div>
       <Card className="overflow-x-auto p-0">
-        <table className="w-full min-w-[640px] text-sm">
+        <table className="w-full min-w-[600px] text-sm">
           <thead>
             <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-dim">
-              <th className="px-4 py-3 font-medium">Player</th>
-              <th className="px-4 py-3 font-medium">Last session</th>
+              <th className="px-4 py-3 font-medium">{title === "Goalkeepers" ? "Goalkeeper" : "Player"}</th>
+              <th className="px-4 py-3 font-medium">RPE</th>
               <th className="px-4 py-3 font-medium">7-day</th>
               <th className="px-4 py-3 font-medium">Last Month</th>
               <th className="px-4 py-3 font-medium">Sessions</th>
@@ -422,25 +555,31 @@ function Trends() {
             </tr>
           </thead>
           <tbody>
-            {players.map((p) => (
-              <tr key={p.player_id} className="border-b border-border/60 last:border-0">
+            {rows.map((p) => (
+              <tr key={"player_id" in p ? p.player_id : p.name} className="border-b border-border/60 last:border-0">
                 <td className="whitespace-nowrap px-4 py-3 font-medium">
-                  <Link to={`/players/${p.player_id}`} className="hover:text-owl-red-light">
-                    {jersey(p.jersey_number)}
-                    {p.name}
-                  </Link>
+                  {link && "player_id" in p ? (
+                    <Link to={`/players/${p.player_id}`} className="hover:text-owl-red-light">
+                      {jersey(p.jersey_number)}
+                      {p.name}
+                    </Link>
+                  ) : (
+                    <>
+                      {jersey(p.jersey_number)}
+                      {p.name}
+                    </>
+                  )}
                 </td>
-                <td className="whitespace-nowrap px-4 py-3">
-                  {p.last ? (
-                    <span className="flex items-center gap-2">
-                      <RpePill rpe={p.last.rpe} />
-                      <span className="text-xs text-text-dim">{sessionLabel(p.last)}</span>
-                    </span>
+                <td className="px-4 py-3">
+                  {p.rpe !== null ? (
+                    <RpePill rpe={p.rpe} />
+                  ) : p.na ? (
+                    <span className="rounded-md border border-border px-2 py-0.5 text-xs text-text-dim">N/A</span>
                   ) : (
                     <span className="text-text-dim">—</span>
                   )}
                 </td>
-                <td className="px-4 py-3" style={p.averages.week ? { color: RPE_STYLE[rpeBand(Math.round(p.averages.week))].hex } : undefined}>
+                <td className="px-4 py-3" style={{ color: bandHex(p.averages.week) }}>
                   {formatRpe(p.averages.week)}
                 </td>
                 <td className="px-4 py-3 text-text-dim">{formatRpe(p.averages.month)}</td>
@@ -451,55 +590,6 @@ function Trends() {
           </tbody>
         </table>
       </Card>
-
-      {data.keepers.length > 0 && (
-        <section>
-          <div className="mb-2 flex items-baseline gap-2">
-            <h3 className="font-display text-sm font-semibold uppercase tracking-wide text-text">Goalkeepers</h3>
-            <span className="text-xs text-text-dim">averaged separately from the outfield squad</span>
-          </div>
-          <Card className="overflow-x-auto p-0">
-            <table className="w-full min-w-[640px] text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-dim">
-                  <th className="px-4 py-3 font-medium">Goalkeeper</th>
-                  <th className="px-4 py-3 font-medium">Last session</th>
-                  <th className="px-4 py-3 font-medium">7-day</th>
-                  <th className="px-4 py-3 font-medium">Last Month</th>
-                  <th className="px-4 py-3 font-medium">Sessions</th>
-                  <th className="px-4 py-3 font-medium">Flags</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.keepers.map((k) => (
-                  <tr key={k.name} className="border-b border-border/60 last:border-0">
-                    <td className="whitespace-nowrap px-4 py-3 font-medium">
-                      {jersey(k.jersey_number)}
-                      {k.name}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3">
-                      {k.last ? (
-                        <span className="flex items-center gap-2">
-                          <RpePill rpe={k.last.rpe} />
-                          <span className="text-xs text-text-dim">{sessionLabel(k.last)}</span>
-                        </span>
-                      ) : (
-                        <span className="text-text-dim">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3" style={{ color: bandHex(k.averages.week) }}>
-                      {formatRpe(k.averages.week)}
-                    </td>
-                    <td className="px-4 py-3 text-text-dim">{formatRpe(k.averages.month)}</td>
-                    <td className="px-4 py-3 text-text-dim">{k.averages.monthSessions}</td>
-                    <td className="px-4 py-3 text-xs text-gold">{k.flags.join(" · ") || <span className="text-text-dim">—</span>}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
-        </section>
-      )}
-    </div>
+    </section>
   );
 }

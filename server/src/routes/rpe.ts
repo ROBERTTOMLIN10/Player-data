@@ -49,6 +49,27 @@ function groupBy<T, K>(list: T[], key: (x: T) => K): Map<K, T[]> {
   return out;
 }
 
+/** Who was marked N/A ("didn't train") for a session: player ids and keeper names. */
+function didNotTrain(date: string, session: number) {
+  const db = getDb();
+  return {
+    players: new Set(
+      (
+        db.prepare("SELECT player_id FROM rpe_scores WHERE session_date = ? AND session = ? AND did_not_train = 1").all(date, session) as {
+          player_id: number;
+        }[]
+      ).map((r) => r.player_id),
+    ),
+    keepers: new Set(
+      (
+        db
+          .prepare("SELECT keeper_name FROM keeper_rpe_scores WHERE session_date = ? AND session = ? AND did_not_train = 1")
+          .all(date, session) as { keeper_name: string }[]
+      ).map((r) => r.keeper_name),
+    ),
+  };
+}
+
 /** Scores up to and including this session (so flags for a past session only use what was known then). */
 const upTo = <T extends RpeEntry>(list: T[], date: string, session: number) =>
   list.filter((s) => s.session_date < date || (s.session_date === date && s.session <= session));
@@ -61,6 +82,7 @@ rpeRouter.get("/session", (req, res) => {
   const players = squad();
   const history = scoresFor(null, shiftDate(date, -60), date);
   const readiness = readinessStatusOn(date);
+  const na = didNotTrain(date, session);
   const byPlayer = new Map<number, RpeScore[]>();
   for (const s of history) byPlayer.set(s.player_id, [...(byPlayer.get(s.player_id) ?? []), s]);
 
@@ -73,21 +95,22 @@ rpeRouter.get("/session", (req, res) => {
     return {
       ...p,
       rpe: score?.rpe ?? null,
+      na: na.players.has(p.player_id),
       averages: averagesFor(mine, date),
       readiness: r,
       flags: planningFlags(score, mine, r?.status ?? null),
     };
   });
-  const logged = rows.filter((r) => r.rpe !== null);
+  const scored = rows.filter((r) => r.rpe !== null);
 
   // Goalkeepers: logged the same way, averaged on their own.
   const keeperHistory = groupBy(keeperScoresFor(shiftDate(date, -60), date), (s) => s.keeper_name);
   const keepers = rosterKeepers().map((k) => {
     const mine = upTo(keeperHistory.get(k.name) ?? [], date, session);
     const score = mine.find((s) => s.session_date === date && s.session === session) ?? null;
-    return { ...k, rpe: score?.rpe ?? null, averages: averagesFor(mine, date), flags: planningFlags(score, mine, null) };
+    return { ...k, rpe: score?.rpe ?? null, na: na.keepers.has(k.name), averages: averagesFor(mine, date), flags: planningFlags(score, mine, null) };
   });
-  const keepersLogged = keepers.filter((k) => k.rpe !== null);
+  const keepersScored = keepers.filter((k) => k.rpe !== null);
 
   const sessions = (
     getDb()
@@ -102,9 +125,20 @@ rpeRouter.get("/session", (req, res) => {
     session,
     sessions,
     game: gameOnDate(date),
-    summary: { expected: rows.length, logged: logged.length, average: averageOf(logged.map((r) => r.rpe!)) },
+    // "logged" counts N/A too (the player's been asked); averages only use scores.
+    summary: {
+      expected: rows.length,
+      logged: scored.length + na.players.size,
+      na: na.players.size,
+      average: averageOf(scored.map((r) => r.rpe!)),
+    },
     players: rows,
-    keeperSummary: { expected: keepers.length, logged: keepersLogged.length, average: averageOf(keepersLogged.map((k) => k.rpe!)) },
+    keeperSummary: {
+      expected: keepers.length,
+      logged: keepersScored.length + na.keepers.size,
+      na: na.keepers.size,
+      average: averageOf(keepersScored.map((k) => k.rpe!)),
+    },
     keepers,
     submitted: submissionFor(date, session),
   });
@@ -153,13 +187,16 @@ const scoreInput = z.object({
   keeper_name: z.string().min(1).optional(), // a roster goalkeeper who isn't a player in the app
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   session: z.union([z.literal(1), z.literal(2)]).default(1),
-  rpe: z.number().int().min(1).max(10).nullable(), // null clears it
+  rpe: z.union([z.number().int().min(1).max(10), z.literal("na")]).nullable(), // "na": didn't train; null clears it
 });
+
+/** Values for an upsert: a score, or N/A (no score, did_not_train). */
+const scoreValues = (rpe: number | "na") => (rpe === "na" ? { rpe: null, dnt: 1 } : { rpe, dnt: 0 });
 
 // Log (or correct, or clear) one player's score for a session.
 rpeRouter.put("/score", (req, res) => {
   const parsed = scoreInput.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: "RPE must be a whole number from 1 to 10." });
+  if (!parsed.success) return res.status(400).json({ error: "RPE must be a whole number from 1 to 10, or N/A." });
   const { player_id, keeper_name, date, session, rpe } = parsed.data;
   if (date > teamToday()) return res.status(400).json({ error: "Can't log RPE for a future session." });
   const db = getDb();
@@ -168,10 +205,12 @@ rpeRouter.put("/score", (req, res) => {
     if (rpe === null) {
       db.prepare("DELETE FROM keeper_rpe_scores WHERE keeper_name = ? AND session_date = ? AND session = ?").run(keeper_name, date, session);
     } else {
+      const v = scoreValues(rpe);
       db.prepare(
-        `INSERT INTO keeper_rpe_scores (keeper_name, session_date, session, rpe, logged_by) VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(keeper_name, session_date, session) DO UPDATE SET rpe = excluded.rpe, logged_by = excluded.logged_by, logged_at = datetime('now')`,
-      ).run(keeper_name, date, session, rpe, req.user?.email ?? null);
+        `INSERT INTO keeper_rpe_scores (keeper_name, session_date, session, rpe, did_not_train, logged_by) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(keeper_name, session_date, session) DO UPDATE SET
+           rpe = excluded.rpe, did_not_train = excluded.did_not_train, logged_by = excluded.logged_by, logged_at = datetime('now')`,
+      ).run(keeper_name, date, session, v.rpe, v.dnt, req.user?.email ?? null);
     }
     return res.json({ keeper_name, date, session, rpe });
   }
@@ -180,12 +219,64 @@ rpeRouter.put("/score", (req, res) => {
   if (rpe === null) {
     db.prepare("DELETE FROM rpe_scores WHERE player_id = ? AND session_date = ? AND session = ?").run(player_id, date, session);
   } else {
+    const v = scoreValues(rpe);
     db.prepare(
-      `INSERT INTO rpe_scores (player_id, session_date, session, rpe, logged_by) VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT(player_id, session_date, session) DO UPDATE SET rpe = excluded.rpe, logged_by = excluded.logged_by, logged_at = datetime('now')`,
-    ).run(player_id, date, session, rpe, req.user?.email ?? null);
+      `INSERT INTO rpe_scores (player_id, session_date, session, rpe, did_not_train, logged_by) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(player_id, session_date, session) DO UPDATE SET
+         rpe = excluded.rpe, did_not_train = excluded.did_not_train, logged_by = excluded.logged_by, logged_at = datetime('now')`,
+    ).run(player_id, date, session, v.rpe, v.dnt, req.user?.email ?? null);
   }
   res.json({ player_id, date, session, rpe });
+});
+
+// Every session logged so far (newest first): outfield and keeper averages, how many logged / N/A, and flags raised.
+rpeRouter.get("/sessions", (_req, res) => {
+  const today = teamToday();
+  const scores = scoresFor(null, "0000-01-01", today);
+  const keeperScores = keeperScoresFor("0000-01-01", today);
+  const naRows = getDb()
+    .prepare(
+      `SELECT session_date, session, COUNT(*) AS n FROM (
+         SELECT session_date, session FROM rpe_scores WHERE did_not_train = 1
+         UNION ALL SELECT session_date, session FROM keeper_rpe_scores WHERE did_not_train = 1
+       ) GROUP BY session_date, session`,
+    )
+    .all() as { session_date: string; session: number; n: number }[];
+  const submitted = new Set(
+    (getDb().prepare("SELECT session_date, session FROM rpe_session_submissions").all() as RpeEntry[]).map((s) => `${s.session_date}#${s.session}`),
+  );
+
+  const byPlayer = groupBy(scores, (s) => s.player_id);
+  const byKeeper = groupBy(keeperScores, (s) => s.keeper_name);
+  const id = (s: { session_date: string; session: number }) => `${s.session_date}#${s.session}`;
+  const bySession = groupBy(scores, id);
+  const keepersBySession = groupBy(keeperScores, id);
+  const naBySession = new Map(naRows.map((r) => [id(r), r.n]));
+  const readinessByDate = new Map<string, ReturnType<typeof readinessStatusOn>>();
+  const readinessOn = (date: string) => readinessByDate.get(date) ?? readinessByDate.set(date, readinessStatusOn(date)).get(date)!;
+
+  const keys = [...new Set([...bySession.keys(), ...keepersBySession.keys(), ...naBySession.keys()])].sort().reverse();
+  const sessions = keys.map((key) => {
+    const [date, s] = key.split("#");
+    const session = Number(s);
+    const outfield = bySession.get(key) ?? [];
+    const keepers = keepersBySession.get(key) ?? [];
+    const flagged =
+      outfield.filter((x) => planningFlags(x, upTo(byPlayer.get(x.player_id)!, date, session), readinessOn(date).get(x.player_id)?.status ?? null).length)
+        .length + keepers.filter((x) => planningFlags(x, upTo(byKeeper.get(x.keeper_name)!, date, session), null).length).length;
+    return {
+      date,
+      session,
+      average: averageOf(outfield.map((x) => x.rpe)),
+      logged: outfield.length,
+      keeperAverage: averageOf(keepers.map((x) => x.rpe)),
+      keepersLogged: keepers.length,
+      na: naBySession.get(key) ?? 0,
+      flagged,
+      submitted: submitted.has(key),
+    };
+  });
+  res.json({ today, sessions });
 });
 
 // Squad trends: each player's latest score, 7-day and Last Month averages and flags, plus the squad's daily average.

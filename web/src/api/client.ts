@@ -30,6 +30,7 @@ import type {
   NcaaTable,
   PlayerRpe,
   RpeSession,
+  RpeSessionSummary,
   RpeTrends,
 } from "../types";
 
@@ -144,12 +145,19 @@ export function useRpeSession(date: string | null, session: number) {
   });
 }
 
-export function saveRpe(input: { player_id?: number; keeper_name?: string; date: string; session: number; rpe: number | null }) {
+export function saveRpe(input: { player_id?: number; keeper_name?: string; date: string; session: number; rpe: number | "na" | null }) {
   return sendJson<typeof input>("/api/rpe/score", "PUT", input);
 }
 
 export function submitRpeSession(date: string, session: number) {
   return sendJson<{ date: string; session: number }>("/api/rpe/session/submit", "POST", { date, session });
+}
+
+export function useRpeSessions() {
+  return useQuery({
+    queryKey: ["rpeSessions"],
+    queryFn: () => fetchJson<{ today: string; sessions: RpeSessionSummary[] }>("/api/rpe/sessions"),
+  });
 }
 
 export function useRpeTrends() {

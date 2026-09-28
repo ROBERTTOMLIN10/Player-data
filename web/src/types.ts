@@ -553,6 +553,7 @@ export interface RpeSquadRow {
 
 export interface RpeSessionPlayer extends RpeSquadRow {
   rpe: number | null;
+  na: boolean; // N/A: didn't train (kept out of averages)
   averages: RpeAverages;
   readiness: { status: string; score: number } | null;
   flags: string[];
@@ -564,9 +565,9 @@ export interface RpeSession {
   session: number;
   sessions: number[]; // sessions with scores on this date
   game: { opponent: string } | null;
-  summary: { expected: number; logged: number; average: number | null }; // outfield only
+  summary: { expected: number; logged: number; na: number; average: number | null }; // outfield only; logged includes N/A
   players: RpeSessionPlayer[];
-  keeperSummary: { expected: number; logged: number; average: number | null };
+  keeperSummary: { expected: number; logged: number; na: number; average: number | null };
   keepers: RpeSessionKeeper[];
   submitted: { submitted_at: string; submitted_by: string | null } | null; // players see scores once submitted
 }
@@ -576,8 +577,21 @@ export interface RpeSessionKeeper {
   name: string;
   jersey_number: string | null;
   rpe: number | null;
+  na: boolean;
   averages: RpeAverages;
   flags: string[];
+}
+
+export interface RpeSessionSummary {
+  date: string;
+  session: number;
+  average: number | null; // outfield
+  logged: number; // outfield scores
+  keeperAverage: number | null;
+  keepersLogged: number;
+  na: number; // didn't train (players + keepers)
+  flagged: number;
+  submitted: boolean;
 }
 
 export interface RpeTrends {

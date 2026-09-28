@@ -29,7 +29,8 @@ await get(coach, "/api/readiness/squad");
 // RPE
 const rpeToday = await get(coach, "/api/rpe/session?session=1");
 await get(coach, "/api/rpe/session?session=2");
-for (let i = 1; i <= 14; i++) {
+await get(coach, "/api/rpe/sessions");
+for (let i = 1; i <= 31; i++) {
   const d = new Date(`${rpeToday.today}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() - i);
   await get(coach, `/api/rpe/session?session=1&date=${d.toISOString().slice(0, 10)}`);

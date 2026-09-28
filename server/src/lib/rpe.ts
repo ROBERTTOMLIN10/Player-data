@@ -43,7 +43,10 @@ export function averagesFor(scores: RpeEntry[], asOf: string): RpeAverages {
   return { week: avg(week), month: avg(month), weekSessions: week.length, monthSessions: month.length };
 }
 
-/** Scores in a date range; `submittedOnly` keeps sessions a coach has submitted (what players see). */
+/**
+ * Scores in a date range, N/A ("didn't train") left out so it never counts in
+ * an average; `submittedOnly` keeps sessions a coach has submitted (what players see).
+ */
 export function scoresFor(playerIds: number[] | null, from: string, to: string, submittedOnly = false): RpeScore[] {
   const db = getDb();
   const where = playerIds ? `AND player_id IN (${playerIds.map(() => "?").join(",") || "NULL"})` : "";
@@ -53,18 +56,18 @@ export function scoresFor(playerIds: number[] | null, from: string, to: string, 
   return db
     .prepare(
       `SELECT player_id, session_date, session, rpe FROM rpe_scores r
-       WHERE session_date BETWEEN ? AND ? ${where} ${submitted}
+       WHERE rpe IS NOT NULL AND session_date BETWEEN ? AND ? ${where} ${submitted}
        ORDER BY session_date DESC, session DESC`,
     )
     .all(from, to, ...(playerIds ?? [])) as RpeScore[];
 }
 
-/** Keepers' scores (roster goalkeepers who aren't players in the app). */
+/** Keepers' scores (roster goalkeepers who aren't players in the app); N/A sessions left out, as for players. */
 export function keeperScoresFor(from: string, to: string): KeeperRpeScore[] {
   return getDb()
     .prepare(
       `SELECT keeper_name, session_date, session, rpe FROM keeper_rpe_scores
-       WHERE session_date BETWEEN ? AND ?
+       WHERE rpe IS NOT NULL AND session_date BETWEEN ? AND ?
        ORDER BY session_date DESC, session DESC`,
     )
     .all(from, to) as KeeperRpeScore[];

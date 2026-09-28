@@ -300,15 +300,18 @@ CREATE INDEX IF NOT EXISTS idx_readiness_checkins_date ON readiness_checkins(ent
 -- Post-training RPE (rate of perceived exertion, 1 = very easy, 10 = maximal),
 -- logged by a coach asking each player after the session. One per player per
 -- session: session 1 normally, session 2 on pre-season double days. Logging
--- again for the same session corrects the score.
+-- again for the same session corrects the score. did_not_train (rpe NULL) is
+-- "N/A": the player didn't train (injured, out), kept out of every average.
 CREATE TABLE IF NOT EXISTS rpe_scores (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
   session_date TEXT NOT NULL, -- YYYY-MM-DD, team local date
   session INTEGER NOT NULL DEFAULT 1 CHECK (session IN (1, 2)),
-  rpe INTEGER NOT NULL CHECK (rpe BETWEEN 1 AND 10),
+  rpe INTEGER CHECK (rpe BETWEEN 1 AND 10),
+  did_not_train INTEGER NOT NULL DEFAULT 0,
   logged_by TEXT, -- coach email
   logged_at TEXT NOT NULL DEFAULT (datetime('now')),
+  CHECK (rpe IS NOT NULL OR did_not_train = 1),
   UNIQUE(player_id, session_date, session)
 );
 
@@ -322,9 +325,11 @@ CREATE TABLE IF NOT EXISTS keeper_rpe_scores (
   keeper_name TEXT NOT NULL,
   session_date TEXT NOT NULL,
   session INTEGER NOT NULL DEFAULT 1 CHECK (session IN (1, 2)),
-  rpe INTEGER NOT NULL CHECK (rpe BETWEEN 1 AND 10),
+  rpe INTEGER CHECK (rpe BETWEEN 1 AND 10),
+  did_not_train INTEGER NOT NULL DEFAULT 0, -- N/A, as for players
   logged_by TEXT,
   logged_at TEXT NOT NULL DEFAULT (datetime('now')),
+  CHECK (rpe IS NOT NULL OR did_not_train = 1),
   UNIQUE(keeper_name, session_date, session)
 );
 

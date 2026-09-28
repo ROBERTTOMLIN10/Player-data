@@ -40,6 +40,11 @@ for (let back = 30; back >= 0; back--) {
   const base = dayAfterGame ? 3 : 6;
   for (const [i, p] of sheet.players.entries()) {
     if (back === 0 && i % 2 === 1) continue; // today: half the squad still to log
+    if (back <= 3 && i === 6) {
+      // injured this week: didn't train (N/A)
+      await req("/rpe/score", { method: "PUT", cookie: coach, body: { player_id: p.player_id, date, session: 1, rpe: "na" } });
+      continue;
+    }
     let rpe = Math.min(10, Math.max(1, base + (back === 0 ? Math.sign(noise(p.player_id, back)) : noise(p.player_id, back))));
     if (back === 0 && p.player_id === players[2]?.player_id) rpe = 8; // hard session on low readiness
     if (back === 0 && i === 4) rpe = 10; // well above usual
