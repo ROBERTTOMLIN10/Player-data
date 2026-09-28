@@ -3,6 +3,7 @@ import { ROSTER_PATH, SIDEARM_BASE_URL } from "./sidearmConfig.js";
 import { fetchAndParseNuxtPage } from "./nuxtPayload.js";
 import { matchSidearmPlayer } from "./matchSidearmPlayer.js";
 import { normalizePlayerName } from "./nameNormalization.js";
+import { findSamePerson, playerCandidates } from "./samePerson.js";
 
 export interface SidearmRosterPlayer {
   name: string; // "First Last", as the box scores are matched
@@ -51,6 +52,16 @@ export function syncRoster(db: ReturnType<typeof getDb>, roster: SidearmRosterPl
     db.prepare("DELETE FROM roster_players").run();
     for (const p of roster) {
       let playerId = matchSidearmPlayer(db, p.name).playerId;
+      if (!playerId) {
+        // Spelt differently from the GPS files (nickname, shortened or double-barrelled name, typo)?
+        playerId = findSamePerson(p.name, playerCandidates(db))?.id ?? null;
+        if (playerId)
+          db.prepare("INSERT OR IGNORE INTO player_aliases (player_id, normalized_alias, raw_alias) VALUES (?, ?, ?)").run(
+            playerId,
+            normalizePlayerName(p.name),
+            p.name,
+          );
+      }
       if (!playerId && !isGoalkeeper(p)) {
         db.prepare("INSERT OR IGNORE INTO players (canonical_name) VALUES (?)").run(p.name);
         playerId = (db.prepare("SELECT id FROM players WHERE canonical_name = ?").get(p.name) as { id: number }).id;
