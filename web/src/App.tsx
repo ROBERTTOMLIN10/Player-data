@@ -92,17 +92,17 @@ function PlayerApp({ me }: { me: Me }) {
       subtitle={me.playerName ?? "Player"}
       nav={
         <>
-          <NavLink to="/" end className={navLinkClass}>
-            Readiness
-          </NavLink>
           <NavLink to="/home" className={navLinkClass}>
             Home
           </NavLink>
-          <NavLink to="/ncaa" className={navLinkClass}>
-            NCAA D1
+          <NavLink to="/" end className={navLinkClass}>
+            Readiness
           </NavLink>
           <NavLink to="/my-gps" className={navLinkClass}>
             My GPS
+          </NavLink>
+          <NavLink to="/ncaa" className={navLinkClass}>
+            NCAA D1
           </NavLink>
         </>
       }
