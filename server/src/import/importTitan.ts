@@ -73,12 +73,10 @@ function findOrCreatePlayer(db: ReturnType<typeof getDb>, rawName: string): numb
     .get(normalized) as { player_id: number } | undefined;
   if (existingAlias) return existingAlias.player_id;
 
-  // A spelling not seen before: if it's clearly someone already in the app or
-  // on the roster (nickname, shortened or double-barrelled name, typo), link it
-  // to them. A last-name-only match counts for a roster player still waiting
-  // on GPS data when nobody else shares that last name.
-  const candidates = playerCandidates(db);
-  const same = findSamePerson(rawName, candidates, (c) => candidates.find((x) => x.id === c.id)!.onRosterNoGps);
+  // A spelling not seen before: if it's someone already in the app or on the
+  // roster (similar surname, nickname, shortened or double-barrelled name,
+  // typo), link it to them rather than making a new player.
+  const same = findSamePerson(rawName, playerCandidates(db));
   if (same) {
     db.prepare("INSERT OR IGNORE INTO player_aliases (player_id, normalized_alias, raw_alias) VALUES (?, ?, ?)").run(
       same.id,

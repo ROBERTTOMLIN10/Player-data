@@ -80,11 +80,17 @@ function sameFirstName(a: string, b: string): boolean {
   return NICKNAMES.some((group) => group.includes(a) && group.includes(b));
 }
 
-/** Last names match, or one's last name is part of the other's (double-barrelled / middle names). */
+/**
+ * Last names match: the same (or one typo), one is a longer form of the other
+ * ("Roberts" / "Robertson"), or one is part of the other's double-barrelled or
+ * middle-named surname ("Amoah" / "Kwakye-Amoah").
+ */
 function sameLastName(a: string[], b: string[]): boolean {
   const lastA = a[a.length - 1];
   const lastB = b[b.length - 1];
   if (nearly(lastA, lastB)) return true;
+  const [short, long] = lastA.length <= lastB.length ? [lastA, lastB] : [lastB, lastA];
+  if (short.length >= 4 && long.startsWith(short)) return true;
   return (lastA.length >= 3 && b.slice(1).includes(lastA)) || (lastB.length >= 3 && a.slice(1).includes(lastB));
 }
 
@@ -112,28 +118,22 @@ export interface PersonCandidate {
 }
 
 /**
- * The single candidate who is clearly the same person, or null when none is
- * or it's ambiguous. A last-name-only match counts only when `allowLastNameOnly`
- * accepts that candidate (e.g. a roster player still waiting on GPS data) and
- * nobody else shares that last name.
+ * The single candidate who is the same person, or null when nobody matches or
+ * it's a tie. A matching last name is enough on its own (a squad rarely has two
+ * players with similar surnames): "Luca Rogers" is Mitchell Rogers when he's
+ * the only Rogers. When several share a surname, the first name decides.
  */
-export function findSamePerson(
-  name: string,
-  candidates: PersonCandidate[],
-  allowLastNameOnly: (c: PersonCandidate) => boolean = () => false,
-): { id: number; score: number } | null {
+export function findSamePerson(name: string, candidates: PersonCandidate[]): { id: number; score: number } | null {
   const scored = candidates
     .map((c) => ({ c, score: Math.max(0, ...c.names.map((n) => samePersonScore(name, n))) }))
     .filter((x) => x.score > 0);
   const best = Math.max(0, ...scored.map((x) => x.score));
   const top = scored.filter((x) => x.score === best);
-  if (top.length !== 1) return null;
-  if (best === 1 && !allowLastNameOnly(top[0].c)) return null;
-  return { id: top[0].c.id, score: best };
+  return top.length === 1 ? { id: top[0].c.id, score: best } : null;
 }
 
-/** Every player in the app with all their known spellings; `onRosterNoGps` marks roster players still waiting on GPS data. */
-export function playerCandidates(db: ReturnType<typeof getDb>): (PersonCandidate & { onRosterNoGps: boolean })[] {
+/** Every player in the app with all their known spellings (canonical name, aliases, roster name). */
+export function playerCandidates(db: ReturnType<typeof getDb>): PersonCandidate[] {
   const rows = db
     .prepare(
       `SELECT p.id, p.canonical_name AS name FROM players p
@@ -141,17 +141,7 @@ export function playerCandidates(db: ReturnType<typeof getDb>): (PersonCandidate
        UNION ALL SELECT r.player_id, r.player_name FROM roster_players r WHERE r.player_id IS NOT NULL`,
     )
     .all() as { id: number; name: string }[];
-  const waiting = new Set(
-    (
-      db
-        .prepare(
-          `SELECT r.player_id AS id FROM roster_players r
-           WHERE r.player_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM gps_sessions s WHERE s.player_id = r.player_id)`,
-        )
-        .all() as { id: number }[]
-    ).map((r) => r.id),
-  );
   const byId = new Map<number, string[]>();
   for (const r of rows) byId.set(r.id, [...(byId.get(r.id) ?? []), r.name]);
-  return [...byId].map(([id, names]) => ({ id, names, onRosterNoGps: waiting.has(id) }));
+  return [...byId].map(([id, names]) => ({ id, names }));
 }
