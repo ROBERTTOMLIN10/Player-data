@@ -5,6 +5,7 @@ import { fillMinutesFromBoxScores } from "./importMinutes.js";
 import { fetchScheduleGames, type SidearmScheduleGame } from "./sidearmSchedule.js";
 import { fetchBoxscoreDetails } from "./sidearmBoxscore.js";
 import { matchSidearmPlayer } from "./matchSidearmPlayer.js";
+import { fetchRoster, syncRoster } from "./sidearmRoster.js";
 
 export interface SyncScheduleSummary {
   status: "ok" | "error";
@@ -278,6 +279,14 @@ export async function syncSchedule(): Promise<SyncScheduleSummary> {
   if (unmatchedPlayers.length > 0) {
     console.log(`\n${unmatchedPlayers.length} Sidearm player(s) could not be matched to a known player:`);
     for (const u of unmatchedPlayers) console.log(u);
+  }
+
+  // The roster: squad numbers and positions, and every player listed even
+  // before they've featured. A roster failure doesn't fail the schedule sync.
+  try {
+    syncRoster(db, await fetchRoster());
+  } catch (err) {
+    console.error(`Roster not synced: ${(err as Error).message}`);
   }
 
   // New box scores: give the matching GPS games their minutes right away.

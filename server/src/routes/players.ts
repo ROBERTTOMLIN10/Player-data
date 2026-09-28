@@ -13,8 +13,18 @@ const VALID = `(s.top_speed_mph IS NULL OR s.top_speed_mph <= ${GLITCH_TOP_SPEED
 // we take each player's most frequently recorded non-blank position across
 // both player_game_stats (schedule sync) and minutes_played (legacy minutes
 // sync) as their season "primary" position for grouping purposes.
+// The fausports.com roster position wins (box score positions shift with subs
+// and formations); the box score one covers players not on the roster.
+// jersey_number is their squad number from the roster.
 export const POSITION_SUBQUERY = `
   LEFT JOIN (
+    SELECT pl.id AS player_id,
+           COALESCE(CASE UPPER(r.position_short)
+             WHEN 'FOR' THEN 'fwd' WHEN 'MID' THEN 'mid' WHEN 'DEF' THEN 'def' WHEN 'GK' THEN 'gk' END, bs.position) AS position,
+           r.jersey_number
+    FROM players pl
+    LEFT JOIN roster_players r ON r.player_id = pl.id
+    LEFT JOIN (
     SELECT player_id, position
     FROM (
       SELECT player_id, position,
@@ -27,6 +37,7 @@ export const POSITION_SUBQUERY = `
       GROUP BY player_id, position
     )
     WHERE rn = 1
+    ) bs ON bs.player_id = pl.id
   ) pos ON pos.player_id = p.id
 `;
 
@@ -35,7 +46,7 @@ playersRouter.get("/", (_req, res) => {
   const players = db
     .prepare(
       `SELECT p.id, p.canonical_name, COUNT(CASE WHEN mp.minutes > 0 THEN 1 END) AS games_played,
-              COUNT(s.id) AS sessions, pos.position
+              COUNT(s.id) AS sessions, pos.position, pos.jersey_number
        FROM players p
        LEFT JOIN gps_sessions s ON s.player_id = p.id
        LEFT JOIN minutes_played mp ON mp.game_id = s.game_id AND mp.player_id = s.player_id
@@ -60,7 +71,7 @@ playersRouter.get("/:id", (req, res) => {
 export function getPlayerDetail(playerId: number) {
   const db = getDb();
   const player = db
-    .prepare(`SELECT p.*, pos.position FROM players p ${POSITION_SUBQUERY} WHERE p.id = ?`)
+    .prepare(`SELECT p.*, pos.position, pos.jersey_number FROM players p ${POSITION_SUBQUERY} WHERE p.id = ?`)
     .get(playerId);
   if (!player) return null;
 

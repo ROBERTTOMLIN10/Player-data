@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import XLSX from "xlsx";
 import { getDb } from "../db/connection.js";
 import { normalizePlayerName } from "./nameNormalization.js";
+import { findSamePerson, playerCandidates } from "./samePerson.js";
 import { CORE_FIELD_MAP, DATE_HEADER_CANDIDATES, matchZoneColumn, NAME_HEADER_CANDIDATES } from "./columnMapping.js";
 import { normalizeOpponent, parseGpsFilename } from "./gpsFilename.js";
 import { fillMinutesFromBoxScores } from "./importMinutes.js";
@@ -71,6 +72,21 @@ function findOrCreatePlayer(db: ReturnType<typeof getDb>, rawName: string): numb
     .prepare("SELECT player_id FROM player_aliases WHERE normalized_alias = ?")
     .get(normalized) as { player_id: number } | undefined;
   if (existingAlias) return existingAlias.player_id;
+
+  // A spelling not seen before: if it's someone already in the app or on the
+  // roster (similar surname, nickname, shortened or double-barrelled name,
+  // typo), link it to them rather than making a new player.
+  const same = findSamePerson(rawName, playerCandidates(db));
+  if (same) {
+    db.prepare("INSERT OR IGNORE INTO player_aliases (player_id, normalized_alias, raw_alias) VALUES (?, ?, ?)").run(
+      same.id,
+      normalized,
+      rawName.trim(),
+    );
+    const name = (db.prepare("SELECT canonical_name FROM players WHERE id = ?").get(same.id) as { canonical_name: string }).canonical_name;
+    console.log(`  = "${rawName.trim()}" is ${name} (spelt differently); linked`);
+    return same.id;
+  }
 
   const insertPlayer = db.prepare("INSERT INTO players (canonical_name) VALUES (?)").run(rawName.trim());
   const playerId = insertPlayer.lastInsertRowid as number;

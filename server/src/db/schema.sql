@@ -207,6 +207,18 @@ CREATE TABLE IF NOT EXISTS goalkeeper_game_stats (
   UNIQUE(schedule_game_id, player_name)
 );
 
+-- This season's fausports.com roster (squad numbers, positions), replaced on
+-- each schedule sync. player_id links outfield players to the app (added as
+-- players if they aren't in a GPS file yet); goalkeepers who aren't players in
+-- the app (no tracker) have player_id NULL and show in Team Stats only.
+CREATE TABLE IF NOT EXISTS roster_players (
+  player_name TEXT PRIMARY KEY,
+  player_id INTEGER REFERENCES players(id) ON DELETE SET NULL,
+  position_short TEXT,
+  jersey_number TEXT,
+  academic_year TEXT
+);
+
 -- Team-level totals for both sides of a completed schedule game (FAU + opponent),
 -- for the team stats page's game-by-game box scores.
 CREATE TABLE IF NOT EXISTS game_team_totals (
