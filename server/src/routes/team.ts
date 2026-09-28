@@ -81,7 +81,8 @@ teamRouter.get("/stats", (_req, res) => {
 
   // Every player on the roster, even without a box score line yet (zeros), plus
   // goalkeepers from the box scores (they wear no tracker, so they aren't players in the app).
-  const PLAYED = "CASE WHEN minutes IS NULL OR minutes > 0 THEN 1 ELSE 0 END";
+  // A game counts when there's a box score line (started is never NULL on one) with minutes, or no minutes data.
+  const PLAYED = "CASE WHEN started IS NOT NULL AND (minutes IS NULL OR minutes > 0) THEN 1 ELSE 0 END";
   const COLS = ["minutes", "started", "goals", "assists", "points", "shots", "shots_on_goal", "yellow_cards", "red_cards"];
   const topScorers = db
     .prepare(

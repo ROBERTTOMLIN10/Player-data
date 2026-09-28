@@ -13,13 +13,14 @@ const VALID = `(s.top_speed_mph IS NULL OR s.top_speed_mph <= ${GLITCH_TOP_SPEED
 // we take each player's most frequently recorded non-blank position across
 // both player_game_stats (schedule sync) and minutes_played (legacy minutes
 // sync) as their season "primary" position for grouping purposes.
-// Players without a box score position yet fall back to their fausports.com
-// roster position; jersey_number is their squad number from the roster.
+// The fausports.com roster position wins (box score positions shift with subs
+// and formations); the box score one covers players not on the roster.
+// jersey_number is their squad number from the roster.
 export const POSITION_SUBQUERY = `
   LEFT JOIN (
     SELECT pl.id AS player_id,
-           COALESCE(bs.position, CASE UPPER(r.position_short)
-             WHEN 'FOR' THEN 'fwd' WHEN 'MID' THEN 'mid' WHEN 'DEF' THEN 'def' WHEN 'GK' THEN 'gk' END) AS position,
+           COALESCE(CASE UPPER(r.position_short)
+             WHEN 'FOR' THEN 'fwd' WHEN 'MID' THEN 'mid' WHEN 'DEF' THEN 'def' WHEN 'GK' THEN 'gk' END, bs.position) AS position,
            r.jersey_number
     FROM players pl
     LEFT JOIN roster_players r ON r.player_id = pl.id
