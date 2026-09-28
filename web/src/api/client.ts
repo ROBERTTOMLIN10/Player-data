@@ -148,6 +148,10 @@ export function saveRpe(input: { player_id?: number; keeper_name?: string; date:
   return sendJson<typeof input>("/api/rpe/score", "PUT", input);
 }
 
+export function submitRpeSession(date: string, session: number) {
+  return sendJson<{ date: string; session: number }>("/api/rpe/session/submit", "POST", { date, session });
+}
+
 export function useRpeTrends() {
   return useQuery({ queryKey: ["rpeTrends"], queryFn: () => fetchJson<RpeTrends>("/api/rpe/trends") });
 }

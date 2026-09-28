@@ -1,13 +1,12 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { saveRpe, useRpeSession, useRpeTrends } from "../api/client";
+import { saveRpe, submitRpeSession, useRpeSession, useRpeTrends } from "../api/client";
 import { Card, SectionHeading } from "../components/Card";
 import { RpePill, sessionLabel } from "../components/RpeHistory";
 import { Segmented } from "../components/SeasonStats";
 import { TrendChart } from "../components/TrendChart";
 import { formatDate, formatDateLong } from "../lib/format";
-import { positionGroup, ROSTER_SECTIONS } from "../lib/positions";
 import { STATUS_STYLE } from "../lib/readiness";
 import { formatRpe, rpeBand, rpeLabel, RPE_SCALE, RPE_STYLE } from "../lib/rpe";
 import type { MetricDef, ReadinessStatus, RpeSession, RpeSessionKeeper, RpeSessionPlayer } from "../types";
@@ -73,21 +72,35 @@ function LogSession({ date, session, set }: { date: string | null; session: numb
   const [filter, setFilter] = useState<"all" | "missing">("all");
   const [error, setError] = useState<string | null>(null);
 
-  const sections = useMemo(() => {
-    const list = (data?.players ?? []).filter((p) => filter === "all" || p.rpe === null);
-    return ROSTER_SECTIONS.map(({ group, label }) => ({
-      label,
-      players: list.filter((p) => positionGroup(p.position) === group).sort((a, b) => a.name.localeCompare(b.name)),
-    })).filter((s) => s.players.length);
-  }, [data, filter]);
-  const keepers = (data?.keepers ?? []).filter((k) => filter === "all" || k.rpe === null);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Alphabetical by first name (names are stored first name first), keepers in their own list.
+  const byName = <T extends { name: string; rpe: number | null }>(list: T[]) =>
+    list.filter((p) => filter === "all" || p.rpe === null).sort((a, b) => a.name.localeCompare(b.name));
+  const players = byName(data?.players ?? []);
+  const keepers = byName(data?.keepers ?? []);
 
   if (isLoading || !data) return <div className="py-20 text-center text-text-dim">Loading RPE…</div>;
 
   const key = ["rpeSession", date, session];
   const isToday = data.date === data.today;
-  const flagged: (RpeSessionPlayer | RpeSessionKeeper)[] = [...data.players, ...data.keepers].filter((p) => p.flags.length);
   const hard = data.players.filter((p) => p.rpe !== null && p.rpe >= 7).length;
+  const total = data.summary.expected + data.keeperSummary.expected;
+  const logged = data.summary.logged + data.keeperSummary.logged;
+  const remaining = total - logged;
+
+  async function submit() {
+    setError(null);
+    setSubmitting(true);
+    try {
+      await submitRpeSession(data!.date, session);
+      await queryClient.invalidateQueries({ queryKey: ["rpeSession"] });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   async function log(name: string, target: Target, rpe: number | null) {
     setError(null);
@@ -165,38 +178,12 @@ function LogSession({ date, session, set }: { date: string | null; session: numb
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
-        <Tile label="Logged" value={`${data.summary.logged + data.keeperSummary.logged}/${data.summary.expected + data.keeperSummary.expected}`} />
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <Tile label="Logged" value={`${logged}/${total}`} />
         <Tile label="Outfield avg" value={formatRpe(data.summary.average)} color={bandHex(data.summary.average)} />
         <Tile label="Keepers avg" value={formatRpe(data.keeperSummary.average)} color={bandHex(data.keeperSummary.average)} />
         <Tile label="Hard (7+)" value={String(hard)} />
-        <Tile label="Flags" value={String(flagged.length)} />
       </div>
-
-      {flagged.length > 0 && (
-        <Card className="border-gold/40">
-          <div className="mb-2 text-xs font-medium uppercase tracking-wide text-gold">Planning the next session</div>
-          <ul className="flex flex-col gap-1.5 text-sm">
-            {flagged.map((p) => (
-              <li key={"player_id" in p ? p.player_id : `gk-${p.name}`} className="flex flex-wrap items-center gap-2">
-                {"player_id" in p ? (
-                  <Link to={`/players/${p.player_id}`} className="font-medium hover:text-owl-red-light">
-                    {jersey(p.jersey_number)}
-                    {p.name}
-                  </Link>
-                ) : (
-                  <span className="font-medium">
-                    {jersey(p.jersey_number)}
-                    {p.name} <span className="text-xs font-normal text-text-dim">GK</span>
-                  </span>
-                )}
-                {p.rpe !== null && <RpePill rpe={p.rpe} />}
-                <span className="text-text-dim">{p.flags.join(" · ")}</span>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
 
       {error && <Card className="border-owl-red/50 text-sm text-owl-red-light">{error}</Card>}
 
@@ -212,29 +199,29 @@ function LogSession({ date, session, set }: { date: string | null; session: numb
             >
               {f === "all"
                 ? "All"
-                : `Not logged (${data.summary.expected - data.summary.logged + data.keeperSummary.expected - data.keeperSummary.logged})`}
+                : `Not logged (${remaining})`}
             </button>
           ))}
         </div>
         <ScaleKey />
       </div>
 
-      {sections.length === 0 && keepers.length === 0 && (
+      {players.length === 0 && keepers.length === 0 && (
         <Card className="text-sm text-text-dim">{filter === "missing" ? "Everyone's logged for this session." : "No players yet."}</Card>
       )}
-      {sections.map((s) => (
-        <section key={s.label}>
+      {players.length > 0 && (
+        <section>
           <div className="mb-2 flex items-baseline gap-2">
-            <h3 className="font-display text-sm font-semibold uppercase tracking-wide text-text">{s.label}</h3>
-            <span className="text-xs text-text-dim">{s.players.length}</span>
+            <h3 className="font-display text-sm font-semibold uppercase tracking-wide text-text">Players</h3>
+            <span className="text-xs text-text-dim">{players.length}</span>
           </div>
           <Card className="divide-y divide-border/60 p-0">
-            {s.players.map((p) => (
+            {players.map((p) => (
               <PlayerRow key={p.player_id} p={p} onLog={(rpe) => log(p.name, { player_id: p.player_id }, rpe)} />
             ))}
           </Card>
         </section>
-      ))}
+      )}
       {keepers.length > 0 && (
         <section>
           <div className="mb-2 flex flex-wrap items-baseline gap-x-2">
@@ -253,8 +240,44 @@ function LogSession({ date, session, set }: { date: string | null; session: numb
           </Card>
         </section>
       )}
+
+      <div className="sticky bottom-0 -mx-4 border-t border-border bg-ink/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-lg sm:border">
+        {data.submitted ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+            <span className="text-teal">
+              ✓ Session {session} submitted {submittedTime(data.submitted.submitted_at)} · players can see their scores
+            </span>
+            {remaining === 0 && (
+              <button onClick={submit} disabled={submitting} className="text-xs text-text-dim hover:text-text">
+                Resubmit
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm text-text-dim">
+              {remaining === 0 ? "Everyone's logged." : `${remaining} still to log.`}
+              <span className="hidden sm:inline"> Players see their score once the session is submitted.</span>
+            </span>
+            <button
+              onClick={submit}
+              disabled={remaining > 0 || submitting}
+              className="shrink-0 rounded-md bg-owl-red px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-owl-red-light disabled:cursor-not-allowed disabled:bg-surface-raised disabled:text-text-dim"
+            >
+              {submitting ? "Submitting…" : `Submit session ${session}`}
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
+}
+
+/** "at 4:32 PM" today, or "Sep 26, 4:32 PM" (stored as UTC). */
+function submittedTime(sqlUtc: string) {
+  const d = new Date(`${sqlUtc.replace(" ", "T")}Z`);
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return d.toDateString() === new Date().toDateString() ? `at ${time}` : `${d.toLocaleDateString([], { month: "short", day: "numeric" })}, ${time}`;
 }
 
 const bandHex = (avg: number | null) => (avg ? RPE_STYLE[rpeBand(Math.round(avg))].hex : undefined);

@@ -328,6 +328,16 @@ CREATE TABLE IF NOT EXISTS keeper_rpe_scores (
   UNIQUE(keeper_name, session_date, session)
 );
 
+-- A coach submits a session once every player's RPE is in. Players see their
+-- score for a session only after it's submitted.
+CREATE TABLE IF NOT EXISTS rpe_session_submissions (
+  session_date TEXT NOT NULL,
+  session INTEGER NOT NULL CHECK (session IN (1, 2)),
+  submitted_by TEXT,
+  submitted_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (session_date, session)
+);
+
 -- Body-map selections for a check-in: one row per sore/bothered region.
 -- region ids match server/src/lib/bodyRegions.ts (e.g. 'quad_l').
 CREATE TABLE IF NOT EXISTS readiness_soreness (

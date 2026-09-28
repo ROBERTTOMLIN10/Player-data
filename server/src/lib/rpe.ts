@@ -43,13 +43,17 @@ export function averagesFor(scores: RpeEntry[], asOf: string): RpeAverages {
   return { week: avg(week), month: avg(month), weekSessions: week.length, monthSessions: month.length };
 }
 
-export function scoresFor(playerIds: number[] | null, from: string, to: string): RpeScore[] {
+/** Scores in a date range; `submittedOnly` keeps sessions a coach has submitted (what players see). */
+export function scoresFor(playerIds: number[] | null, from: string, to: string, submittedOnly = false): RpeScore[] {
   const db = getDb();
   const where = playerIds ? `AND player_id IN (${playerIds.map(() => "?").join(",") || "NULL"})` : "";
+  const submitted = submittedOnly
+    ? "AND EXISTS (SELECT 1 FROM rpe_session_submissions x WHERE x.session_date = r.session_date AND x.session = r.session)"
+    : "";
   return db
     .prepare(
-      `SELECT player_id, session_date, session, rpe FROM rpe_scores
-       WHERE session_date BETWEEN ? AND ? ${where}
+      `SELECT player_id, session_date, session, rpe FROM rpe_scores r
+       WHERE session_date BETWEEN ? AND ? ${where} ${submitted}
        ORDER BY session_date DESC, session DESC`,
     )
     .all(from, to, ...(playerIds ?? [])) as RpeScore[];
@@ -72,7 +76,7 @@ export function rosterKeepers(): { name: string; jersey_number: string | null }[
     .prepare(
       `SELECT player_name AS name, jersey_number FROM roster_players
        WHERE UPPER(position_short) = 'GK' AND player_id IS NULL
-       ORDER BY CAST(jersey_number AS INTEGER), player_name`,
+       ORDER BY player_name`,
     )
     .all() as { name: string; jersey_number: string | null }[];
 }

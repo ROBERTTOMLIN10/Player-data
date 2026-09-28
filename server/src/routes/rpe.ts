@@ -106,7 +106,46 @@ rpeRouter.get("/session", (req, res) => {
     players: rows,
     keeperSummary: { expected: keepers.length, logged: keepersLogged.length, average: averageOf(keepersLogged.map((k) => k.rpe!)) },
     keepers,
+    submitted: submissionFor(date, session),
   });
+});
+
+function submissionFor(date: string, session: number) {
+  return (
+    (getDb()
+      .prepare("SELECT submitted_at, submitted_by FROM rpe_session_submissions WHERE session_date = ? AND session = ?")
+      .get(date, session) as { submitted_at: string; submitted_by: string | null } | undefined) ?? null
+  );
+}
+
+// Submit a session once every player's and keeper's score is in; players then see their score.
+rpeRouter.post("/session/submit", (req, res) => {
+  const parsed = z
+    .object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), session: z.union([z.literal(1), z.literal(2)]).default(1) })
+    .safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Pick a session to submit." });
+  const { date, session } = parsed.data;
+  const db = getDb();
+  const loggedPlayers = new Set(
+    (db.prepare("SELECT player_id FROM rpe_scores WHERE session_date = ? AND session = ?").all(date, session) as { player_id: number }[]).map(
+      (r) => r.player_id,
+    ),
+  );
+  const loggedKeepers = new Set(
+    (db.prepare("SELECT keeper_name FROM keeper_rpe_scores WHERE session_date = ? AND session = ?").all(date, session) as { keeper_name: string }[]).map(
+      (r) => r.keeper_name,
+    ),
+  );
+  const missing = [
+    ...squad().filter((p) => !loggedPlayers.has(p.player_id)).map((p) => p.name),
+    ...rosterKeepers().filter((k) => !loggedKeepers.has(k.name)).map((k) => k.name),
+  ];
+  if (missing.length) return res.status(400).json({ error: `Still to log: ${missing.join(", ")}.` });
+  db.prepare(
+    `INSERT INTO rpe_session_submissions (session_date, session, submitted_by) VALUES (?, ?, ?)
+     ON CONFLICT(session_date, session) DO UPDATE SET submitted_by = excluded.submitted_by, submitted_at = datetime('now')`,
+  ).run(date, session, req.user?.email ?? null);
+  res.json({ date, session, submitted: submissionFor(date, session) });
 });
 
 const scoreInput = z.object({
@@ -202,9 +241,9 @@ rpeRouter.get("/trends", (_req, res) => {
 });
 
 /** One player's scores over the last `days` days, with averages and flags (shared with the player's own view). */
-export function playerRpe(playerId: number, days: number) {
+export function playerRpe(playerId: number, days: number, submittedOnly = false) {
   const today = teamToday();
-  const scores = scoresFor([playerId], shiftDate(today, -Math.max(days, 60)), today);
+  const scores = scoresFor([playerId], shiftDate(today, -Math.max(days, 60)), today, submittedOnly);
   const last = scores[0] ?? null;
   const readiness = last ? readinessStatusOn(last.session_date).get(playerId) ?? null : null;
   return {

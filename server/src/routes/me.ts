@@ -172,9 +172,9 @@ meRouter.get("/readiness/history", (req, res) => {
   res.json({ today, entries: getCheckins(playerId, shiftDate(today, -(days - 1)), today) });
 });
 
-// Their post-training RPE: latest score, 7-day and Last Month averages, history.
+// Their post-training RPE from sessions the coaches have submitted: latest score, 7-day and Last Month averages, history.
 meRouter.get("/rpe", (req, res) => {
-  const { flags: _coachOnly, ...mine } = playerRpe(req.user!.playerId!, Math.min(Math.max(Number(req.query.days) || 30, 1), 365));
+  const { flags: _coachOnly, ...mine } = playerRpe(req.user!.playerId!, Math.min(Math.max(Number(req.query.days) || 30, 1), 365), true);
   res.json(mine);
 });
 

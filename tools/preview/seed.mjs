@@ -50,6 +50,7 @@ for (let back = 30; back >= 0; back--) {
     const rpe = Math.min(10, Math.max(1, base - 1 + noise(i + 3, back)));
     await req("/rpe/score", { method: "PUT", cookie: coach, body: { keeper_name: k.name, date, session: 1, rpe } });
   }
+  if (back > 0) await req("/rpe/session/submit", { method: "POST", cookie: coach, body: { date, session: 1 } }); // today not yet
 }
 
 console.log(`p${players[0].player_id}@fau.edu`); // first seeded player = the preview's player

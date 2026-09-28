@@ -109,6 +109,7 @@ function rpeSession(date: string, session: number) {
           players: today.players.map((p: any) => ({ ...p, rpe: null, flags: [], readiness: null })),
           keeperSummary: { expected: today.keepers.length, logged: 0, average: null },
           keepers: today.keepers.map((k: any) => ({ ...k, rpe: null, flags: [] })),
+          submitted: null,
         },
       ),
     );
@@ -198,6 +199,13 @@ function route(method: string, path: string, q: URLSearchParams, body: any): Res
     return json(id === PLAYER_ID ? withMyEntry(h, true) : h);
   }
   if (path === "/api/rpe/session") return json(rpeSession(q.get("date") ?? TODAY, Number(q.get("session")) === 2 ? 2 : 1));
+  if (path === "/api/rpe/session/submit" && method === "POST") {
+    const sheet = rpeSession(body.date, body.session);
+    const left = [...sheet.players, ...sheet.keepers].filter((p: any) => p.rpe === null);
+    if (left.length) return json({ error: `Still to log: ${left.map((p: any) => p.name).join(", ")}.` }, 400);
+    sheet.submitted = { submitted_at: nowSql(), submitted_by: "coach@fau.edu" };
+    return json({ date: body.date, session: body.session, submitted: sheet.submitted });
+  }
   if (path === "/api/rpe/score" && method === "PUT") {
     const sheet = rpeSession(body.date, body.session);
     const row = body.keeper_name

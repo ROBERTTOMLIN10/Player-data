@@ -568,6 +568,7 @@ export interface RpeSession {
   players: RpeSessionPlayer[];
   keeperSummary: { expected: number; logged: number; average: number | null };
   keepers: RpeSessionKeeper[];
+  submitted: { submitted_at: string; submitted_by: string | null } | null; // players see scores once submitted
 }
 
 /** A roster goalkeeper (not a player in the app): logged and averaged separately. */
