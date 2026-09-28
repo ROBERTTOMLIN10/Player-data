@@ -6,6 +6,8 @@ export function formatMetricValue(value: number | string | null | undefined, met
   if (!Number.isFinite(num)) return "—";
   const decimals = metric?.decimals ?? 1;
   const formatted = num.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  // Yards (sprint distance) also show in miles: "1,842 yd (1.05 mi)".
+  if (metric?.unit === "yd") return `${formatted} yd (${(num / 1760).toFixed(2)} mi)`;
   return metric?.unit ? `${formatted} ${metric.unit}` : formatted;
 }
 

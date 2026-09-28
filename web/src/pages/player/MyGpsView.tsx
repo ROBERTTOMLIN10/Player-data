@@ -193,7 +193,7 @@ function GameDistribution({ gameId, metric }: { gameId: number | null; metric?: 
             tickLine={false}
             axisLine={false}
             width={44}
-            tickFormatter={(v) => formatMetricValue(v, { ...metric, decimals: 0 })}
+            tickFormatter={(v) => formatMetricValue(v, { ...metric, decimals: 0, unit: "" })}
           />
           {teamAvg !== null && teamAvg !== undefined && (
             <ReferenceLine y={teamAvg} stroke="#9aa0ab" strokeDasharray="4 4" />

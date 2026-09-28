@@ -64,7 +64,7 @@ export function TrendChart<T extends Record<string, unknown>>({
           tickLine={false}
           axisLine={false}
           width={44}
-          tickFormatter={(v) => formatMetricValue(v, metric ? { ...metric, decimals: 0 } : undefined)}
+          tickFormatter={(v) => formatMetricValue(v, metric ? { ...metric, decimals: 0, unit: "" } : undefined)}
         />
         {referenceValue !== undefined && (
           <ReferenceLine
