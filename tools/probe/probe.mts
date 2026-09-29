@@ -1,60 +1,52 @@
 import { parseNuxtPayload } from "../../server/src/import/nuxtPayload.js";
-const SITES: Record<string, string> = {
-  memphis: "gotigersgo.com", tulsa: "tulsahurricane.com", fiu: "fiusports.com", "south-fla": "gousfbulls.com",
-  temple: "owlsports.com", ucf: "ucfknights.com", mercer: "mercerbears.com", "missouri-st": "missouristatebears.com",
-  "north-carolina-st": "gopack.com", uab: "uabsports.com", "cleveland-st": "csuvikings.com", fgcu: "fgcuathletics.com",
-  "north-florida": "unfospreys.com", charlotte: "charlotte49ers.com", stetson: "gohatters.com", "fla-atlantic": "fausports.com",
-};
 const UA = { "user-agent": "Mozilla/5.0 (compatible; FAU-soccer-app)" };
-async function get(url: string) {
-  const r = await fetch(url, { headers: UA, redirect: "follow" });
-  return { status: r.status, url: r.url, html: await r.text() };
-}
+const get = async (u: string) => { const r = await fetch(u, { headers: UA }); return { status: r.status, url: r.url, html: await r.text() }; };
 const isRec = (v: any) => v && typeof v === "object";
-function find(v: any, pred: (x: any) => boolean, path = "root", seen = new Set(), depth = 0): string[] {
-  if (!isRec(v) || seen.has(v) || depth > 8) return [];
-  seen.add(v);
-  const out: string[] = [];
-  if (pred(v)) out.push(path);
-  for (const [k, x] of Object.entries(v)) out.push(...find(x, pred, `${path}.${k}`, seen, depth + 1));
-  return out;
+const trim = (v: any, d = 0): any => {
+  if (!isRec(v)) return typeof v === "string" && v.length > 120 ? v.slice(0, 120) + "…" : v;
+  if (d > 1) return Array.isArray(v) ? `[${v.length}]` : `{${Object.keys(v).slice(0, 12).join(",")}}`;
+  if (Array.isArray(v)) return v.slice(0, 2).map((x) => trim(x, d + 1));
+  return Object.fromEntries(Object.entries(v).slice(0, 40).map(([k, x]) => [k, trim(x, d + 1)]));
+};
+// 1) FAU cumulative stats: all arrays under overallIndividualStats
+{
+  const r = await get("https://fausports.com/sports/mens-soccer/stats/2026");
+  const root: any = parseNuxtPayload(r.html);
+  const cs: any = Object.values(root.pinia.statsSeason.cumulativeStats)[0];
+  console.log("cumulativeStats keys", Object.keys(cs));
+  console.log("overallIndividualStats keys", Object.keys(cs.overallIndividualStats));
+  for (const [k, v] of Object.entries(cs.overallIndividualStats)) if (Array.isArray(v)) console.log("  ", k, v.length, JSON.stringify((v as any[]).find((x) => !x.isAFooterStat) ?? v[0]).slice(0, 700));
+  console.log("gameByGameStats keys", Object.keys(cs.gameByGameStats));
+  console.log("individual player keys?", Object.keys(cs).filter((k) => /player|individual/i.test(k)));
 }
-function at(root: any, path: string) { return path.split(".").slice(1).reduce((o, k) => o?.[k], root); }
-for (const [seo, host] of Object.entries(SITES)) {
-  console.log(`\n===== ${seo} (${host})`);
-  try {
-    const r = await get(`https://${host}/sports/mens-soccer/roster`);
-    const nuxt = r.html.includes("__NUXT_DATA__");
-    console.log("roster", r.status, r.url, "nuxt:", nuxt, "len", r.html.length, "aspx-ish:", /sidearm-roster-player/.test(r.html));
-    if (nuxt) {
-      const root: any = parseNuxtPayload(r.html);
-      const store = root?.pinia?.roster?.roster;
-      const roster: any = store && Object.values(store).find((x: any) => x && Array.isArray(x.players));
-      console.log("players:", roster?.players?.length, "sample:", roster?.players?.[0] && JSON.stringify({ n: roster.players[0].firstName + " " + roster.players[0].lastName, j: roster.players[0].jerseyNumber, img: roster.players[0].image?.absoluteUrl, pos: roster.players[0].positionShort, id: roster.players[0].rosterPlayerId, cta: roster.players[0].call_to_action }));
-    }
-  } catch (e) { console.log("roster ERR", (e as Error).message); }
-  for (const path of ["/sports/mens-soccer/stats/2026", "/sports/mens-soccer/stats"]) {
-    try {
-      const r = await get(`https://${host}${path}`);
-      const nuxt = r.html.includes("__NUXT_DATA__");
-      console.log("stats", path, r.status, r.url, "nuxt:", nuxt, "len", r.html.length);
-      if (nuxt && seo === "fla-atlantic" && path.endsWith("2026")) {
-        const root: any = parseNuxtPayload(r.html);
-        console.log("pinia keys", Object.keys(root.pinia ?? {}));
-        const hits = find(root, (x) => Array.isArray(x) && x.length > 5 && isRec(x[0]) && ("playerName" in x[0] || "name" in x[0] || "firstName" in x[0]) && ("goals" in x[0] || "gp" in x[0] || "gamesPlayed" in x[0] || "minutes" in x[0] || "points" in x[0]));
-        console.log("player arrays:", hits.slice(0, 8));
-        for (const h of hits.slice(0, 3)) { const a = at(root, h); console.log(h, a.length, JSON.stringify(a[0]).slice(0, 900)); }
-        const gl = find(root, (x) => Array.isArray(x) && x.length > 3 && isRec(x[0]) && ("opponent" in x[0] || "opponentName" in x[0]) && ("date" in x[0] || "gameDate" in x[0]));
-        console.log("game arrays:", gl.slice(0, 5));
-        for (const h of gl.slice(0, 2)) { const a = at(root, h); console.log(h, a.length, JSON.stringify(a[0]).slice(0, 600)); }
-      }
-      if (nuxt) break;
-    } catch (e) { console.log("stats ERR", path, (e as Error).message); }
-  }
+// 2) FAU player bio page: game log?
+{
+  const r = await get("https://fausports.com/sports/mens-soccer/roster/dj-koulai/19571");
+  const root: any = parseNuxtPayload(r.html);
+  console.log("\nbio pinia keys", Object.keys(root.pinia ?? {}));
+  for (const k of Object.keys(root.pinia ?? {})) if (/roster|player|bio|stat/i.test(k)) console.log(k, JSON.stringify(trim(root.pinia[k])).slice(0, 1500));
 }
-// NCAA.com school page for site discovery
-for (const seo of ["memphis", "stetson"]) {
-  const r = await get(`https://www.ncaa.com/schools/${seo}`);
-  const m = r.html.match(/href="(https?:\/\/[^"]+)"[^>]*>\s*(?:Official )?(?:Athletics )?Website/i) ?? r.html.match(/school-website[^>]*href="([^"]+)"/i);
-  console.log("ncaa school", seo, r.status, m?.[1], (r.html.match(/https?:\/\/(?:www\.)?[a-z0-9-]+\.(?:com|edu)\/?"/gi) ?? []).slice(0, 8));
+// 3) Sidearm player stats page pattern
+for (const u of ["https://fausports.com/sports/mens-soccer/stats/2026/player/dj-koulai", "https://fausports.com/sports/mens-soccer/stats/2026?path=msoc&player=19571"]) {
+  const r = await get(u); console.log("\n", u, r.status, r.url, r.html.includes("__NUXT_DATA__"));
+  if (r.status === 200 && r.html.includes("__NUXT_DATA__")) { const root: any = parseNuxtPayload(r.html); console.log(Object.keys(root.pinia ?? {})); for (const k of Object.keys(root.pinia ?? {})) if (/stat|player/i.test(k)) console.log(k, JSON.stringify(trim(root.pinia[k])).slice(0, 1500)); }
+}
+// 4) UCF roster store
+{
+  const r = await get("https://ucfknights.com/sports/mens-soccer/roster");
+  const root: any = parseNuxtPayload(r.html);
+  console.log("\nUCF pinia keys", Object.keys(root.pinia ?? {}), "roster keys", Object.keys(root.pinia?.roster ?? {}));
+  console.log(JSON.stringify(trim(root.pinia?.roster)).slice(0, 1500));
+}
+// 5) Old Sidearm HTML (FIU)
+{
+  const r = await get("https://fiusports.com/sports/mens-soccer/roster");
+  const i = r.html.indexOf("sidearm-roster-player");
+  console.log("\nFIU roster snippet:", r.html.slice(i - 200, i + 2500).replace(/\s+/g, " "));
+  const s = await get("https://fiusports.com/sports/mens-soccer/stats/2026");
+  const tables = [...s.html.matchAll(/<table[^>]*>[\s\S]*?<\/table>/g)].map((m) => m[0]);
+  console.log("FIU stats tables", tables.length);
+  for (const t of tables.slice(0, 3)) console.log(t.replace(/\s+/g, " ").slice(0, 1200));
+  const ids = [...s.html.matchAll(/id="([^"]*(?:individual|offensive|goalkeep|goalie)[^"]*)"/gi)].map((m) => m[1]);
+  console.log("ids", [...new Set(ids)].slice(0, 20));
 }
