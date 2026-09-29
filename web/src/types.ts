@@ -420,7 +420,7 @@ export interface NcaaStandingRow {
 
 export interface NcaaStandings {
   ourTeam: string;
-  conferences: { seo: string; name: string; rows: NcaaStandingRow[] }[];
+  conferences: { seo: string; name: string; rows: NcaaStandingRow[]; fixtures?: NcaaGame[] }[]; // fixtures: remaining conference games
 }
 
 export interface NcaaTeamRef {

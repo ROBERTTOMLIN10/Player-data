@@ -54,6 +54,7 @@ export const POLLS = [
 ] as const;
 
 const SEASON_START_MONTH_DAY = "08-15";
+const REGULAR_SEASON_END_MONTH_DAY = "11-15"; // conference regular seasons finish early November
 
 const TICK_MS = 60_000;
 const IDLE_REFRESH_MS = 15 * 60_000;
@@ -113,8 +114,12 @@ export async function syncSeason(today = teamToday()) {
     }
     await new Promise((r) => setTimeout(r, 300));
   }
-  // Upcoming week, for fixtures.
-  for (let i = 1; i <= 7; i++) await ensureDate(shiftDate(today, i));
+  // The rest of the regular season, for fixtures (Standings shows each conference's remaining games).
+  const end = `${today.slice(0, 4)}-${REGULAR_SEASON_END_MONTH_DAY}`;
+  for (let d = shiftDate(today, 1); d <= end && d <= shiftDate(today, 60); d = shiftDate(d, 1)) {
+    await ensureDate(d);
+    await new Promise((r) => setTimeout(r, 300));
+  }
 }
 
 export async function syncStatsAndRankings() {
