@@ -28,6 +28,7 @@ export default function TeamView() {
 
   const { data: gameDetail } = useGameDetail(selectedGameId);
   const [gameView, setGameView] = useState<"table" | "chart">("chart");
+  const [seasonView, setSeasonView] = useState<"avg" | "high" | "low">("avg");
   const openedFromLink = searchParams.has("game");
   useEffect(() => {
     if (openedFromLink && gameDetail) document.getElementById("game-detail")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -57,23 +58,69 @@ export default function TeamView() {
 
   return (
     <div className="flex flex-col gap-8">
-      <NeedsChecking sessions={flagged ?? []} />
-
-      {fitness && <SquadFitnessTable data={fitness} />}
-
       <section>
-        <SectionHeading title="Season Averages" subtitle="Click a metric to chart its trend across games" />
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-          {metrics?.map((m) => (
-            <MetricCard
-              key={m.key}
-              metric={m}
-              value={summary?.seasonAverages[`avg_${m.key}`]}
-              onClick={() => setSelectedMetricKey(m.key)}
-              active={m.key === selectedMetricKey}
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+          <SectionHeading
+            title={`Season ${seasonView === "avg" ? "Averages" : seasonView === "high" ? "Highs" : "Lows"}`}
+            subtitle={
+              seasonView === "avg"
+                ? "Click a metric to chart its trend across games"
+                : seasonView === "high"
+                  ? "Best single-game performance per metric"
+                  : "Lowest single-game performance per metric (games with minutes; fitness-only sessions left out)"
+            }
+          />
+          <div className="mb-3">
+            <Segmented
+              value={seasonView}
+              options={[
+                { key: "avg", label: "Averages" },
+                { key: "high", label: "Highs" },
+                { key: "low", label: "Lows" },
+              ]}
+              onChange={setSeasonView}
+              label="Season stats"
             />
-          ))}
+          </div>
         </div>
+        {seasonView === "avg" ? (
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+            {metrics?.map((m) => (
+              <MetricCard
+                key={m.key}
+                metric={m}
+                value={summary?.seasonAverages[`avg_${m.key}`]}
+                onClick={() => setSelectedMetricKey(m.key)}
+                active={m.key === selectedMetricKey}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+            {(seasonView === "high" ? summary?.highs : summary?.lows ?? [])
+              ?.filter((h) => h.best)
+              .map((h) => (
+                <button
+                  key={h.metric}
+                  onClick={() => {
+                    setSelectedGameId(h.best!.game_id);
+                    setTimeout(() => document.getElementById("game-detail")?.scrollIntoView({ behavior: "smooth", block: "start" }), 300);
+                  }}
+                  className="rounded-lg border border-border bg-surface-raised p-3 text-left transition-colors hover:border-text-dim"
+                >
+                  <div className="text-xs font-medium uppercase tracking-wide text-text-dim">{h.label}</div>
+                  <div className="mt-1 font-display text-lg font-semibold">
+                    {formatMetricValue(h.best!.value, { key: h.metric, label: h.label, unit: h.unit, decimals: 1 })}
+                  </div>
+                  <div className="mt-1 text-xs text-teal">{h.best!.player_name}</div>
+                  <div className="mt-0.5 flex items-center gap-1.5 text-xs text-text-dim">
+                    <TeamLogo name={h.best!.opponent ?? "Game"} url={logoFor(h.best!.game_date)} size="sm" />
+                    vs {h.best!.opponent ?? "—"} · {formatDate(h.best!.game_date)}
+                  </div>
+                </button>
+              ))}
+          </div>
+        )}
       </section>
 
       <section>
@@ -177,28 +224,9 @@ export default function TeamView() {
         </section>
       )}
 
-      {summary?.highs && (
-        <section>
-          <SectionHeading title="Season Highs" subtitle="Best single-game performance per metric" />
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-            {summary.highs
-              .filter((h) => h.best)
-              .map((h) => (
-                <Card key={h.metric} className="p-3">
-                  <div className="text-xs font-medium uppercase tracking-wide text-text-dim">{h.label}</div>
-                  <div className="mt-1 font-display text-lg font-semibold">
-                    {formatMetricValue(h.best!.value, { key: h.metric, label: h.label, unit: h.unit, decimals: 1 })}
-                  </div>
-                  <div className="mt-1 text-xs text-teal">{h.best!.player_name}</div>
-                  <div className="mt-0.5 flex items-center gap-1.5 text-xs text-text-dim">
-                    <TeamLogo name={h.best!.opponent ?? "Game"} url={logoFor(h.best!.game_date)} size="sm" />
-                    vs {h.best!.opponent ?? "—"} · {formatDate(h.best!.game_date)}
-                  </div>
-                </Card>
-              ))}
-          </div>
-        </section>
-      )}
+      {fitness && <SquadFitnessTable data={fitness} />}
+
+      <NeedsChecking sessions={flagged ?? []} />
     </div>
   );
 }

@@ -39,7 +39,25 @@ teamRouter.get("/summary", requireCoach, (_req, res) => {
     return { metric: metric.key, label: metric.label, unit: metric.unit, best: row };
   });
 
-  res.json({ seasonAverages, trend, highs });
+  // Lowest single game per metric, from games the player got minutes in (a
+  // fitness-only session would always be the low). Tracker glitches excluded.
+  const lows = CORE_METRICS.map((metric) => {
+    const row = db
+      .prepare(
+        `SELECT s.${metric.key} AS value, p.canonical_name AS player_name, g.opponent, g.game_date, g.id AS game_id
+         FROM gps_sessions_valid s
+         JOIN players p ON p.id = s.player_id
+         JOIN games g ON g.id = s.game_id
+         JOIN minutes_played mp ON mp.game_id = s.game_id AND mp.player_id = s.player_id AND mp.minutes > 0
+         WHERE s.${metric.key} IS NOT NULL
+         ORDER BY s.${metric.key} ASC
+         LIMIT 1`,
+      )
+      .get();
+    return { metric: metric.key, label: metric.label, unit: metric.unit, best: row };
+  });
+
+  res.json({ seasonAverages, trend, highs, lows });
 });
 
 // Season stat totals (goals/assists/points/cards) + per-game log, sourced from
