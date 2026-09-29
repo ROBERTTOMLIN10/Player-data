@@ -10,6 +10,8 @@ import { MetricCard } from "../components/MetricCard";
 import { TrendChart } from "../components/TrendChart";
 import { formatDate, formatDateLong, formatMetricValue } from "../lib/format";
 import { GameRosterTable } from "../components/GameRosterTable";
+import { GameSquadChart } from "../components/GameSquadChart";
+import { Segmented } from "../components/SeasonStats";
 
 export default function TeamView() {
   const { data: games, isLoading: gamesLoading } = useGames();
@@ -25,6 +27,7 @@ export default function TeamView() {
   const [selectedGameId, setSelectedGameId] = useState<number | null>(Number(searchParams.get("game")) || null);
 
   const { data: gameDetail } = useGameDetail(selectedGameId);
+  const [gameView, setGameView] = useState<"table" | "chart">("table");
   const openedFromLink = searchParams.has("game");
   useEffect(() => {
     if (openedFromLink && gameDetail) document.getElementById("game-detail")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -135,20 +138,42 @@ export default function TeamView() {
 
       {selectedGameId && gameDetail && (
         <section id="game-detail" className="scroll-mt-20">
-          <div className="mb-3 flex items-center gap-3">
+          <div className="mb-3 flex flex-wrap items-center gap-3">
             <TeamLogo name={gameDetail.game.opponent ?? "Game"} url={logoFor(gameDetail.game.game_date)} size="md" />
             <div className="-mb-3">
               <SectionHeading
                 title={`${gameDetail.game.opponent ?? "Game"} — ${formatDateLong(gameDetail.game.game_date)}`}
-                subtitle="Click a player to open their season view"
+                subtitle={gameView === "chart" ? "Every player's number for one stat · tap a bar to open their season view" : "Click a player to open their season view"}
+              />
+            </div>
+            <div className="ml-auto">
+              <Segmented
+                value={gameView}
+                options={[
+                  { key: "table", label: "Table" },
+                  { key: "chart", label: "Chart" },
+                ]}
+                onChange={setGameView}
+                label="Game view"
               />
             </div>
           </div>
-          <GameRosterTable
-            sessions={gameDetail.sessions}
-            metrics={metrics ?? []}
-            onSelectPlayer={(playerId) => navigate(`/players/${playerId}`)}
-          />
+          {gameView === "chart" ? (
+            <Card>
+              <GameSquadChart
+                sessions={gameDetail.sessions}
+                metrics={metrics ?? []}
+                teamAverages={gameDetail.teamAverages}
+                onSelectPlayer={(playerId) => navigate(`/players/${playerId}`)}
+              />
+            </Card>
+          ) : (
+            <GameRosterTable
+              sessions={gameDetail.sessions}
+              metrics={metrics ?? []}
+              onSelectPlayer={(playerId) => navigate(`/players/${playerId}`)}
+            />
+          )}
         </section>
       )}
 
