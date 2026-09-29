@@ -1,0 +1,21 @@
+# Temporary: checks D1 team site discovery. Removed before merge.
+name: Probe
+on:
+  push:
+    branches: [claude/friendly-dijkstra-s2fxp1]
+    paths: [tools/probe/**, .github/workflows/probe.yml]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install --no-audit --no-fund
+      - env:
+          DB_PATH: ${{ runner.temp }}/probe.db
+        run: |
+          npm run db:migrate
+          git fetch -q --depth=1 origin preview-data && git show FETCH_HEAD:fausports-snapshot.json > "$RUNNER_TEMP/snap.json"
+          npx tsx tools/preview/snapshot.mts import "$RUNNER_TEMP/snap.json"
+          npx tsx tools/probe/probe.mts

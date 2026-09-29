@@ -33,6 +33,7 @@ function addMissingColumns(db: ReturnType<typeof getDb>) {
     ["roster_players", "instagram", "TEXT"],
     ["roster_players", "photo_url", "TEXT"],
     ["roster_players", "profile_url", "TEXT"],
+    ["team_sites", "discovered_at", "TEXT"],
   ];
   for (const [table, column, definition] of added) {
     const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
