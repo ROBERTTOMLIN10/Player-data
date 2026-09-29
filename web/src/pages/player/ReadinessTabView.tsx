@@ -1,4 +1,6 @@
 import { useSearchParams } from "react-router-dom";
+import { useMyProfile } from "../../api/client";
+import { PlayerProfileHeader } from "../../components/PlayerProfileHeader";
 import { Segmented } from "../../components/SeasonStats";
 import type { Me } from "../../types";
 import CheckInView from "./CheckInView";
@@ -21,8 +23,19 @@ const VIEWS: { key: View; label: string }[] = [
 export default function ReadinessTabView({ me }: { me: Me }) {
   const [params, setParams] = useSearchParams();
   const view: View = VIEWS.find((v) => v.key === params.get("view"))?.key ?? "checkin";
+  const { data: profile } = useMyProfile();
   return (
     <div className="flex flex-col gap-5">
+      {profile && (
+        <div className="mx-auto w-full max-w-3xl">
+          <PlayerProfileHeader
+            name={profile.player.canonical_name}
+            jersey={profile.player.jersey_number}
+            profile={profile.profile}
+            subtitle={`${profile.seasonTotals.games_played ?? 0} games played · ${profile.sessions.length} tracked sessions this season`}
+          />
+        </div>
+      )}
       <div className="mx-auto flex w-full max-w-3xl justify-center">
         <Segmented
           value={view}
