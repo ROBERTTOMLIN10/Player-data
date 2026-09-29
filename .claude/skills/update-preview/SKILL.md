@@ -74,6 +74,13 @@ Data page (see step 0).
 4. **Tell Rob** in plain language what changed and where to click, and that it
    uses test check-ins and doesn't save anything.
 
+## Automatic refresh
+
+A Routine rebuilds and republishes the preview every hour from the working
+branch (`claude/friendly-dijkstra-s2fxp1`), using the data the
+`Preview data` workflow saves every 30 minutes. A manual rebuild is still
+right after a code change, so Rob sees it straight away.
+
 ## When the app changes
 
 If a change adds a new `/api` endpoint or request the preview doesn't know
