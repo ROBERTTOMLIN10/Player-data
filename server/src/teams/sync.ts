@@ -1,6 +1,7 @@
 import { getDb } from "../db/connection.js";
+import { samePersonScore } from "../import/samePerson.js";
 import { teamToday } from "../lib/readiness.js";
-import { classicRoster, classicSeasonStats, nuxtBoxscore, nuxtRoster, nuxtSeasonStats, type SquadPlayer } from "./readers.js";
+import { classicBoxscore, classicRoster, classicSeasonStats, nuxtBoxscore, nuxtRoster, nuxtSeasonStats, type SquadPlayer } from "./readers.js";
 import { discoverTeamSites, pool } from "./discover.js";
 import { TEAM_SITES, type TeamPlatform } from "./sites.js";
 
@@ -90,16 +91,21 @@ export async function syncTeamStats(seo: string, year = Number(teamToday().slice
     db.prepare("UPDATE team_sites SET stats_synced_at = datetime('now'), last_error = NULL WHERE team_seo = ?").run(seo);
   })();
 
-  // Game logs from box scores not read yet (finished games don't change).
+  // Game logs from box scores not read yet (finished games don't change). Box score keys are matched to the squad's
+  // (by id, else by name, since sites sometimes use a different id or spelling there).
+  const known = squadKeys(seo);
   const read = new Set(
     (db.prepare("SELECT boxscore_url FROM team_boxscores WHERE team_seo = ?").all(seo) as { boxscore_url: string }[]).map((r) => r.boxscore_url),
   );
   let newGames = 0;
   for (const g of stats.games) {
-    if (read.has(g.boxscoreUrl) || site.platform !== "sidearm") continue;
+    if (read.has(g.boxscoreUrl) || !g.result) continue;
     await pause();
     try {
-      const lines = await nuxtBoxscore(g.boxscoreUrl);
+      const lines = (site.platform === "sidearm" ? await nuxtBoxscore(g.boxscoreUrl) : await classicBoxscore(g.boxscoreUrl)).map((l) => ({
+        ...l,
+        key: known.resolve(l.key, l.name),
+      }));
       const insert = db.prepare(
         `INSERT OR REPLACE INTO team_player_games (team_seo, player_key, game_date, opponent, home_away, result, started, minutes,
            goals, assists, shots, shots_on_goal, yellow_cards, red_cards, saves, goals_allowed, boxscore_url)
@@ -117,6 +123,20 @@ export async function syncTeamStats(seo: string, year = Number(teamToday().slice
     }
   }
   return { players: stats.players.length, keepers: stats.keepers.length, newGames };
+}
+
+function squadKeys(seo: string) {
+  const rows = getDb()
+    .prepare("SELECT player_key AS key, name FROM team_players WHERE team_seo = ? UNION SELECT player_key, name FROM team_player_stats WHERE team_seo = ?")
+    .all(seo, seo) as { key: string; name: string }[];
+  const keys = new Set(rows.map((r) => r.key));
+  return {
+    resolve(key: string, name: string) {
+      if (keys.has(key)) return key;
+      const hits = rows.filter((r) => samePersonScore(name, r.name) >= 2);
+      return hits.length === 1 ? hits[0].key : key;
+    },
+  };
 }
 
 /** Reads the given teams' rosters and stats (several teams at once). */
