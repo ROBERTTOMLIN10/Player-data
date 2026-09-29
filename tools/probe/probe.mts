@@ -1,4 +1,4 @@
-// Temporary: full D1 squad sync test (incl. classic box scores). Removed before merge.
+// Temporary: full D1 squad sync test (v3). Removed before merge.
 import { migrate } from "../../server/src/db/migrate.js";
 import { getDb } from "../../server/src/db/connection.js";
 import { syncAllTeams } from "../../server/src/teams/sync.js";

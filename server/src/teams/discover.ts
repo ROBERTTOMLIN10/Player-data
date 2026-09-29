@@ -2,7 +2,7 @@ import { getDb } from "../db/connection.js";
 import { fetchText } from "../ncaa/client.js";
 import { standingsWithMovement } from "../ncaa/store.js";
 import { teamToday } from "../lib/readiness.js";
-import { siteFetch } from "./readers.js";
+import { classicRoster, nuxtRoster, siteFetch } from "./readers.js";
 import { TEAM_SITES, type TeamPlatform } from "./sites.js";
 
 /**
@@ -22,14 +22,14 @@ export async function athleticsHost(seo: string): Promise<string | null> {
   return web ? new URL(web).hostname.replace(/^www\./, "").toLowerCase() : null;
 }
 
-/** What a men's soccer roster page runs on (following redirects to the site's current host). */
+/** Which reader works on a site: whichever gets a squad off its men's soccer roster page. */
 export async function detectPlatform(host: string): Promise<{ host: string; platform: TeamPlatform | "other" }> {
   const res = await siteFetch(`https://${host}/sports/mens-soccer/roster`);
   const finalHost = new URL(res.url).hostname.replace(/^www\./, "");
   if (!res.ok) return { host: finalHost, platform: "other" };
   const html = await res.text();
-  if (html.includes("__NUXT_DATA__") && html.includes("rosterPlayerId")) return { host: finalHost, platform: "sidearm" };
-  if (html.includes("sidearm-roster-player")) return { host: finalHost, platform: "sidearm-classic" };
+  if (html.includes("__NUXT_DATA__") && (await nuxtRoster(finalHost, html).catch(() => [])).length) return { host: finalHost, platform: "sidearm" };
+  if ((await classicRoster(finalHost, html).catch(() => [])).length) return { host: finalHost, platform: "sidearm-classic" };
   return { host: finalHost, platform: "other" };
 }
 

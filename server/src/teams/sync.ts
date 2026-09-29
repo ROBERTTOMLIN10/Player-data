@@ -49,6 +49,13 @@ function saveRoster(seo: string, players: SquadPlayer[]) {
   })();
 }
 
+/** Some stats pages list a player twice (e.g. a transfer): keep the line with more games. */
+function dedupe<T extends { key: string; gp: number | null }>(rows: T[]): T[] {
+  const byKey = new Map<string, T>();
+  for (const r of rows) if (!byKey.has(r.key) || (r.gp ?? 0) > (byKey.get(r.key)!.gp ?? 0)) byKey.set(r.key, r);
+  return [...byKey.values()];
+}
+
 type Site = { host: string; platform: TeamPlatform };
 
 function siteOf(seo: string): Site {
@@ -78,7 +85,7 @@ export async function syncTeamStats(seo: string, year = Number(teamToday().slice
       `INSERT INTO team_player_stats (team_seo, player_key, name, jersey_number, ${fieldCols.join(", ")})
        VALUES (?, ?, ?, ?, ${fieldCols.map(() => "?").join(", ")})`,
     );
-    for (const p of stats.players.filter(isPlayer)) field.run(seo, p.key, p.name, p.jersey_number, ...fieldCols.map((c) => p[c]));
+    for (const p of dedupe(stats.players.filter(isPlayer))) field.run(seo, p.key, p.name, p.jersey_number, ...fieldCols.map((c) => p[c]));
     // Keepers: add their goalkeeping to their row (or a new row if they have no field line).
     const keeper = db.prepare(
       `INSERT INTO team_player_stats (team_seo, player_key, name, jersey_number, gp, gs, is_goalkeeper, ${gkCols.join(", ")})
@@ -87,7 +94,7 @@ export async function syncTeamStats(seo: string, year = Number(teamToday().slice
          gp = COALESCE(team_player_stats.gp, excluded.gp), gs = COALESCE(team_player_stats.gs, excluded.gs),
          ${gkCols.map((c) => `${c} = excluded.${c}`).join(", ")}`,
     );
-    for (const k of stats.keepers.filter(isPlayer)) keeper.run(seo, k.key, k.name, k.jersey_number, k.gp, k.gs, ...gkCols.map((c) => k[c]));
+    for (const k of dedupe(stats.keepers.filter(isPlayer))) keeper.run(seo, k.key, k.name, k.jersey_number, k.gp, k.gs, ...gkCols.map((c) => k[c]));
     db.prepare("UPDATE team_sites SET stats_synced_at = datetime('now'), last_error = NULL WHERE team_seo = ?").run(seo);
   })();
 
@@ -148,12 +155,18 @@ export async function syncTeams(work: { rosters: string[]; stats: string[] }) {
   const seos = [...new Set([...work.rosters, ...work.stats])];
   const t0 = Date.now();
   await pool(seos, TEAMS_AT_ONCE, async (seo) => {
-    try {
-      if (rosters.has(seo)) {
+    // A roster page we can't read doesn't stop the stats (the squad then comes from the stats table).
+    if (rosters.has(seo)) {
+      try {
         const n = await syncTeamRoster(seo);
-        await pause();
         console.log(`[teams] ${seo}: roster ${n}`);
+      } catch (err) {
+        console.error(`[teams] ${seo} roster failed: ${(err as Error).message}`);
+        db.prepare("UPDATE team_sites SET last_error = ?, roster_synced_at = datetime('now') WHERE team_seo = ?").run((err as Error).message.slice(0, 300), seo);
       }
+      await pause();
+    }
+    try {
       const s = await syncTeamStats(seo);
       console.log(`[teams] ${seo}: stats ${s.players} players, ${s.keepers} keepers, ${s.newGames} new games`);
     } catch (err) {

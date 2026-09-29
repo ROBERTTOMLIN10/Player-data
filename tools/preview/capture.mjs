@@ -128,6 +128,12 @@ fs.mkdirSync(teamDir, { recursive: true });
 const quotedLogos = Object.entries(logos).map(([url, dataUri]) => [JSON.stringify(url).slice(1, -1), dataUri]);
 let total = 0;
 for (const [seo, file] of Object.entries(teamFiles)) {
+  // Player pages share their team's header and squad photo (mock.ts puts them back), so each image is stored once.
+  const squadPhoto = new Map((file.team?.squad ?? []).map((p) => [p.key, p.photo_url]));
+  for (const [key, page] of Object.entries(file.players)) {
+    delete page.team;
+    if (page.profile?.photo_url && page.profile.photo_url === squadPhoto.get(key)) page.profile.photo_url = "@squad";
+  }
   let text = JSON.stringify(file);
   for (const [quoted, dataUri] of quotedLogos) if (text.includes(quoted)) text = text.split(quoted).join(dataUri);
   fs.writeFileSync(`${teamDir}/${seo}.json`, text);

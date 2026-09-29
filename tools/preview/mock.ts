@@ -290,8 +290,14 @@ async function ncaaTeamRoute(path: string): Promise<Response | null> {
   const m = path.match(/^\/api\/ncaa\/(team|player)\/([^/]+)(?:\/([^/]+))?$/);
   if (!m) return null;
   const file = await teamFile(decodeURIComponent(m[2]));
-  const body = m[1] === "team" ? file?.team : file?.players?.[decodeURIComponent(m[3] ?? "")];
-  return body ? json(body) : json({ error: "Not found." }, 404);
+  if (m[1] === "team") return file?.team ? json(file.team) : json({ error: "Not found." }, 404);
+  const key = decodeURIComponent(m[3] ?? "");
+  const page = file?.players?.[key];
+  if (!page) return json({ error: "Not found." }, 404);
+  // Stored without the team header and squad photo (see capture.mjs).
+  const photo = file.team?.squad?.find((p: any) => p.key === key)?.photo_url ?? null;
+  const profile = page.profile?.photo_url === "@squad" ? { ...page.profile, photo_url: photo } : page.profile;
+  return json({ ...page, team: file.team?.team, profile });
 }
 
 window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {

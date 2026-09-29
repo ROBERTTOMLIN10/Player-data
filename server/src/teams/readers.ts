@@ -155,8 +155,8 @@ function blankProfile(): RosterProfile {
 
 // ---- Sidearm (Nuxt) ------------------------------------------------------------
 
-export async function nuxtRoster(host: string): Promise<SquadPlayer[]> {
-  const root = parseNuxtPayload(await fetchHtml(`https://${host}/sports/mens-soccer/roster`)) as Record<string, any>;
+export async function nuxtRoster(host: string, html?: string): Promise<SquadPlayer[]> {
+  const root = parseNuxtPayload(html ?? (await fetchHtml(`https://${host}/sports/mens-soccer/roster`))) as Record<string, any>;
   const store = root?.pinia?.roster?.roster;
   const roster = isRecord(store) ? (Object.values(store).find((r) => isRecord(r) && Array.isArray(r.players)) as any) : null;
   if (!roster) throw new Error(`no roster found on ${host}`);
@@ -266,8 +266,8 @@ export async function nuxtBoxscore(url: string): Promise<GameLine[]> {
 
 const text = (el: HTMLElement | null | undefined) => el?.text.replace(/\s+/g, " ").trim() || null;
 
-export async function classicRoster(host: string): Promise<SquadPlayer[]> {
-  const doc = parse(await fetchHtml(`https://${host}/sports/mens-soccer/roster`));
+export async function classicRoster(host: string, html?: string): Promise<SquadPlayer[]> {
+  const doc = parse(html ?? (await fetchHtml(`https://${host}/sports/mens-soccer/roster`)));
   const items = doc.querySelectorAll("li.sidearm-roster-player");
   if (!items.length) throw new Error(`no roster found on ${host}`);
   return items.map((li) => {
