@@ -27,7 +27,7 @@ export default function TeamView() {
   const [selectedGameId, setSelectedGameId] = useState<number | null>(Number(searchParams.get("game")) || null);
 
   const { data: gameDetail } = useGameDetail(selectedGameId);
-  const [gameView, setGameView] = useState<"table" | "chart">("table");
+  const [gameView, setGameView] = useState<"table" | "chart">("chart");
   const openedFromLink = searchParams.has("game");
   useEffect(() => {
     if (openedFromLink && gameDetail) document.getElementById("game-detail")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -150,8 +150,8 @@ export default function TeamView() {
               <Segmented
                 value={gameView}
                 options={[
-                  { key: "table", label: "Table" },
                   { key: "chart", label: "Chart" },
+                  { key: "table", label: "Table" },
                 ]}
                 onChange={setGameView}
                 label="Game view"
