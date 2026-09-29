@@ -133,10 +133,13 @@ if (mode === "export") {
   const seos = new Set<string>();
   for (const g of snap.ncaaGames) for (const side of ["home", "away"]) seos.add(String(g[`${side}_seo`]));
   snap.logos = {};
+  // Player headshots from the roster embed the same way (portrait crop).
+  const photos = new Set((snap.rosterPlayers ?? []).map((r) => r.photo_url).filter(Boolean) as string[]);
   const urls = [
     ...new Set([
       ...(snap.scheduleGames.map((g) => g.opponent_logo_url).filter(Boolean) as string[]),
       ...[...seos].map((seo) => ncaaLogoUrl(seo)),
+      ...photos,
     ]),
   ];
   const failed: string[] = [];
@@ -148,7 +151,9 @@ if (mode === "export") {
       let bytes = Buffer.from(await res.arrayBuffer());
       let outType = type;
       if (sharp) {
-        bytes = await sharp(bytes).resize(64, 64, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).webp({ quality: 80 }).toBuffer();
+        bytes = photos.has(url)
+          ? await sharp(bytes).resize(192, 240, { fit: "cover", position: "top" }).webp({ quality: 72 }).toBuffer()
+          : await sharp(bytes).resize(64, 64, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).webp({ quality: 80 }).toBuffer();
         outType = "image/webp";
       }
       snap.logos[url] = `data:${outType};base64,${bytes.toString("base64")}`;

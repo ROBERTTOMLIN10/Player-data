@@ -3,6 +3,7 @@ import { getDb } from "../db/connection.js";
 import { SESSION_ROLE_SQL } from "../lib/fitness.js";
 import { CORE_METRIC_KEYS, GLITCH_TOP_SPEED_MPH } from "../lib/metrics.js";
 import { withFlags } from "../lib/sessionFlags.js";
+import { PROFILE_COLUMNS } from "../import/sidearmRoster.js";
 
 export const playersRouter = Router();
 
@@ -21,7 +22,7 @@ export const POSITION_SUBQUERY = `
     SELECT pl.id AS player_id,
            COALESCE(CASE UPPER(r.position_short)
              WHEN 'FOR' THEN 'fwd' WHEN 'MID' THEN 'mid' WHEN 'DEF' THEN 'def' WHEN 'GK' THEN 'gk' END, bs.position) AS position,
-           r.jersey_number
+           r.jersey_number, r.photo_url
     FROM players pl
     LEFT JOIN roster_players r ON r.player_id = pl.id
     LEFT JOIN (
@@ -46,7 +47,7 @@ playersRouter.get("/", (_req, res) => {
   const players = db
     .prepare(
       `SELECT p.id, p.canonical_name, COUNT(CASE WHEN mp.minutes > 0 THEN 1 END) AS games_played,
-              COUNT(s.id) AS sessions, pos.position, pos.jersey_number
+              COUNT(s.id) AS sessions, pos.position, pos.jersey_number, pos.photo_url
        FROM players p
        LEFT JOIN gps_sessions s ON s.player_id = p.id
        LEFT JOIN minutes_played mp ON mp.game_id = s.game_id AND mp.player_id = s.player_id
@@ -119,5 +120,13 @@ export function getPlayerDetail(playerId: number) {
     )
     .get(playerId);
 
-  return { player, sessions: withFlags(sessions), seasonTotals, gameStats, statTotals };
+  // Profile from the fausports.com roster (photo, height, year, hometown...), when they're on it.
+  const profile =
+    db
+      .prepare(
+        `SELECT ${PROFILE_COLUMNS.join(", ")}, position_short, academic_year FROM roster_players WHERE player_id = ? LIMIT 1`,
+      )
+      .get(playerId) ?? null;
+
+  return { player, profile, sessions: withFlags(sessions), seasonTotals, gameStats, statTotals };
 }

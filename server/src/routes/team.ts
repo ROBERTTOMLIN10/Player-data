@@ -107,6 +107,8 @@ teamRouter.get("/stats", (_req, res) => {
       `SELECT player_id, player_name, is_goalkeeper,
               (SELECT r.jersey_number FROM roster_players r
                WHERE r.player_id = t.player_id OR (t.player_id IS NULL AND r.player_name = t.player_name)) AS jersey_number,
+              (SELECT r.photo_url FROM roster_players r
+               WHERE r.player_id = t.player_id OR (t.player_id IS NULL AND r.player_name = t.player_name)) AS photo_url,
               COALESCE(SUM(${PLAYED}), 0) AS games_played,
               COALESCE(SUM(started), 0) AS games_started,
               ROUND(COALESCE(SUM(minutes), 0)) AS minutes,
@@ -132,7 +134,7 @@ teamRouter.get("/stats", (_req, res) => {
   const KEEPER_PLAYED = "CASE WHEN k.id IS NOT NULL AND (k.minutes IS NULL OR k.minutes > 0) THEN 1 ELSE 0 END";
   const goalkeepers = db
     .prepare(
-      `SELECT n.player_name, r.jersey_number,
+      `SELECT n.player_name, r.jersey_number, r.photo_url,
               SUM(${KEEPER_PLAYED}) AS games_played, COALESCE(SUM(k.started), 0) AS games_started,
               ROUND(COALESCE(SUM(k.minutes), 0)) AS minutes,
               COALESCE(SUM(k.saves), 0) AS saves, COALESCE(SUM(k.goals_allowed), 0) AS goals_allowed,
