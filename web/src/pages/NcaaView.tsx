@@ -302,7 +302,7 @@ function RankingsTab() {
           </div>
           <Card className="p-2 sm:p-3">
             {rpiFiltered?.rows.length ? (
-              <NcaaStatTable table={rpiFiltered} ourTeam={data.ourTeam} hideColumns={["Non-Div I", "Prev"]} />
+              <NcaaStatTable table={rpiFiltered} ourTeam={data.ourTeam} hideColumns={["Neutral", "Non-Div I", "Prev"]} />
             ) : (
               <Empty />
             )}
