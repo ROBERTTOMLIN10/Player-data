@@ -1,18 +1,18 @@
-// Temporary: classic Sidearm box score structure. Removed before merge.
-import { parse } from "node-html-parser";
-for (const url of ["https://fiusports.com/boxscore.aspx?id=14892&path=msoc", "https://gohatters.com/sports/mens-soccer/stats/2026"]) {
-  const res = await fetch(url, { headers: { "user-agent": "Mozilla/5.0 (compatible; FAU men's soccer staff app)" } });
-  const html = await res.text();
-  console.log("==", url, res.status, res.url, html.length);
-  if (url.includes("stats/2026")) {
-    const a = html.match(/href=['"][^'"]*boxscore[^'"]*['"]/g);
-    console.log("links", a?.slice(0, 5));
-    continue;
-  }
-  const doc = parse(html);
-  for (const t of doc.querySelectorAll("table")) {
-    const text = t.outerHTML.replace(/\s+/g, " ");
-    console.log("--TABLE", t.querySelector("caption")?.text.trim(), text.length);
-    console.log(text.slice(0, 2500));
-  }
+// Temporary: why some Nuxt Sidearm rosters don't read. Removed before merge.
+import { parseNuxtPayload } from "../../server/src/import/nuxtPayload.js";
+for (const host of ["gostanford.com", "uclabruins.com", "clemsontigers.com", "ucfknights.com"]) {
+  try {
+    const res = await fetch(`https://${host}/sports/mens-soccer/roster`, { headers: { "user-agent": "Mozilla/5.0 (compatible; FAU men's soccer staff app)" } });
+    const html = await res.text();
+    console.log("==", host, res.status, res.url, html.length, "nuxt:", html.includes("__NUXT_DATA__"), "rosterPlayerId:", html.includes("rosterPlayerId"), "sidearm:", /sidearm/i.test(html));
+    if (!html.includes("__NUXT_DATA__")) { console.log(html.slice(0, 600).replace(/\s+/g, " ")); continue; }
+    const root = parseNuxtPayload(html) as any;
+    console.log("top", Object.keys(root ?? {}), "pinia", Object.keys(root?.pinia ?? {}));
+    const r = root?.pinia?.roster;
+    console.log("roster keys", r && Object.keys(r), r?.roster && Object.keys(r.roster).slice(0, 5));
+    const first = r?.roster && (Object.values(r.roster)[0] as any);
+    console.log("first", first && Object.keys(first), JSON.stringify(first)?.slice(0, 800));
+    const i = html.indexOf("mens-soccer/roster/");
+    console.log("links sample", html.slice(i - 100, i + 200).replace(/\s+/g, " "));
+  } catch (e) { console.log(host, "ERR", String(e)); }
 }
