@@ -61,17 +61,19 @@ export default function PlayerView() {
                         onClick={() => navigate(`/players/${p.id}`)}
                         className="rounded-lg border border-border bg-surface-raised p-3 text-left transition-colors hover:border-owl-red"
                       >
-                        <div className="flex items-center gap-2 font-medium">
-                          <PlayerPhoto name={p.canonical_name} url={p.photo_url} size={28} />
-                          <span className="min-w-0 truncate">
-                            {p.jersey_number && <span className="mr-1.5 text-xs font-normal text-text-dim">#{p.jersey_number}</span>}
-                            {p.canonical_name}
-                          </span>
-                        </div>
-                        <div className="text-xs text-text-dim">
-                          {p.sessions
-                            ? `${p.games_played} game${p.games_played === 1 ? "" : "s"} played · ${p.sessions} tracked`
-                            : "No GPS data yet"}
+                        <div className="flex items-center gap-2.5">
+                          <PlayerPhoto name={p.canonical_name} url={p.photo_url} size={40} />
+                          <div className="min-w-0">
+                            <div className="font-medium leading-tight">
+                              {p.jersey_number && <span className="mr-1.5 text-xs font-normal text-text-dim">#{p.jersey_number}</span>}
+                              {p.canonical_name}
+                            </div>
+                            <div className="mt-0.5 text-xs text-text-dim">
+                              {p.sessions
+                                ? `${p.games_played} game${p.games_played === 1 ? "" : "s"} played · ${p.sessions} tracked`
+                                : "No GPS data yet"}
+                            </div>
+                          </div>
                         </div>
                       </button>
                     ))}
