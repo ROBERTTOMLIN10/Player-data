@@ -5,25 +5,24 @@ import { SessionFlagTag } from "./SessionFlag";
 import { formatMetricValue } from "../lib/format";
 import { Card } from "./Card";
 
-const DEFAULT_COLUMNS = ["load", "distance_mi", "top_speed_mph", "sprints_count", "sprints_distance_yd"];
-
+/** Every player in one game with minutes and every GPS stat (scroll sideways; the name stays put). Sortable columns. */
 export function GameRosterTable({
   sessions,
   metrics,
   onSelectPlayer,
-  columns = DEFAULT_COLUMNS,
+  columns,
 }: {
   sessions: GpsSession[];
   metrics: MetricDef[];
   onSelectPlayer: (playerId: number) => void;
-  columns?: string[];
+  columns?: string[]; // default: every metric
 }) {
   const [sortKey, setSortKey] = useState<string>("load");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   const visibleMetrics = columns
-    .map((key) => metrics.find((m) => m.key === key))
-    .filter((m): m is MetricDef => Boolean(m));
+    ? columns.map((key) => metrics.find((m) => m.key === key)).filter((m): m is MetricDef => Boolean(m))
+    : metrics;
 
   const sorted = useMemo(() => {
     const copy = [...sessions];
@@ -49,7 +48,7 @@ export function GameRosterTable({
       <table className="w-full min-w-[640px] text-sm">
         <thead>
           <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-dim">
-            <th className="px-4 py-3 font-medium">Player</th>
+            <th className="sticky left-0 z-10 bg-surface px-4 py-3 font-medium">Player</th>
             <th
               onClick={() => toggleSort("minutes_played")}
               className="cursor-pointer select-none whitespace-nowrap px-4 py-3 font-medium hover:text-text"
@@ -73,19 +72,19 @@ export function GameRosterTable({
           {sorted.map((s) => (
             <tr
               key={s.id}
-              className="cursor-pointer border-b border-border/60 transition-colors last:border-0 hover:bg-surface-raised"
+              className="group cursor-pointer border-b border-border/60 transition-colors last:border-0 hover:bg-surface-raised"
               onClick={() => onSelectPlayer(s.player_id)}
             >
-              <td className="whitespace-nowrap px-4 py-3 font-medium text-text hover:text-owl-red">
+              <td className="sticky left-0 z-10 whitespace-nowrap bg-surface px-4 py-3 font-medium text-text group-hover:bg-surface-raised hover:text-owl-red">
                 {s.player_name}
                 {s.started === 1 && <span className="ml-1.5 text-[10px] font-normal uppercase tracking-wide text-teal">GS</span>}
                 <SessionFlagTag s={s} />
               </td>
-              <td className="px-4 py-3 text-text-dim">
+              <td className="whitespace-nowrap px-4 py-3 text-text-dim">
                 <MinutesCell s={s} />
               </td>
               {visibleMetrics.map((m) => (
-                <td key={m.key} className="px-4 py-3 text-text-dim">
+                <td key={m.key} className="whitespace-nowrap px-4 py-3 text-text-dim">
                   {formatMetricValue((s as any)[m.key], m)}
                 </td>
               ))}
