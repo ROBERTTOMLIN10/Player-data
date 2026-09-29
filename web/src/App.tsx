@@ -54,11 +54,11 @@ function CoachApp({ me }: { me: Me }) {
           <NavLink to="/gps" className={navLinkClass}>
             GPS
           </NavLink>
-          <NavLink to="/ncaa" className={navLinkClass}>
-            NCAA D1
-          </NavLink>
           <NavLink to="/players" className={navLinkClass}>
             Players
+          </NavLink>
+          <NavLink to="/ncaa" className={navLinkClass}>
+            NCAA D1
           </NavLink>
           <NavLink to="/data" className={navLinkClass}>
             Data
