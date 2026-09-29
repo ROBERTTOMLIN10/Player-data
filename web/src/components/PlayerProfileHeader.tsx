@@ -26,7 +26,7 @@ export function PlayerProfileHeader({
   jersey?: string | null;
   profile?: PlayerProfile | null;
   subtitle: string;
-  onBack: () => void;
+  onBack?: () => void; // coaches: back to the player list
 }) {
   const p = profile;
   const height = p?.height_feet ? `${p.height_feet}'${p.height_inches ?? 0}"` : null;
@@ -60,9 +60,11 @@ export function PlayerProfileHeader({
             </h2>
             <p className="mt-0.5 text-sm text-text-dim">{subtitle}</p>
           </div>
-          <button onClick={onBack} className="text-sm text-text-dim hover:text-owl-red">
-            ← All players
-          </button>
+          {onBack && (
+            <button onClick={onBack} className="text-sm text-text-dim hover:text-owl-red">
+              ← All players
+            </button>
+          )}
         </div>
         {facts.length > 0 ? (
           <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3 lg:grid-cols-4">
@@ -74,7 +76,7 @@ export function PlayerProfileHeader({
             ))}
           </dl>
         ) : (
-          <p className="mt-3 text-sm text-text-dim">Not on this season's fausports.com roster, so there's no profile to show.</p>
+          <p className="mt-3 text-sm text-text-dim">No profile on this season's fausports.com roster yet.</p>
         )}
         {(p?.instagram || p?.profile_url) && (
           <div className="mt-3 flex flex-wrap gap-3 text-sm">

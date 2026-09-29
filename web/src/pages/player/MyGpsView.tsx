@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useMetrics, useMyFitness, useMyGameGps, useMyProfile } from "../../api/client";
 import { FitnessCard } from "../../components/Fitness";
+import { PlayerProfileHeader } from "../../components/PlayerProfileHeader";
 import { TeamLogo } from "../../components/TeamLogo";
 import { useOpponentLogos } from "../../components/DateLogoTick";
 import { Card, SectionHeading } from "../../components/Card";
@@ -35,7 +36,12 @@ export default function MyGpsView() {
   if (sessions.length === 0) {
     return (
       <div className="flex flex-col gap-4">
-        <SectionHeading title="My GPS" />
+        <PlayerProfileHeader
+          name={profile.player.canonical_name}
+          jersey={profile.player.jersey_number}
+          profile={profile.profile}
+          subtitle="No tracked sessions yet"
+        />
         <Card className="text-sm text-text-dim">No GPS data for you yet. It shows up here after your first tracked game.</Card>
       </div>
     );
@@ -43,8 +49,10 @@ export default function MyGpsView() {
 
   return (
     <div className="flex flex-col gap-8">
-      <SectionHeading
-        title="My GPS"
+      <PlayerProfileHeader
+        name={profile.player.canonical_name}
+        jersey={profile.player.jersey_number}
+        profile={profile.profile}
         subtitle={`${profile.seasonTotals.games_played ?? 0} game${profile.seasonTotals.games_played === 1 ? "" : "s"} played · ${sessions.length} tracked session${sessions.length === 1 ? "" : "s"} · compared against the squad (teammates stay anonymous)`}
       />
 
