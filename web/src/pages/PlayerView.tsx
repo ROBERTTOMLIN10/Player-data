@@ -148,6 +148,8 @@ export default function PlayerView() {
         </>
       )}
 
+      {myFitness && fitness && <FitnessCard you={myFitness} thresholds={fitness.thresholds} asOf={fitness.asOf} coach />}
+
       {detail.gameStats.length > 0 && (
         <section>
           <SectionHeading title="Match Stats" subtitle="Minutes, goals, assists, points, and cards per game, from fausports.com box scores (no GPS file needed)" />
@@ -223,8 +225,6 @@ export default function PlayerView() {
           </Card>
         </section>
       )}
-
-      {myFitness && fitness && <FitnessCard you={myFitness} thresholds={fitness.thresholds} asOf={fitness.asOf} coach />}
         </>
       )}
     </div>
