@@ -1,0 +1,15 @@
+# Temporary: how to read the remaining D1 teams' sites. Removed before merge.
+name: Probe
+on:
+  push:
+    branches: [claude/friendly-dijkstra-s2fxp1]
+    paths: [tools/probe/**, .github/workflows/probe.yml]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install --no-audit --no-fund
+      - run: npx tsx tools/probe/probe.mts > probe.log 2>&1; head -c 60000 probe.log
