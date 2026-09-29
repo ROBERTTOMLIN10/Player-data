@@ -2,7 +2,8 @@ import { useState } from "react";
 
 /**
  * Opponent school logo (from the fausports.com schedule), falling back to the
- * team's initials when there's no logo or it fails to load.
+ * team's initials when there's no logo or it fails to load. Every logo sits in
+ * the same size box (no background), so they line up whatever their shape.
  */
 export function TeamLogo({ name, url, size = "md" }: { name: string; url: string | null | undefined; size?: "sm" | "md" | "lg" }) {
   const [failed, setFailed] = useState(false);
@@ -20,12 +21,12 @@ export function TeamLogo({ name, url, size = "md" }: { name: string; url: string
         alt={`${name} logo`}
         loading="lazy"
         onError={() => setFailed(true)}
-        className={`${box} shrink-0 rounded-full bg-white/5 object-contain ${size === "sm" ? "p-0.5" : size === "lg" ? "p-2" : "p-1"}`}
+        className={`${box} shrink-0 object-contain`}
       />
     );
   }
   return (
-    <div className={`${box} flex shrink-0 items-center justify-center rounded-full bg-surface-raised font-semibold text-text-dim`}>
+    <div className={`${box} flex shrink-0 items-center justify-center rounded-md bg-surface-raised font-semibold text-text-dim`}>
       {initials}
     </div>
   );

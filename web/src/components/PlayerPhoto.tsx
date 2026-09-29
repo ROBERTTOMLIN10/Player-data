@@ -1,5 +1,15 @@
 import { useState } from "react";
 
+/**
+ * Athletics sites (Sidearm) resize their /images/ files on request: ask for 3x
+ * the size shown so headshots are sharp on phone screens without downloading
+ * the full-size original. Other URLs (and embedded images) are left alone.
+ */
+function sized(url: string, size: number) {
+  if (!/^https?:\/\/[^/]+\/images\//.test(url) || url.includes("?")) return url;
+  return `${url}?width=${Math.round(size * 3)}`;
+}
+
 /** A player's roster headshot (round, top-cropped), or their initials when there's no photo. */
 export function PlayerPhoto({ name, url, size = 32, className = "" }: { name: string; url?: string | null; size?: number; className?: string }) {
   const [failed, setFailed] = useState(false);
@@ -23,7 +33,7 @@ export function PlayerPhoto({ name, url, size = 32, className = "" }: { name: st
     );
   return (
     <img
-      src={url}
+      src={sized(url, size)}
       alt=""
       style={style}
       loading="lazy"
