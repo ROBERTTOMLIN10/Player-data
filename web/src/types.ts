@@ -234,6 +234,7 @@ export interface TeamSummary {
     unit: string;
     best: { value: number; player_name: string; opponent: string | null; game_date: string; game_id: number } | null;
   }>;
+  lows?: TeamSummary["highs"]; // lowest single game per metric (games with minutes)
 }
 
 export interface CompareResult {
