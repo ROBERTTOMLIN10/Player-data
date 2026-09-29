@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getDb } from "../db/connection.js";
+import { playerLinks, playerPage, teamPage } from "../teams/store.js";
 import { ensureDate, POLLS, RANKINGS, STAT_CATEGORIES } from "../jobs/ncaaSync.js";
 import { isIsoDate, teamToday } from "../lib/readiness.js";
 import { ncaaLogoUrl, type HtmlTable } from "../ncaa/client.js";
@@ -145,7 +146,23 @@ ncaaRouter.get("/stats/:key", (req, res) => {
   if (!category) return res.status(404).json({ error: "Unknown stat category." });
   const table = tableResponse(`stats-${category.key}`, category.label);
   if (!table) return res.status(404).json({ error: "Not loaded yet. Check back in a few minutes." });
-  res.json({ ...table, kind: category.kind, ourTeam: OUR_TEAM });
+  // Individual tables: each player's photo, number and profile link (from their team's squad when we read it).
+  const players = category.kind === "individual" ? playerLinks(table, table.teams) : undefined;
+  res.json({ ...table, players, kind: category.kind, ourTeam: OUR_TEAM });
+});
+
+// A team's page: header, the whole squad with season stats, and its games.
+ncaaRouter.get("/team/:seo", (req, res) => {
+  const page = teamPage(req.params.seo);
+  if (!page.team.name || (!page.games.length && !page.squad.length)) return res.status(404).json({ error: "Team not found." });
+  res.json({ ...page, ourTeam: OUR_TEAM });
+});
+
+// A player's page: profile, season stats, game log, national rankings.
+ncaaRouter.get("/player/:seo/:key", (req, res) => {
+  const page = playerPage(req.params.seo, req.params.key);
+  if (!page) return res.status(404).json({ error: "Player not found." });
+  res.json({ ...page, ourTeam: OUR_TEAM });
 });
 
 ncaaRouter.get("/rankings", (_req, res) => {

@@ -1,4 +1,5 @@
 import { fetchConferences, fetchRankingTable, fetchTopDrawerTop25, fetchScoreboard, fetchStatTable } from "../ncaa/client.js";
+import { syncTeams, teamSyncDue } from "../teams/sync.js";
 import { gamesOn, hasGamesOn, recordRanks, setCache, upsertGames } from "../ncaa/store.js";
 import { shiftDate, teamToday } from "../lib/readiness.js";
 
@@ -186,6 +187,12 @@ async function tick() {
     if (due("stats", STATS_REFRESH_MS) || followUp) {
       lastRun.stats = Date.now();
       await syncStatsAndRankings();
+    }
+    // Other teams' squads from their athletics sites: rosters weekly, stats daily.
+    const teams = teamSyncDue();
+    if ((teams.rosters || teams.stats) && due("teams", 60 * 60_000)) {
+      lastRun.teams = Date.now();
+      await syncTeams({ rosters: teams.rosters });
     }
   } catch (err) {
     console.error(`[ncaa] sync failed: ${(err as Error).message}`);

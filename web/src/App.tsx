@@ -6,6 +6,8 @@ import type { Me } from "./types";
 import CoachHomeView from "./pages/CoachHomeView";
 import HomeView from "./pages/HomeView";
 import NcaaView from "./pages/NcaaView";
+import NcaaTeamView from "./pages/NcaaTeamView";
+import NcaaPlayerView from "./pages/NcaaPlayerView";
 import TeamView from "./pages/TeamView";
 import PlayersTabView from "./pages/PlayersTabView";
 import AdminView from "./pages/AdminView";
@@ -73,6 +75,8 @@ function CoachApp({ me }: { me: Me }) {
         <Route path="/gps" element={<TeamView />} />
         <Route path="/team-stats" element={<Navigate to="/?view=stats" replace />} />
         <Route path="/ncaa" element={<NcaaView />} />
+        <Route path="/ncaa/team/:seo" element={<NcaaTeamView />} />
+        <Route path="/ncaa/player/:seo/:key" element={<NcaaPlayerView />} />
         <Route path="/players" element={<PlayersTabView />} />
         <Route path="/players/:playerId" element={<PlayersTabView />} />
         <Route path="/compare" element={<Navigate to="/players?view=compare" replace />} />
@@ -110,6 +114,8 @@ function PlayerApp({ me }: { me: Me }) {
         <Route path="/" element={<ReadinessTabView me={me} />} />
         <Route path="/home" element={<HomeView />} />
         <Route path="/ncaa" element={<NcaaView />} />
+        <Route path="/ncaa/team/:seo" element={<NcaaTeamView />} />
+        <Route path="/ncaa/player/:seo/:key" element={<NcaaPlayerView />} />
         <Route path="/my-gps" element={<MyGpsView />} />
         <Route path="/history" element={<Navigate to="/?view=history" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />

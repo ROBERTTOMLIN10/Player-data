@@ -462,6 +462,106 @@ export interface NcaaTable {
   rows: string[][];
   teams: (NcaaTeamRef | null)[];
   moves?: (number | null)[]; // per row: places moved since the previous day or poll (+ up, - down)
+  players?: (NcaaPlayerLink | null)[]; // individual tables: each row's player (photo, number, profile key)
+}
+
+export interface NcaaPlayerLink {
+  key: string;
+  photo_url: string | null;
+  jersey_number: string | null;
+}
+
+export interface NcaaTeamInfo {
+  seo: string;
+  name: string;
+  logo: string;
+  conference: string | null;
+  conferenceSeo: string | null;
+  record: string | null;
+  conferenceRecord: string | null;
+  conferencePosition: number | null;
+  conferenceTeams: number | null;
+  site: string | null;
+  covered: boolean; // squad read from the team's athletics site
+  updatedAt: string | null;
+}
+
+export interface NcaaSquadPlayer {
+  key: string;
+  name: string;
+  jersey_number: string | null;
+  position_short: string | null;
+  position_long: string | null;
+  academic_year: string | null;
+  height_feet: number | null;
+  height_inches: number | null;
+  hometown: string | null;
+  photo_url: string | null;
+  gp: number | null;
+  gs: number | null;
+  minutes: number | null;
+  goals: number | null;
+  assists: number | null;
+  points: number | null;
+  shots: number | null;
+  shots_on_goal: number | null;
+  yellow_cards: number | null;
+  red_cards: number | null;
+  is_goalkeeper: number | null;
+  goals_allowed: number | null;
+  gaa: number | null;
+  saves: number | null;
+  save_pct: number | null;
+  shutouts: number | null;
+}
+
+export interface NcaaTeamGame {
+  date: string;
+  state: string | null;
+  home: boolean;
+  opponent: string;
+  opponentSeo: string;
+  opponentLogo: string;
+  isConference: boolean;
+  startEpoch: number | null;
+  result: string | null;
+}
+
+export interface NcaaTeamPage {
+  team: NcaaTeamInfo;
+  squad: NcaaSquadPlayer[];
+  games: NcaaTeamGame[];
+  ourTeam: string;
+}
+
+export interface NcaaPlayerGame {
+  game_date: string;
+  opponent: string | null;
+  home_away: string | null;
+  result: string | null;
+  started: number;
+  minutes: number | null;
+  goals: number | null;
+  assists: number | null;
+  shots: number | null;
+  shots_on_goal: number | null;
+  yellow_cards: number | null;
+  red_cards: number | null;
+  saves: number | null;
+  goals_allowed: number | null;
+}
+
+export interface NcaaPlayerPage {
+  team: NcaaTeamInfo;
+  key: string;
+  name: string;
+  profile: (Partial<PlayerProfile> & { name?: string; jersey_number?: string | null }) | null;
+  stats: (Partial<NcaaSquadPlayer> & Record<string, unknown>) | null;
+  ncaaStats?: Record<string, string>; // players we only know from NCAA.com's leader tables
+  games: NcaaPlayerGame[];
+  national: { category: string; rank: string; value: string; games: string | null }[];
+  source: "team" | "ncaa";
+  ourTeam: string;
 }
 
 export interface NcaaPoll extends NcaaTable {

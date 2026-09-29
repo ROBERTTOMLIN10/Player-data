@@ -430,3 +430,85 @@ CREATE TABLE IF NOT EXISTS ncaa_rank_history (
   rank INTEGER NOT NULL,
   PRIMARY KEY (key, day, entity)
 );
+
+-- ---------------------------------------------------------------------------
+-- Other D1 teams' squads, read from each team's athletics website (Sidearm):
+-- roster (weekly), season stats and per-game lines from box scores (daily).
+-- team_seo is NCAA.com's team id ("temple"); player_key is the site's roster
+-- bio id, stable for the season.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS team_sites (
+  team_seo TEXT PRIMARY KEY,
+  host TEXT NOT NULL, -- e.g. owlsports.com
+  platform TEXT NOT NULL, -- 'sidearm' (Nuxt) | 'sidearm-classic'
+  roster_synced_at TEXT,
+  stats_synced_at TEXT,
+  last_error TEXT
+);
+
+CREATE TABLE IF NOT EXISTS team_players (
+  team_seo TEXT NOT NULL,
+  player_key TEXT NOT NULL,
+  name TEXT NOT NULL, -- "First Last"
+  jersey_number TEXT,
+  position_short TEXT,
+  position_long TEXT,
+  academic_year TEXT,
+  academic_year_long TEXT,
+  height_feet INTEGER,
+  height_inches INTEGER,
+  weight INTEGER,
+  hometown TEXT,
+  high_school TEXT,
+  previous_school TEXT,
+  major TEXT,
+  birth_date TEXT,
+  is_captain INTEGER NOT NULL DEFAULT 0,
+  instagram TEXT,
+  photo_url TEXT,
+  profile_url TEXT,
+  PRIMARY KEY (team_seo, player_key)
+);
+
+CREATE TABLE IF NOT EXISTS team_player_stats (
+  team_seo TEXT NOT NULL,
+  player_key TEXT NOT NULL,
+  name TEXT NOT NULL,
+  jersey_number TEXT,
+  gp INTEGER, gs INTEGER, minutes INTEGER,
+  goals INTEGER, assists INTEGER, points INTEGER,
+  shots INTEGER, shots_on_goal INTEGER,
+  yellow_cards INTEGER, red_cards INTEGER, game_winners INTEGER,
+  pk_goals INTEGER, pk_attempts INTEGER,
+  -- goalkeepers
+  is_goalkeeper INTEGER NOT NULL DEFAULT 0,
+  gk_minutes INTEGER, goals_allowed INTEGER, gaa REAL, saves INTEGER, save_pct REAL,
+  wins INTEGER, losses INTEGER, ties INTEGER, shutouts INTEGER,
+  PRIMARY KEY (team_seo, player_key)
+);
+
+CREATE TABLE IF NOT EXISTS team_player_games (
+  team_seo TEXT NOT NULL,
+  player_key TEXT NOT NULL,
+  game_date TEXT NOT NULL,
+  opponent TEXT,
+  home_away TEXT, -- 'home' | 'away'
+  result TEXT, -- e.g. 'W 2-1'
+  started INTEGER NOT NULL DEFAULT 0,
+  minutes INTEGER,
+  goals INTEGER, assists INTEGER, shots INTEGER, shots_on_goal INTEGER,
+  yellow_cards INTEGER, red_cards INTEGER,
+  saves INTEGER, goals_allowed INTEGER,
+  boxscore_url TEXT NOT NULL,
+  PRIMARY KEY (team_seo, player_key, boxscore_url)
+);
+
+-- Box scores already read per team (finished games don't change), so the
+-- daily stats run only fetches new ones.
+CREATE TABLE IF NOT EXISTS team_boxscores (
+  team_seo TEXT NOT NULL,
+  boxscore_url TEXT NOT NULL,
+  game_date TEXT,
+  read_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (team_seo, boxscore_url)
+);

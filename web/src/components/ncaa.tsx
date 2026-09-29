@@ -1,5 +1,20 @@
+import { Link } from "react-router-dom";
+import { PlayerPhoto } from "./PlayerPhoto";
 import { TeamLogo } from "./TeamLogo";
 import type { NcaaGame, NcaaSide, NcaaStandingRow, NcaaTable } from "../types";
+
+export const teamPath = (seo: string) => `/ncaa/team/${seo}`;
+export const playerPath = (seo: string, key: string) => `/ncaa/player/${seo}/${encodeURIComponent(key)}`;
+
+/** A team's name as a link to its team page. */
+export function TeamLink({ seo, children, className = "" }: { seo: string | null | undefined; children: React.ReactNode; className?: string }) {
+  if (!seo) return <span className={className}>{children}</span>;
+  return (
+    <Link to={teamPath(seo)} className={`hover:text-owl-red-light hover:underline ${className}`} onClick={(e) => e.stopPropagation()}>
+      {children}
+    </Link>
+  );
+}
 
 /** Shared NCAA D1 pieces: game card, standings table, stat table. */
 
@@ -58,7 +73,7 @@ function TeamLine({ side, other, final, showScore }: { side: NcaaSide; other: Nc
       <TeamLogo name={side.name} url={side.logo} size="sm" />
       <span className={`min-w-0 flex-1 truncate text-sm ${lost ? "text-text-dim" : "font-medium"}`}>
         {side.rank && <span className="mr-1 text-[11px] text-text-dim">{side.rank}</span>}
-        {side.name}
+        <TeamLink seo={side.seo}>{side.name}</TeamLink>
       </span>
       {showScore && (
         <span className={`font-display text-base font-semibold tabular-nums ${won ? "text-text" : "text-text-dim"}`}>
@@ -101,7 +116,7 @@ export function StandingsTable({ rows, ourTeam, compact = false }: { rows: NcaaS
               <td className="px-2 py-2">
                 <span className="flex items-center gap-2 font-medium">
                   <TeamLogo name={r.name} url={r.logo} size="sm" />
-                  {r.name}
+                  <TeamLink seo={r.seo}>{r.name}</TeamLink>
                 </span>
               </td>
               <td className="px-2 py-2 text-center text-text-dim">{r.gp}</td>
@@ -137,6 +152,7 @@ export function NcaaStatTable({
   hideColumns?: string[];
 }) {
   const teamCol = table.columns.findIndex((c) => ["team", "school"].includes(c.toLowerCase()));
+  const nameCol = table.columns.findIndex((c) => c.toLowerCase() === "name");
   const shown = table.columns.map((c, i) => ({ c, i })).filter(({ c }) => !hideColumns.includes(c));
   const rows = table.rows.slice(0, limit ?? table.rows.length);
   return (
@@ -171,8 +187,12 @@ export function NcaaStatTable({
                     ) : i === teamCol ? (
                       <span className="flex items-center gap-2">
                         <TeamLogo name={r[i]} url={team?.logo} size="sm" />
-                        <span className="truncate">{r[i]}</span>
+                        <TeamLink seo={team?.seo} className="truncate">
+                          {r[i]}
+                        </TeamLink>
                       </span>
+                    ) : i === nameCol && table.players ? (
+                      <PlayerCell name={r[i]} seo={team?.seo} link={table.players[ri]} />
                     ) : (
                       r[i]
                     )}
@@ -198,4 +218,23 @@ export function updatedLabel(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(`${iso.replace(" ", "T")}Z`);
   return `Updated ${d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`;
+}
+
+/** A leader-table player: photo, squad number and name, linking to their profile. */
+function PlayerCell({ name, seo, link }: { name: string; seo: string | null | undefined; link: { key: string; photo_url: string | null; jersey_number: string | null } | null }) {
+  const inner = (
+    <span className="flex items-center gap-2">
+      <PlayerPhoto name={name} url={link?.photo_url} size={26} />
+      <span className="whitespace-nowrap">
+        {link?.jersey_number && <span className="mr-1 text-[11px] text-text-dim">#{link.jersey_number}</span>}
+        {name}
+      </span>
+    </span>
+  );
+  if (!seo || !link) return inner;
+  return (
+    <Link to={playerPath(seo, link.key)} className="hover:text-owl-red-light [&_span.whitespace-nowrap]:hover:underline">
+      {inner}
+    </Link>
+  );
 }

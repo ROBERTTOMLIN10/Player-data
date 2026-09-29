@@ -28,6 +28,8 @@ import type {
   NcaaStandings,
   NcaaStatsIndex,
   NcaaTable,
+  NcaaPlayerPage,
+  NcaaTeamPage,
   PlayerRpe,
   RpeSession,
   RpeSessionSummary,
@@ -398,6 +400,22 @@ export function useNcaaStat(key: string | null) {
     queryKey: ["ncaaStat", key],
     queryFn: () => fetchJson<NcaaTable & { ourTeam: string }>(`/api/ncaa/stats/${key}`),
     enabled: key !== null,
+  });
+}
+
+export function useNcaaTeam(seo: string | undefined) {
+  return useQuery({
+    queryKey: ["ncaaTeam", seo],
+    queryFn: () => fetchJson<NcaaTeamPage>(`/api/ncaa/team/${seo}`),
+    enabled: Boolean(seo),
+  });
+}
+
+export function useNcaaPlayer(seo: string | undefined, key: string | undefined) {
+  return useQuery({
+    queryKey: ["ncaaPlayer", seo, key],
+    queryFn: () => fetchJson<NcaaPlayerPage>(`/api/ncaa/player/${seo}/${encodeURIComponent(key!)}`),
+    enabled: Boolean(seo && key),
   });
 }
 
