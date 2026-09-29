@@ -21,12 +21,14 @@ export function PlayerProfileHeader({
   profile,
   subtitle,
   onBack,
+  bioLabel = "FAU Athletics bio",
 }: {
   name: string;
   jersey?: string | null;
   profile?: PlayerProfile | null;
   subtitle: string;
   onBack?: () => void; // coaches: back to the player list
+  bioLabel?: string;
 }) {
   const p = profile;
   const height = p?.height_feet ? `${p.height_feet}'${p.height_inches ?? 0}"` : null;
@@ -87,7 +89,7 @@ export function PlayerProfileHeader({
             )}
             {p.profile_url && (
               <a href={p.profile_url} target="_blank" rel="noreferrer" className="text-owl-red-light hover:underline">
-                FAU Athletics bio ↗
+                {bioLabel} ↗
               </a>
             )}
           </div>

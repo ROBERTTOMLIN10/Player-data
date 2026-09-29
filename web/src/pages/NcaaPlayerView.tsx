@@ -62,6 +62,7 @@ export default function NcaaPlayerView() {
         jersey={data.profile?.jersey_number ?? null}
         profile={data.profile as PlayerProfile | null}
         subtitle={[team.name, team.conference].filter(Boolean).join(" · ")}
+        bioLabel={`${team.name} bio`}
       />
 
       {data.source === "ncaa" && (

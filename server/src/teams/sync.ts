@@ -11,6 +11,9 @@ import { TEAM_SITES } from "./sites.js";
  */
 
 const PAUSE_MS = 400;
+/** Team/totals lines some stats pages list alongside the players. */
+const NOT_A_PLAYER = /^(team|tm|totals?|opponents?)$/i;
+const isPlayer = (p: { name: string }) => !NOT_A_PLAYER.test(p.name.trim());
 const pause = () => new Promise((r) => setTimeout(r, PAUSE_MS));
 
 const PLAYER_COLS = [
@@ -60,7 +63,7 @@ export async function syncTeamStats(seo: string, year = Number(teamToday().slice
       `INSERT INTO team_player_stats (team_seo, player_key, name, jersey_number, ${fieldCols.join(", ")})
        VALUES (?, ?, ?, ?, ${fieldCols.map(() => "?").join(", ")})`,
     );
-    for (const p of stats.players) field.run(seo, p.key, p.name, p.jersey_number, ...fieldCols.map((c) => p[c]));
+    for (const p of stats.players.filter(isPlayer)) field.run(seo, p.key, p.name, p.jersey_number, ...fieldCols.map((c) => p[c]));
     // Keepers: add their goalkeeping to their row (or a new row if they have no field line).
     const keeper = db.prepare(
       `INSERT INTO team_player_stats (team_seo, player_key, name, jersey_number, gp, gs, is_goalkeeper, ${gkCols.join(", ")})
@@ -69,7 +72,7 @@ export async function syncTeamStats(seo: string, year = Number(teamToday().slice
          gp = COALESCE(team_player_stats.gp, excluded.gp), gs = COALESCE(team_player_stats.gs, excluded.gs),
          ${gkCols.map((c) => `${c} = excluded.${c}`).join(", ")}`,
     );
-    for (const k of stats.keepers) keeper.run(seo, k.key, k.name, k.jersey_number, k.gp, k.gs, ...gkCols.map((c) => k[c]));
+    for (const k of stats.keepers.filter(isPlayer)) keeper.run(seo, k.key, k.name, k.jersey_number, k.gp, k.gs, ...gkCols.map((c) => k[c]));
     db.prepare("UPDATE team_sites SET stats_synced_at = datetime('now'), last_error = NULL WHERE team_seo = ?").run(seo);
   })();
 
@@ -89,7 +92,7 @@ export async function syncTeamStats(seo: string, year = Number(teamToday().slice
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       db.transaction(() => {
-        for (const l of lines)
+        for (const l of lines.filter(isPlayer))
           insert.run(seo, l.key, g.date, g.opponent, g.home ? "home" : "away", g.result, l.started ? 1 : 0, l.minutes, l.goals, l.assists,
             l.shots, l.shots_on_goal, l.yellow_cards, l.red_cards, l.saves, l.goals_allowed, g.boxscoreUrl);
         db.prepare("INSERT OR REPLACE INTO team_boxscores (team_seo, boxscore_url, game_date) VALUES (?, ?, ?)").run(seo, g.boxscoreUrl, g.date);

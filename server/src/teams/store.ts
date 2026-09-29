@@ -19,6 +19,8 @@ export interface SquadRef {
   photo_url: string | null;
 }
 
+/** Skips the team/totals lines some stats pages include. */
+const NOT_TOTALS = "LOWER(TRIM(s.name)) NOT IN ('team', 'tm', 'total', 'totals', 'opponent', 'opponents')";
 const slug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 /** Key for a player we only know from NCAA.com (no squad data for their team yet). */
 export const nameKey = (name: string) => `n-${slug(name)}`;
@@ -30,7 +32,7 @@ export function squadIndex(): Map<string, SquadRef[]> {
       `SELECT team_seo, player_key AS key, name, jersey_number, photo_url FROM team_players
        UNION ALL
        SELECT s.team_seo, s.player_key, s.name, s.jersey_number, NULL FROM team_player_stats s
-       WHERE NOT EXISTS (SELECT 1 FROM team_players p WHERE p.team_seo = s.team_seo AND p.player_key = s.player_key)`,
+       WHERE ${NOT_TOTALS} AND NOT EXISTS (SELECT 1 FROM team_players p WHERE p.team_seo = s.team_seo AND p.player_key = s.player_key)`,
     )
     .all() as (SquadRef & { team_seo: string })[];
   const out = new Map<string, SquadRef[]>();
@@ -148,7 +150,7 @@ export function teamPage(seo: string) {
               s.assists, s.points, s.shots, s.shots_on_goal, s.yellow_cards, s.red_cards, s.is_goalkeeper, s.goals_allowed, s.gaa,
               s.saves, s.save_pct, s.shutouts
        FROM team_player_stats s
-       WHERE s.team_seo = ? AND NOT EXISTS (SELECT 1 FROM team_players p WHERE p.team_seo = s.team_seo AND p.player_key = s.player_key)`,
+       WHERE s.team_seo = ? AND ${NOT_TOTALS} AND NOT EXISTS (SELECT 1 FROM team_players p WHERE p.team_seo = s.team_seo AND p.player_key = s.player_key)`,
     )
     .all(seo, seo) as Record<string, unknown>[];
   squad.sort((a, b) => (parseInt(String(a.jersey_number ?? "999"), 10) || 999) - (parseInt(String(b.jersey_number ?? "999"), 10) || 999));
