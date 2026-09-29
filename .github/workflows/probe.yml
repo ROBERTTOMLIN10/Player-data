@@ -4,6 +4,8 @@ on:
   push:
     branches: [claude/friendly-dijkstra-s2fxp1]
     paths: [tools/probe/**, .github/workflows/probe.yml]
+permissions:
+  contents: write
 jobs:
   probe:
     runs-on: ubuntu-latest
@@ -13,3 +15,9 @@ jobs:
         with: { node-version: 22 }
       - run: npm install --no-audit --no-fund
       - run: npx tsx tools/probe/probe.mts
+      - name: Save fixtures to probe-data branch
+        run: |
+          cd "$RUNNER_TEMP/fixtures"
+          git init -q && git checkout -q -b probe-data
+          git add -A && git -c user.name=probe -c user.email=probe@example.com commit -qm fixtures
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" probe-data
