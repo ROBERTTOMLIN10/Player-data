@@ -4,7 +4,6 @@ import { STAT_CATEGORIES } from "../jobs/ncaaSync.js";
 import { teamToday } from "../lib/readiness.js";
 import { ncaaLogoUrl, type HtmlTable } from "../ncaa/client.js";
 import { conferenceLabel, enrichTable, getCache, standingsWithMovement, teamsByName, type GameRow } from "../ncaa/store.js";
-import { TEAM_SITES } from "./sites.js";
 
 /**
  * Other teams' squads for the NCAA D1 tab: matching NCAA.com leader rows to
@@ -93,7 +92,7 @@ function teamInfo(seo: string) {
   const idx = conf?.rows.findIndex((r) => r.seo === seo) ?? -1;
   const row = idx >= 0 ? conf!.rows[idx] : null;
   const site = getDb().prepare("SELECT * FROM team_sites WHERE team_seo = ?").get(seo) as
-    | { host: string; roster_synced_at: string | null; stats_synced_at: string | null }
+    | { host: string; platform: string; roster_synced_at: string | null; stats_synced_at: string | null }
     | undefined;
   return {
     seo,
@@ -105,8 +104,8 @@ function teamInfo(seo: string) {
     conferenceRecord: row ? `${row.w}-${row.l}-${row.t}` : null,
     conferencePosition: idx >= 0 ? idx + 1 : null,
     conferenceTeams: conf?.rows.length ?? null,
-    site: site ? `https://${site.host}` : null,
-    covered: Boolean(TEAM_SITES[seo] && site?.roster_synced_at),
+    site: site?.host ? `https://${site.host}` : null,
+    covered: Boolean(site && site.platform !== "other" && (site.roster_synced_at || site.stats_synced_at)),
     updatedAt: site?.stats_synced_at ?? site?.roster_synced_at ?? null,
   };
 }

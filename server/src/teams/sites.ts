@@ -1,9 +1,8 @@
 /**
- * Athletics websites for the teams whose full squads we read (NCAA.com team
- * id → host). First batch: the American Conference plus FAU's D1 opponents.
+ * Athletics websites checked by hand (NCAA.com team id → host). Every other
+ * D1 team's site is found automatically (see discover.ts); entries here win.
  * 'sidearm' = the current Sidearm (Nuxt) sites like fausports.com;
  * 'sidearm-classic' = Sidearm's older server-rendered pages.
- * UCF runs a different platform (WMT) and isn't read yet.
  */
 export type TeamPlatform = "sidearm" | "sidearm-classic";
 

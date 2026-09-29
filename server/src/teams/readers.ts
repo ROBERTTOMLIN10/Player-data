@@ -82,10 +82,25 @@ export interface GameLine {
   goals_allowed: number | null;
 }
 
-const UA = { "user-agent": "Mozilla/5.0 (compatible; FAU men's soccer staff app)" };
+const UA = "Mozilla/5.0 (compatible; FAU men's soccer staff app)";
+// Some sites' firewalls turn away anything that doesn't look like a browser.
+const BROWSER_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
+
+/** GET a team site page: our own user agent first, a browser's if that's refused. */
+export async function siteFetch(url: string): Promise<Response> {
+  const get = (ua: string) => fetch(url, { headers: { "user-agent": ua }, signal: AbortSignal.timeout(20_000) });
+  try {
+    const res = await get(UA);
+    if (res.status !== 403 && res.status !== 406 && res.status !== 429) return res;
+  } catch {
+    /* connection refused/reset: try as a browser */
+  }
+  return get(BROWSER_UA);
+}
 
 async function fetchHtml(url: string): Promise<string> {
-  const res = await fetch(url, { headers: UA });
+  const res = await siteFetch(url);
   if (!res.ok) throw new Error(`${url} → HTTP ${res.status}`);
   return res.text();
 }
@@ -140,8 +155,8 @@ function blankProfile(): RosterProfile {
 
 // ---- Sidearm (Nuxt) ------------------------------------------------------------
 
-export async function nuxtRoster(host: string): Promise<SquadPlayer[]> {
-  const root = parseNuxtPayload(await fetchHtml(`https://${host}/sports/mens-soccer/roster`)) as Record<string, any>;
+export async function nuxtRoster(host: string, html?: string): Promise<SquadPlayer[]> {
+  const root = parseNuxtPayload(html ?? (await fetchHtml(`https://${host}/sports/mens-soccer/roster`))) as Record<string, any>;
   const store = root?.pinia?.roster?.roster;
   const roster = isRecord(store) ? (Object.values(store).find((r) => isRecord(r) && Array.isArray(r.players)) as any) : null;
   if (!roster) throw new Error(`no roster found on ${host}`);
@@ -149,7 +164,6 @@ export async function nuxtRoster(host: string): Promise<SquadPlayer[]> {
     .filter((p) => isRecord(p) && p.hide !== true)
     .map((p) => {
       const image = isRecord(p.image) ? p.image : {};
-      const social = isRecord(p.socialMedia) ? p.socialMedia : {};
       const name = [str(p.firstName), str(p.lastName)].filter(Boolean).join(" ");
       return {
         key: str(p.rosterPlayerId) ?? slug(name),
@@ -168,7 +182,7 @@ export async function nuxtRoster(host: string): Promise<SquadPlayer[]> {
         major: str(p.major),
         birth_date: str(p.birthDate)?.slice(0, 10) ?? null,
         is_captain: p.isCaptain === true ? 1 : 0,
-        instagram: (str(p.instagramUsername) ?? str(social.Instagram))?.replace(/^@/, "").replace(/\/+$/, "") ?? null,
+        instagram: null, // not shown (Rob asked to leave Instagram out)
         photo_url: str(image.absoluteUrl) ?? absolute(host, str(image.url)),
         profile_url: absolute(host, str(p.call_to_action)),
       };
@@ -251,8 +265,8 @@ export async function nuxtBoxscore(url: string): Promise<GameLine[]> {
 
 const text = (el: HTMLElement | null | undefined) => el?.text.replace(/\s+/g, " ").trim() || null;
 
-export async function classicRoster(host: string): Promise<SquadPlayer[]> {
-  const doc = parse(await fetchHtml(`https://${host}/sports/mens-soccer/roster`));
+export async function classicRoster(host: string, html?: string): Promise<SquadPlayer[]> {
+  const doc = parse(html ?? (await fetchHtml(`https://${host}/sports/mens-soccer/roster`)));
   const items = doc.querySelectorAll("li.sidearm-roster-player");
   if (!items.length) throw new Error(`no roster found on ${host}`);
   return items.map((li) => {
@@ -312,5 +326,78 @@ export async function classicSeasonStats(host: string, year: number): Promise<Se
       save_pct: dec(c["SV%"]), wins: int(c.W), losses: int(c.L), ties: int(c.T), shutouts: int(c.SHO),
     };
   });
-  return { players, keepers, games: [] }; // classic box scores aren't read yet
+  // Game-by-game table: date, "at"/"vs" + opponent (linking to the box score), score (this team's goals first).
+  const games = (doc.querySelector("#game-game-our-offensive")?.querySelectorAll("tbody tr") ?? [])
+    .map((tr): TeamGame | null => {
+      const tds = tr.querySelectorAll("td");
+      const a = tds[1]?.querySelector("a[href*='boxscore']");
+      const date = isoDate(text(tds[0]));
+      const url = absolute(host, a?.getAttribute("href")?.replace(/&amp;/g, "&"));
+      if (!date || !url) return null;
+      const [us, them] = pair(text(tr.querySelector("td[data-label='Score']")));
+      const result = us === null || them === null ? null : `${us > them ? "W" : us < them ? "L" : "T"} ${us}-${them}`;
+      return { date, opponent: text(a) ?? "", home: !/^at\b/i.test(text(tds[1]) ?? ""), result, boxscoreUrl: url };
+    })
+    .filter((g): g is TeamGame => g !== null);
+  return { players, keepers, games };
+}
+
+/** This site's team's lines from one of its classic box scores (its players link to its roster). */
+export async function classicBoxscore(url: string): Promise<GameLine[]> {
+  const doc = parse(await fetchHtml(url));
+  const tables = doc.querySelectorAll("table");
+  const caption = (t: HTMLElement) => text(t.querySelector("caption")) ?? "";
+  const ours = (t: HTMLElement) => Boolean(t.querySelector("a[href*='/roster/']"));
+  const field = tables.find((t) => /- Player Stats$/i.test(caption(t)) && ours(t));
+  if (!field) throw new Error(`no player stats at ${url}`);
+  const abbr = caption(field).replace(/\s*- Player Stats$/i, "").trim();
+  const keyOf = (a: HTMLElement | null, name: string) => a?.getAttribute("href")?.match(/\/roster\/[^/]+\/(\d+)/)?.[1] ?? slug(name);
+  const byJersey = new Map<string, GameLine>();
+  const lines: GameLine[] = [];
+  let starters = false;
+  for (const tr of field.querySelectorAll("tbody tr")) {
+    const group = tr.querySelector("th.header-group");
+    if (group) {
+      starters = /starter/i.test(text(group) ?? "");
+      continue;
+    }
+    const tds = tr.querySelectorAll("td");
+    if (tds.length < 4) continue;
+    const a = tr.querySelector("a[href*='/roster/']");
+    const name = firstLast(text(a) ?? (text(tds[2])?.replace(/^\d+\s+/, "") ?? ""));
+    if (!name) continue;
+    const c = Object.fromEntries(tr.querySelectorAll("td[data-label]").map((td) => [td.getAttribute("data-label")!.toUpperCase(), text(td)]));
+    const line: GameLine = {
+      key: keyOf(a, name), name, started: starters, minutes: int(c.MIN),
+      goals: int(c.G), assists: int(c.A), shots: int(c.SH), shots_on_goal: int(c.SOG),
+      yellow_cards: 0, red_cards: 0, saves: null, goals_allowed: null,
+    };
+    lines.push(line);
+    const jersey = text(tds[1])?.replace(/\D/g, "");
+    if (jersey) byJersey.set(jersey, line);
+  }
+  // Keepers: saves and goals against.
+  const gk = tables.find((t) => /- Goalie Statistics$/i.test(caption(t)) && ours(t));
+  for (const tr of gk?.querySelectorAll("tbody tr") ?? []) {
+    const a = tr.querySelector("a[href*='/roster/']");
+    if (!a) continue;
+    const c = Object.fromEntries(tr.querySelectorAll("td[data-label]").map((td) => [td.getAttribute("data-label")!.toUpperCase(), text(td)]));
+    const line = lines.find((l) => l.key === keyOf(a, firstLast(text(a) ?? "")));
+    if (line) {
+      line.saves = int(c.S ?? c.SAVES);
+      line.goals_allowed = int(c.GA);
+    }
+  }
+  // Cards: "#3 Mats Vogel" under this team's abbreviation.
+  const cards = tables.find((t) => /caution/i.test(caption(t)));
+  for (const tr of cards?.querySelectorAll("tbody tr") ?? []) {
+    const tds = tr.querySelectorAll("td");
+    if (!tds.some((td) => text(td) === abbr)) continue;
+    const jersey = tds.map((td) => text(td)?.match(/^#(\d+)/)?.[1]).find(Boolean);
+    const line = jersey ? byJersey.get(jersey) : undefined;
+    if (!line) continue;
+    if (/red/i.test(tds[0]?.getAttribute("class") ?? "")) line.red_cards = (line.red_cards ?? 0) + 1;
+    else line.yellow_cards = (line.yellow_cards ?? 0) + 1;
+  }
+  return lines.filter((l) => (l.minutes ?? 0) > 0 || l.started);
 }

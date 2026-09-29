@@ -8,7 +8,7 @@ name: Preview data (fausports.com)
 on:
   workflow_dispatch:
   schedule:
-    - cron: "15 */3 * * *" # every 3 hours, so new results reach the preview soon after games
+    - cron: "*/30 * * * *" # every 30 minutes, so new results and stats reach the preview soon after games
   push:
     branches: [claude/friendly-dijkstra-s2fxp1]
     paths: [tools/preview/snapshot.mts, .github/workflows/preview-data.yml]
@@ -36,7 +36,7 @@ jobs:
           if git fetch -q --depth=1 origin preview-data && git show FETCH_HEAD:fausports-snapshot.json > "$RUNNER_TEMP/previous.json"; then
             npx tsx tools/preview/snapshot.mts import "$RUNNER_TEMP/previous.json"
           fi
-          npx tsx tools/preview/snapshot.mts export "$RUNNER_TEMP/fausports-snapshot.json"
+          PREVIOUS_SNAPSHOT_FILE="$RUNNER_TEMP/previous.json" npx tsx tools/preview/snapshot.mts export "$RUNNER_TEMP/fausports-snapshot.json"
       - name: Save to the preview-data branch
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

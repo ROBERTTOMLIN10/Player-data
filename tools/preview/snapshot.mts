@@ -18,7 +18,8 @@ import { migrate } from "../../server/src/db/migrate.js";
 import { syncSchedule } from "../../server/src/import/syncSchedule.js";
 import { syncMinutes } from "../../server/src/import/importMinutes.js";
 import { syncSeason, syncStatsAndRankings } from "../../server/src/jobs/ncaaSync.js";
-import { syncTeams } from "../../server/src/teams/sync.js";
+import { syncAllTeams } from "../../server/src/teams/sync.js";
+import { pool } from "../../server/src/teams/discover.js";
 
 const TEAM_TABLES = ["team_sites", "team_players", "team_player_stats", "team_player_games", "team_boxscores"] as const;
 import { ncaaLogoUrl } from "../../server/src/ncaa/client.js";
@@ -126,7 +127,7 @@ if (mode === "export") {
   console.log(`ncaa: ${snap.ncaaGames.length} games, ${snap.ncaaCache.length} tables`);
 
   // Other teams' squads from their athletics sites (box scores already read carry over from the previous snapshot).
-  await syncTeams({ rosters: true });
+  await syncAllTeams({ rosters: true });
   snap.teams = Object.fromEntries(TEAM_TABLES.map((t) => [t, db.prepare(`SELECT * FROM ${t}`).all() as Row[]]));
   console.log(`teams: ${snap.teams.team_players.length} players, ${snap.teams.team_player_games.length} game lines`);
 
@@ -154,8 +155,18 @@ if (mode === "export") {
       ...squadPhotos,
     ]),
   ];
+  // Images the previous snapshot already embedded are reused (thousands of squad photos; they rarely change).
+  const previous: Record<string, string> = process.env.PREVIOUS_SNAPSHOT_FILE && fs.existsSync(process.env.PREVIOUS_SNAPSHOT_FILE)
+    ? (JSON.parse(fs.readFileSync(process.env.PREVIOUS_SNAPSHOT_FILE, "utf-8")) as Snapshot).logos ?? {}
+    : {};
   const failed: string[] = [];
-  for (const url of urls) {
+  let reused = 0;
+  await pool(urls, 16, async (url) => {
+    if (previous[url] && squadPhotos.has(url)) {
+      snap.logos![url] = previous[url];
+      reused++;
+      return;
+    }
     try {
       const res = await fetch(encodeURI(decodeURI(url)), { headers: { "user-agent": "Mozilla/5.0 (compatible; FAU men's soccer staff app)" } });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -166,18 +177,19 @@ if (mode === "export") {
         bytes = photos.has(url)
           ? await sharp(bytes).resize(192, 240, { fit: "cover", position: "top" }).webp({ quality: 72 }).toBuffer()
           : squadPhotos.has(url)
-            ? await sharp(bytes).resize(96, 120, { fit: "cover", position: "top" }).webp({ quality: 60 }).toBuffer()
+            ? await sharp(bytes).resize(64, 80, { fit: "cover", position: "top" }).webp({ quality: 55 }).toBuffer()
           : await sharp(bytes).resize(64, 64, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).webp({ quality: 80 }).toBuffer();
         outType = "image/webp";
       }
-      snap.logos[url] = `data:${outType};base64,${bytes.toString("base64")}`;
+      snap.logos![url] = `data:${outType};base64,${bytes.toString("base64")}`;
     } catch (err) {
       failed.push(`${url.split("/").pop()} (${(err as Error).message})`);
     }
-  }
-  if (failed.length) console.warn(`${failed.length} logos unavailable: ${failed.join(", ")}`);
+  });
+  console.log(`${reused} images reused from the previous snapshot`);
+  if (failed.length) console.warn(`${failed.length} images unavailable: ${failed.slice(0, 50).join(", ")}${failed.length > 50 ? ", ..." : ""}`);
 
-  fs.writeFileSync(file, JSON.stringify(snap, null, 1));
+  fs.writeFileSync(file, JSON.stringify(snap));
   console.log(
     `wrote ${file}: ${snap.scheduleGames.length} games, ${snap.playerStats.length} player stat lines, ` +
       `${snap.teamTotals.length} team totals, ${snap.minutes.length} minutes rows, ${Object.keys(snap.logos).length} logos ` +

@@ -49,7 +49,6 @@ const absolute = (v: unknown) => {
 
 function profileOf(p: Record<string, unknown>): RosterProfile {
   const image = isRecord(p.image) ? p.image : {};
-  const social = isRecord(p.socialMedia) ? p.socialMedia : {};
   return {
     position_long: str(p.positionLong),
     academic_year_long: str(p.academicYearLong),
@@ -62,7 +61,7 @@ function profileOf(p: Record<string, unknown>): RosterProfile {
     major: str(p.major),
     birth_date: str(p.birthDate)?.slice(0, 10) ?? null,
     is_captain: p.isCaptain === true ? 1 : 0,
-    instagram: (str(p.instagramUsername) ?? str(social.Instagram))?.replace(/^@/, "").replace(/\/+$/, "") ?? null,
+    instagram: null, // not shown (Rob asked to leave Instagram out)
     photo_url: str(image.absoluteUrl) ?? absolute(image.url),
     profile_url: absolute(p.call_to_action),
   };

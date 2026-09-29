@@ -80,18 +80,11 @@ export function PlayerProfileHeader({
         ) : (
           <p className="mt-3 text-sm text-text-dim">No profile on this season's fausports.com roster yet.</p>
         )}
-        {(p?.instagram || p?.profile_url) && (
+        {p?.profile_url && (
           <div className="mt-3 flex flex-wrap gap-3 text-sm">
-            {p.instagram && (
-              <a href={`https://instagram.com/${p.instagram}`} target="_blank" rel="noreferrer" className="text-owl-red-light hover:underline">
-                Instagram @{p.instagram}
-              </a>
-            )}
-            {p.profile_url && (
-              <a href={p.profile_url} target="_blank" rel="noreferrer" className="text-owl-red-light hover:underline">
-                {bioLabel} ↗
-              </a>
-            )}
+            <a href={p.profile_url} target="_blank" rel="noreferrer" className="text-owl-red-light hover:underline">
+              {bioLabel} ↗
+            </a>
           </div>
         )}
       </div>

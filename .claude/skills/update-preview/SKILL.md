@@ -60,8 +60,12 @@ Data page (see step 0).
    gets refused, so split it: a small `index.html` that loads `app.css` and
    `app.js` (`<script type="module" src="app.js">`), with the CSS from the
    page's `<style>` and the code from its `<script type="module">` (turn
-   `<\/script` back into `</script`). Publish `index.html` with the Artifact
-   tool (`url` set to the link above, `files` mapping `app.js` and `app.css`,
+   `<\/script` back into `</script`). The NCAA D1 team and player pages are
+   separate files, `/tmp/fau-preview/teams/<team>.json` (one per D1 team,
+   ~27 MB in all), which the preview loads when a team or player is opened:
+   publish each as `teams/<team>.json`. Publish `index.html` with the Artifact
+   tool (`url` set to the link above, `files` mapping `app.js`, `app.css` and
+   every `teams/*.json` (about 215 files; keep one publish under 255 files),
    no `icon`, and no `capabilities`, which keeps the stored `assets` + `db`
    declaration the uploads need; if it's ever lost, pass
    `{"assets": {}, "db": {"rules": [{"path": "", "read": "view", "write": "admin"}]}}`),
@@ -69,6 +73,13 @@ Data page (see step 0).
 
 4. **Tell Rob** in plain language what changed and where to click, and that it
    uses test check-ins and doesn't save anything.
+
+## Automatic refresh
+
+A Routine rebuilds and republishes the preview every hour from the working
+branch (`claude/friendly-dijkstra-s2fxp1`), using the data the
+`Preview data` workflow saves every 30 minutes. A manual rebuild is still
+right after a code change, so Rob sees it straight away.
 
 ## When the app changes
 

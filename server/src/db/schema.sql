@@ -439,8 +439,9 @@ CREATE TABLE IF NOT EXISTS ncaa_rank_history (
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS team_sites (
   team_seo TEXT PRIMARY KEY,
-  host TEXT NOT NULL, -- e.g. owlsports.com
-  platform TEXT NOT NULL, -- 'sidearm' (Nuxt) | 'sidearm-classic'
+  host TEXT NOT NULL, -- e.g. owlsports.com ('' when not found)
+  platform TEXT NOT NULL, -- 'sidearm' (Nuxt) | 'sidearm-classic' | 'other' (not readable yet)
+  discovered_at TEXT, -- when the site/platform was looked up (NULL: set by hand in sites.ts)
   roster_synced_at TEXT,
   stats_synced_at TEXT,
   last_error TEXT
