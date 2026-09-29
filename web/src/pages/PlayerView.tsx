@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { usePlayerDetail, usePlayerReadiness, usePlayerRpe, usePlayers, useMetrics, useTeamFitness, useTeamSummary } from "../api/client";
-import { GameByGameSection, SeasonStatsSection, SessionTable, type SeasonView } from "../components/SeasonStats";
+import { GameByGameSection, Segmented, SeasonStatsSection, SessionTable, type SeasonView } from "../components/SeasonStats";
 import { FitnessCard } from "../components/Fitness";
 import { Card, SectionHeading } from "../components/Card";
 import { TeamLogo } from "../components/TeamLogo";
@@ -23,6 +23,9 @@ export default function PlayerView() {
 
   const { data: summary } = useTeamSummary();
   const [selectedMetricKey, setSelectedMetricKey] = useState("load");
+  // Player page sections: Stats (default), Readiness, RPE. Kept in the URL (?section=readiness).
+  const [params, setParams] = useSearchParams();
+  const section: PlayerSection = PLAYER_SECTIONS.find((x) => x.key === params.get("section"))?.key ?? "stats";
   const [seasonView, setSeasonView] = useState<SeasonView>("avg");
   const [logView, setLogView] = useState<"chart" | "table">("chart");
   const teamByGame = useMemo(
@@ -90,12 +93,19 @@ export default function PlayerView() {
         </button>
       </div>
 
-      <PlayerReadinessSection playerId={selectedId} />
+      <div className="-mt-4 flex justify-center">
+        <Segmented
+          value={section}
+          options={PLAYER_SECTIONS}
+          onChange={(v) => setParams(v === "stats" ? {} : { section: v }, { replace: true })}
+          label="Player sections"
+        />
+      </div>
 
-      <PlayerRpeSection playerId={selectedId} />
-
-      {myFitness && fitness && <FitnessCard you={myFitness} thresholds={fitness.thresholds} asOf={fitness.asOf} coach />}
-
+      {section === "readiness" && <PlayerReadinessSection playerId={selectedId} />}
+      {section === "rpe" && <PlayerRpeSection playerId={selectedId} />}
+      {section === "stats" && (
+        <>
       {detail.sessions.length === 0 ? (
         <Card className="text-sm text-text-dim">
           No GPS data yet. Their stats will show here once a GPS file includes them.
@@ -137,6 +147,8 @@ export default function PlayerView() {
           />
         </>
       )}
+
+      {myFitness && fitness && <FitnessCard you={myFitness} thresholds={fitness.thresholds} asOf={fitness.asOf} coach />}
 
       {detail.gameStats.length > 0 && (
         <section>
@@ -213,9 +225,18 @@ export default function PlayerView() {
           </Card>
         </section>
       )}
+        </>
+      )}
     </div>
   );
 }
+
+type PlayerSection = "stats" | "readiness" | "rpe";
+const PLAYER_SECTIONS: { key: PlayerSection; label: string }[] = [
+  { key: "stats", label: "Stats" },
+  { key: "readiness", label: "Readiness" },
+  { key: "rpe", label: "RPE" },
+];
 
 function PlayerReadinessSection({ playerId }: { playerId: number }) {
   const [days, setDays] = useState(30);
