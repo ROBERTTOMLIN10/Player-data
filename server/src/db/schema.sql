@@ -216,7 +216,22 @@ CREATE TABLE IF NOT EXISTS roster_players (
   player_id INTEGER REFERENCES players(id) ON DELETE SET NULL,
   position_short TEXT,
   jersey_number TEXT,
-  academic_year TEXT
+  academic_year TEXT,
+  -- Profile details from the roster page (blank when FAU doesn't publish them).
+  position_long TEXT,
+  academic_year_long TEXT,
+  height_feet INTEGER,
+  height_inches INTEGER,
+  weight INTEGER,
+  hometown TEXT,
+  high_school TEXT,
+  previous_school TEXT,
+  major TEXT,
+  birth_date TEXT,
+  is_captain INTEGER NOT NULL DEFAULT 0,
+  instagram TEXT,
+  photo_url TEXT,
+  profile_url TEXT
 );
 
 -- Team-level totals for both sides of a completed schedule game (FAU + opponent),

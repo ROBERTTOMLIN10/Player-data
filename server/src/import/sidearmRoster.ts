@@ -10,13 +10,63 @@ export interface SidearmRosterPlayer {
   positionShort: string | null; // "GK", "Def", "Mid", "For"
   jerseyNumber: string | null;
   academicYear: string | null; // "Fr.", "So.", ...
+  profile?: RosterProfile;
 }
+
+/** Profile details from the roster page; any can be blank when FAU doesn't publish them. */
+export interface RosterProfile {
+  position_long: string | null;
+  academic_year_long: string | null;
+  height_feet: number | null;
+  height_inches: number | null;
+  weight: number | null;
+  hometown: string | null;
+  high_school: string | null;
+  previous_school: string | null;
+  major: string | null;
+  birth_date: string | null;
+  is_captain: number;
+  instagram: string | null;
+  photo_url: string | null;
+  profile_url: string | null;
+}
+
+export const PROFILE_COLUMNS: (keyof RosterProfile)[] = [
+  "position_long", "academic_year_long", "height_feet", "height_inches", "weight", "hometown", "high_school",
+  "previous_school", "major", "birth_date", "is_captain", "instagram", "photo_url", "profile_url",
+];
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
 
 const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null);
+const absolute = (v: unknown) => {
+  const s = str(v);
+  return s ? new URL(s, SIDEARM_BASE_URL).toString() : null;
+};
+
+function profileOf(p: Record<string, unknown>): RosterProfile {
+  const image = isRecord(p.image) ? p.image : {};
+  const social = isRecord(p.socialMedia) ? p.socialMedia : {};
+  return {
+    position_long: str(p.positionLong),
+    academic_year_long: str(p.academicYearLong),
+    height_feet: num(p.heightFeet),
+    height_inches: typeof p.heightInches === "number" && p.heightFeet ? p.heightInches : null,
+    weight: num(p.weight),
+    hometown: str(p.hometown),
+    high_school: str(p.highSchool),
+    previous_school: str(p.previousSchool),
+    major: str(p.major),
+    birth_date: str(p.birthDate)?.slice(0, 10) ?? null,
+    is_captain: p.isCaptain === true ? 1 : 0,
+    instagram: (str(p.instagramUsername) ?? str(social.Instagram))?.replace(/^@/, "").replace(/\/+$/, "") ?? null,
+    photo_url: str(image.absoluteUrl) ?? absolute(image.url),
+    profile_url: absolute(p.call_to_action),
+  };
+}
 
 /** This season's roster from fausports.com (pinia.roster.roster.<id>.players). */
 export async function fetchRoster(): Promise<SidearmRosterPlayer[]> {
@@ -28,7 +78,15 @@ export async function fetchRoster(): Promise<SidearmRosterPlayer[]> {
   return (roster.players as unknown[]).filter(isRecord).flatMap((p) => {
     const name = [str(p.firstName), str(p.lastName)].filter(Boolean).join(" ");
     if (!name || p.hide === true) return [];
-    return [{ name, positionShort: str(p.positionShort), jerseyNumber: str(p.jerseyNumber), academicYear: str(p.academicYearShort) }];
+    return [
+      {
+        name,
+        positionShort: str(p.positionShort),
+        jerseyNumber: str(p.jerseyNumber),
+        academicYear: str(p.academicYearShort),
+        profile: profileOf(p),
+      },
+    ];
   });
 }
 
@@ -46,9 +104,8 @@ export function syncRoster(db: ReturnType<typeof getDb>, roster: SidearmRosterPl
   if (roster.length === 0) return;
   const added: string[] = [];
   db.transaction(() => {
-    const insert = db.prepare(
-      "INSERT INTO roster_players (player_name, player_id, position_short, jersey_number, academic_year) VALUES (?, ?, ?, ?, ?)",
-    );
+    const cols = ["player_name", "player_id", "position_short", "jersey_number", "academic_year", ...PROFILE_COLUMNS];
+    const insert = db.prepare(`INSERT INTO roster_players (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`);
     db.prepare("DELETE FROM roster_players").run();
     for (const p of roster) {
       let playerId = matchSidearmPlayer(db, p.name).playerId;
@@ -72,7 +129,7 @@ export function syncRoster(db: ReturnType<typeof getDb>, roster: SidearmRosterPl
         );
         added.push(p.name);
       }
-      insert.run(p.name, playerId, p.positionShort, p.jerseyNumber, p.academicYear);
+      insert.run(p.name, playerId, p.positionShort, p.jerseyNumber, p.academicYear, ...PROFILE_COLUMNS.map((c) => p.profile?.[c] ?? (c === "is_captain" ? 0 : null)));
     }
   })();
   console.log(`Roster: ${roster.length} players${added.length ? `; added from the roster (no GPS file yet): ${added.join(", ")}` : ""}`);

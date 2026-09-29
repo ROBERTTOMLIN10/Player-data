@@ -7,6 +7,8 @@ import { Card, SectionHeading } from "../components/Card";
 import { TeamLogo } from "../components/TeamLogo";
 import { RangePicker, ReadinessHistory } from "../components/ReadinessHistory";
 import { RpeHistory } from "../components/RpeHistory";
+import { PlayerProfileHeader } from "../components/PlayerProfileHeader";
+import { PlayerPhoto } from "../components/PlayerPhoto";
 import { formatDate } from "../lib/format";
 import { positionGroup, ROSTER_SECTIONS } from "../lib/positions";
 
@@ -59,14 +61,19 @@ export default function PlayerView() {
                         onClick={() => navigate(`/players/${p.id}`)}
                         className="rounded-lg border border-border bg-surface-raised p-3 text-left transition-colors hover:border-owl-red"
                       >
-                        <div className="font-medium">
-                          {p.jersey_number && <span className="mr-1.5 text-xs font-normal text-text-dim">#{p.jersey_number}</span>}
-                          {p.canonical_name}
-                        </div>
-                        <div className="text-xs text-text-dim">
-                          {p.sessions
-                            ? `${p.games_played} game${p.games_played === 1 ? "" : "s"} played · ${p.sessions} tracked`
-                            : "No GPS data yet"}
+                        <div className="flex items-center gap-2.5">
+                          <PlayerPhoto name={p.canonical_name} url={p.photo_url} size={40} />
+                          <div className="min-w-0">
+                            <div className="font-medium leading-tight">
+                              {p.jersey_number && <span className="mr-1.5 text-xs font-normal text-text-dim">#{p.jersey_number}</span>}
+                              {p.canonical_name}
+                            </div>
+                            <div className="mt-0.5 text-xs text-text-dim">
+                              {p.sessions
+                                ? `${p.games_played} game${p.games_played === 1 ? "" : "s"} played · ${p.sessions} tracked`
+                                : "No GPS data yet"}
+                            </div>
+                          </div>
                         </div>
                       </button>
                     ))}
@@ -86,12 +93,13 @@ export default function PlayerView() {
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <SectionHeading title={`${detail.player.jersey_number ? `#${detail.player.jersey_number} ` : ""}${detail.player.canonical_name}`} subtitle={`${detail.seasonTotals.games_played ?? 0} games played · ${detail.sessions.length} tracked sessions this season`} />
-        <button onClick={() => navigate("/players")} className="text-sm text-text-dim hover:text-owl-red">
-          ← All players
-        </button>
-      </div>
+      <PlayerProfileHeader
+        name={detail.player.canonical_name}
+        jersey={detail.player.jersey_number}
+        profile={detail.profile}
+        subtitle={`${detail.seasonTotals.games_played ?? 0} games played · ${detail.sessions.length} tracked sessions this season`}
+        onBack={() => navigate("/players")}
+      />
 
       <div className="-mt-4 flex justify-center">
         <Segmented

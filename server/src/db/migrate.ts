@@ -19,6 +19,20 @@ export function migrate() {
 function addMissingColumns(db: ReturnType<typeof getDb>) {
   const added: Array<[table: string, column: string, definition: string]> = [
     ["readiness_checkins", "readiness_rating", "INTEGER CHECK (readiness_rating BETWEEN 1 AND 10)"],
+    ["roster_players", "position_long", "TEXT"],
+    ["roster_players", "academic_year_long", "TEXT"],
+    ["roster_players", "height_feet", "INTEGER"],
+    ["roster_players", "height_inches", "INTEGER"],
+    ["roster_players", "weight", "INTEGER"],
+    ["roster_players", "hometown", "TEXT"],
+    ["roster_players", "high_school", "TEXT"],
+    ["roster_players", "previous_school", "TEXT"],
+    ["roster_players", "major", "TEXT"],
+    ["roster_players", "birth_date", "TEXT"],
+    ["roster_players", "is_captain", "INTEGER NOT NULL DEFAULT 0"],
+    ["roster_players", "instagram", "TEXT"],
+    ["roster_players", "photo_url", "TEXT"],
+    ["roster_players", "profile_url", "TEXT"],
   ];
   for (const [table, column, definition] of added) {
     const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];

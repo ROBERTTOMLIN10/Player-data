@@ -62,6 +62,7 @@ export interface Player {
   sessions?: number; // tracked GPS sessions, including fitness-only
   position: string | null; // 'fwd' | 'mid' | 'def' | 'gk' | null (not yet known)
   jersey_number?: string | null; // squad number from the fausports.com roster
+  photo_url?: string | null;
 }
 
 export interface PlayerGameStat {
@@ -102,8 +103,29 @@ export interface PlayerStatTotals {
   games_with_stats: number;
 }
 
+/** Roster profile details (any can be null when FAU doesn't publish them). */
+export interface PlayerProfile {
+  position_short: string | null;
+  position_long: string | null;
+  academic_year: string | null;
+  academic_year_long: string | null;
+  height_feet: number | null;
+  height_inches: number | null;
+  weight: number | null;
+  hometown: string | null;
+  high_school: string | null;
+  previous_school: string | null;
+  major: string | null;
+  birth_date: string | null;
+  is_captain: number;
+  instagram: string | null;
+  photo_url: string | null;
+  profile_url: string | null;
+}
+
 export interface PlayerDetail {
   player: { id: number; canonical_name: string; created_at: string; position: string | null; jersey_number?: string | null };
+  profile?: PlayerProfile | null; // from the fausports.com roster
   sessions: GpsSession[];
   seasonTotals: Record<string, number | null>;
   gameStats: PlayerGameStat[];
@@ -176,6 +198,7 @@ export interface TeamStatsTopScorer {
   player_name: string;
   is_goalkeeper: number;
   jersey_number: string | null;
+  photo_url?: string | null;
   goals: number;
   assists: number;
   points: number;
@@ -208,6 +231,7 @@ export interface TeamStats {
 export interface TeamStatsGoalkeeper {
   player_name: string;
   jersey_number: string | null;
+  photo_url?: string | null;
   games_played: number;
   games_started: number;
   minutes: number;

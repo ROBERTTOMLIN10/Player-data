@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useTeamStats } from "../api/client";
 import { Card, SectionHeading } from "../components/Card";
+import { PlayerPhoto } from "../components/PlayerPhoto";
 import { TeamLogo } from "../components/TeamLogo";
 import { formatDate } from "../lib/format";
 
@@ -75,9 +76,12 @@ export default function TeamStatsView() {
                     className={`border-b border-border/60 last:border-0 ${p.player_id ? "cursor-pointer transition-colors hover:bg-surface-raised" : ""}`}
                   >
                     <td className="px-4 py-3 font-medium">
+                      <span className="flex items-center">
+                      <PlayerPhoto name={p.player_name} url={p.photo_url} size={30} className="mr-2.5" />
                       {p.jersey_number && <span className="mr-2 text-xs font-normal text-text-dim">#{p.jersey_number}</span>}
                       {p.player_name}
                       {p.is_goalkeeper ? <span className="ml-2 text-xs font-normal text-text-dim">GK</span> : null}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-text-dim">{p.games_played}</td>
                     <td className="px-4 py-3 text-text-dim">{p.games_started}</td>
@@ -127,8 +131,11 @@ export default function TeamStatsView() {
                   return (
                     <tr key={k.player_name} className="border-b border-border/60 last:border-0">
                       <td className="px-4 py-3 font-medium">
-                        {k.jersey_number && <span className="mr-2 text-xs font-normal text-text-dim">#{k.jersey_number}</span>}
-                        {k.player_name}
+                        <span className="flex items-center">
+                          <PlayerPhoto name={k.player_name} url={k.photo_url} size={30} className="mr-2.5" />
+                          {k.jersey_number && <span className="mr-2 text-xs font-normal text-text-dim">#{k.jersey_number}</span>}
+                          {k.player_name}
+                        </span>
                       </td>
                       <td className="px-4 py-3 text-text-dim">{k.games_played}</td>
                       <td className="px-4 py-3 text-text-dim">{k.games_started}</td>
