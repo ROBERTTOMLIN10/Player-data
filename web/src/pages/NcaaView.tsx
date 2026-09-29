@@ -170,10 +170,43 @@ function StandingsTab() {
           <div className="px-2 pb-2">
             <StandingsTable rows={c.rows} ourTeam={data.ourTeam} />
           </div>
+          <Fixtures games={c.fixtures ?? []} ourTeam={data.ourTeam} open={conf !== "all"} />
         </Card>
       ))}
       {shown.length === 0 && <Card className="text-center text-sm text-text-dim">No results for this conference yet.</Card>}
     </div>
+  );
+}
+
+/** A conference's remaining fixtures, grouped by date (open when one conference is shown, tap to expand in "All"). */
+function Fixtures({ games, ourTeam, open }: { games: NcaaGame[]; ourTeam: string; open: boolean }) {
+  const byDate = useMemo(() => {
+    const out = new Map<string, NcaaGame[]>();
+    for (const g of games) out.set(g.date, [...(out.get(g.date) ?? []), g]);
+    return [...out];
+  }, [games]);
+  return (
+    <details open={open} className="group border-t border-border">
+      <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium">
+        <span>
+          Remaining fixtures <span className="text-text-dim">({games.length})</span>
+        </span>
+        <span className="text-text-dim transition-transform group-open:rotate-90">›</span>
+      </summary>
+      <div className="flex flex-col gap-4 px-3 pb-4">
+        {byDate.length === 0 && <div className="px-1 text-sm text-text-dim">No conference fixtures left this season.</div>}
+        {byDate.map(([date, list]) => (
+          <div key={date}>
+            <div className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-text-dim">{formatDateLong(date)}</div>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {list.map((g) => (
+                <GameCard key={g.id} game={g} ourTeam={ourTeam} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }
 

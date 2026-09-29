@@ -122,6 +122,9 @@ export function StandingsTable({ rows, ourTeam, compact = false }: { rows: NcaaS
 }
 
 /** Any NCAA stat/rankings table, with logos next to team names and our team highlighted. */
+/** Our wording for NCAA column names: an away record is "Away", not "Road". */
+const columnLabel = (c: string) => c.replace(/\bRoad\b/i, "Away");
+
 export function NcaaStatTable({
   table,
   ourTeam,
@@ -143,7 +146,7 @@ export function NcaaStatTable({
           <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-text-dim">
             {shown.map(({ c, i }) => (
               <th key={i} className={`px-2 py-2 font-medium ${i === shown[shown.length - 1].i ? "text-right" : ""}`}>
-                {c}
+                {columnLabel(c)}
               </th>
             ))}
           </tr>

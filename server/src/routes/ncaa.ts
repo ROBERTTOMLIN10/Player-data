@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { getDb } from "../db/connection.js";
 import { ensureDate, POLLS, RANKINGS, STAT_CATEGORIES } from "../jobs/ncaaSync.js";
 import { isIsoDate, teamToday } from "../lib/readiness.js";
 import { ncaaLogoUrl, type HtmlTable } from "../ncaa/client.js";
@@ -59,9 +60,22 @@ ncaaRouter.get("/scoreboard", async (req, res) => {
 });
 
 ncaaRouter.get("/standings", (_req, res) => {
-  const conferences = standingsWithMovement(Number(teamToday().slice(0, 4))).map((c) => ({
+  const today = teamToday();
+  const names = conferenceNames();
+  // Remaining conference fixtures (not yet final) from today to the end of the season, by conference.
+  const upcoming = getDb()
+    .prepare(
+      `SELECT * FROM ncaa_games
+       WHERE is_conference = 1 AND state IS NOT 'F' AND game_date >= ? AND game_date LIKE ? AND home_conf = away_conf
+       ORDER BY game_date, start_epoch, home_name`,
+    )
+    .all(today, `${today.slice(0, 4)}-%`) as GameRow[];
+  const fixtures = new Map<string, ReturnType<typeof toGame>[]>();
+  for (const g of upcoming) fixtures.set(g.home_conf!, [...(fixtures.get(g.home_conf!) ?? []), toGame(g, names)]);
+  const conferences = standingsWithMovement(Number(today.slice(0, 4))).map((c) => ({
     ...c,
     rows: c.rows.map((r) => ({ ...r, logo: ncaaLogoUrl(r.seo) })),
+    fixtures: fixtures.get(c.seo) ?? [],
   }));
   res.json({ ourTeam: OUR_TEAM, conferences });
 });
