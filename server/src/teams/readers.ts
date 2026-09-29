@@ -82,10 +82,25 @@ export interface GameLine {
   goals_allowed: number | null;
 }
 
-const UA = { "user-agent": "Mozilla/5.0 (compatible; FAU men's soccer staff app)" };
+const UA = "Mozilla/5.0 (compatible; FAU men's soccer staff app)";
+// Some sites' firewalls turn away anything that doesn't look like a browser.
+const BROWSER_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
+
+/** GET a team site page: our own user agent first, a browser's if that's refused. */
+export async function siteFetch(url: string): Promise<Response> {
+  const get = (ua: string) => fetch(url, { headers: { "user-agent": ua }, signal: AbortSignal.timeout(20_000) });
+  try {
+    const res = await get(UA);
+    if (res.status !== 403 && res.status !== 406 && res.status !== 429) return res;
+  } catch {
+    /* connection refused/reset: try as a browser */
+  }
+  return get(BROWSER_UA);
+}
 
 async function fetchHtml(url: string): Promise<string> {
-  const res = await fetch(url, { headers: UA });
+  const res = await siteFetch(url);
   if (!res.ok) throw new Error(`${url} → HTTP ${res.status}`);
   return res.text();
 }

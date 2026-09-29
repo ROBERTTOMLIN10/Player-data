@@ -1,26 +1,28 @@
-// Temporary: checks D1 team site discovery. Removed before merge.
-import fs from "node:fs";
-import { fetchText } from "../../server/src/ncaa/client.js";
+// Temporary: full D1 squad sync test. Removed before merge.
 import { migrate } from "../../server/src/db/migrate.js";
 import { getDb } from "../../server/src/db/connection.js";
-import { d1Teams, discoverTeamSites } from "../../server/src/teams/discover.js";
+import { syncAllTeams } from "../../server/src/teams/sync.js";
 
 migrate();
-const teams = d1Teams();
-console.log("D1 teams:", teams.length);
-for (const seo of ["fla-atlantic", "stanford", "air-force"]) {
-  const html = await fetchText(`https://www.ncaa.com/schools/${seo}`).catch((e) => String(e));
-  const hrefs = [...html.matchAll(/href="(https?:\/\/[^"]+)"/g)].map((m) => m[1]).filter((u) => !/ncaa\.com/.test(u));
-  console.log(seo, JSON.stringify(hrefs.slice(0, 40)));
-  const i = html.search(/Athletic|athletics/i);
-  console.log("snippet:", html.slice(Math.max(0, i - 800), i + 800).replace(/\s+/g, " "));
-}
 const t0 = Date.now();
-console.log(await discoverTeamSites(), `${Math.round((Date.now() - t0) / 1000)}s`);
-const rows = getDb().prepare("SELECT team_seo, host, platform, last_error FROM team_sites ORDER BY platform, team_seo").all();
-const counts: Record<string, number> = {};
-for (const r of rows as { platform: string }[]) counts[r.platform] = (counts[r.platform] ?? 0) + 1;
-console.log(counts);
-for (const r of rows) console.log(JSON.stringify(r));
-fs.mkdirSync("probe-out", { recursive: true });
-fs.writeFileSync("probe-out/sites.json", JSON.stringify(rows, null, 1));
+await syncAllTeams({ rosters: true });
+console.log(`TOTAL ${Math.round((Date.now() - t0) / 1000)}s`);
+const db = getDb();
+const rows = db
+  .prepare(
+    `SELECT s.team_seo, s.host, s.platform, s.last_error,
+       (SELECT COUNT(*) FROM team_players p WHERE p.team_seo = s.team_seo) AS players,
+       (SELECT COUNT(*) FROM team_players p WHERE p.team_seo = s.team_seo AND p.photo_url IS NOT NULL) AS photos,
+       (SELECT COUNT(*) FROM team_player_stats p WHERE p.team_seo = s.team_seo) AS stats,
+       (SELECT COUNT(*) FROM team_boxscores b WHERE b.team_seo = s.team_seo) AS games,
+       (SELECT COUNT(*) FROM team_player_games g WHERE g.team_seo = s.team_seo) AS lines
+     FROM team_sites s ORDER BY s.platform, s.team_seo`,
+  )
+  .all() as Record<string, unknown>[];
+const sum = (k: string) => rows.reduce((n, r) => n + Number(r[k]), 0);
+console.log("SUMMARY", JSON.stringify({ teams: rows.length, players: sum("players"), photos: sum("photos"), stats: sum("stats"), games: sum("games"), lines: sum("lines") }));
+for (const p of ["sidearm", "sidearm-classic", "other"]) {
+  const r = rows.filter((x) => x.platform === p);
+  console.log(p, r.length, "teams;", r.filter((x) => Number(x.players) > 0).length, "with roster;", r.filter((x) => Number(x.stats) > 0).length, "with stats;", r.filter((x) => Number(x.games) > 0).length, "with games");
+}
+for (const r of rows) if (r.platform === "other" || !Number(r.players) || !Number(r.stats) || (r.platform === "sidearm" && !Number(r.games))) console.log("ISSUE", JSON.stringify(r));

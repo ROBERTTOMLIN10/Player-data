@@ -1,4 +1,4 @@
-# Temporary: checks D1 team site discovery. Removed before merge.
+# Temporary: full D1 squad sync test. Removed before merge.
 name: Probe
 on:
   push:

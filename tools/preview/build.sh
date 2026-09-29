@@ -2,7 +2,8 @@
 # Builds the clickable app preview (a single self-contained HTML page) from the
 # real web app, with /api answered from data captured off a local test server:
 # real GPS files + fausports.com sync (needs network access to fausports.com),
-# plus made-up player logins and check-ins. Output: $OUT/fau-app-preview.html
+# plus made-up player logins and check-ins. Output: $OUT/fau-app-preview.html,
+# plus $OUT/teams/<team>.json (NCAA team and player pages), published next to it.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -72,7 +73,7 @@ for (let k = 1; k <= 20; k++) {
 }'
 
 echo "== Capture API responses (player: $PLAYER_EMAIL)"
-PLAYER_EMAIL="$PLAYER_EMAIL" SNAPSHOT_FILE="$OUT/snapshot.json" node "$HERE/capture.mjs" "$OUT/data.json"
+PLAYER_EMAIL="$PLAYER_EMAIL" SNAPSHOT_FILE="$OUT/snapshot.json" node "$HERE/capture.mjs" "$OUT/data.json" "$OUT/teams"
 kill $SERVER_PID 2>/dev/null || true
 
 echo "== Build preview app"

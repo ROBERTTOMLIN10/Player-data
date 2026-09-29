@@ -278,11 +278,29 @@ function route(method: string, path: string, q: URLSearchParams, body: any): Res
 }
 
 const realFetch = window.fetch.bind(window);
+
+// NCAA team and player pages live in one file per team next to the page (teams/<seo>.json), loaded on first use.
+const teamFiles = new Map<string, Promise<any>>();
+function teamFile(seo: string): Promise<any> {
+  if (!teamFiles.has(seo))
+    teamFiles.set(seo, realFetch(`./teams/${encodeURIComponent(seo)}.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null));
+  return teamFiles.get(seo)!;
+}
+async function ncaaTeamRoute(path: string): Promise<Response | null> {
+  const m = path.match(/^\/api\/ncaa\/(team|player)\/([^/]+)(?:\/([^/]+))?$/);
+  if (!m) return null;
+  const file = await teamFile(decodeURIComponent(m[2]));
+  const body = m[1] === "team" ? file?.team : file?.players?.[decodeURIComponent(m[3] ?? "")];
+  return body ? json(body) : json({ error: "Not found." }, 404);
+}
+
 window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const str = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
   if (!str.startsWith("/api/")) return realFetch(input, init);
   const url = new URL(str, "http://preview.local");
   const method = (init?.method ?? "GET").toUpperCase();
+  const ncaa = method === "GET" ? await ncaaTeamRoute(url.pathname) : null;
+  if (ncaa) return ncaa;
   if (url.pathname === "/api/admin/upload-titan" && init?.body instanceof FormData) {
     const file = init.body.get("file");
     if (!(file instanceof File)) return json({ status: "error", filename: "", message: "No file chosen.", warnings: [] }, 400);
