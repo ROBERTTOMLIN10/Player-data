@@ -164,7 +164,6 @@ export async function nuxtRoster(host: string, html?: string): Promise<SquadPlay
     .filter((p) => isRecord(p) && p.hide !== true)
     .map((p) => {
       const image = isRecord(p.image) ? p.image : {};
-      const social = isRecord(p.socialMedia) ? p.socialMedia : {};
       const name = [str(p.firstName), str(p.lastName)].filter(Boolean).join(" ");
       return {
         key: str(p.rosterPlayerId) ?? slug(name),
@@ -183,7 +182,7 @@ export async function nuxtRoster(host: string, html?: string): Promise<SquadPlay
         major: str(p.major),
         birth_date: str(p.birthDate)?.slice(0, 10) ?? null,
         is_captain: p.isCaptain === true ? 1 : 0,
-        instagram: (str(p.instagramUsername) ?? str(social.Instagram))?.replace(/^@/, "").replace(/\/+$/, "") ?? null,
+        instagram: null, // not shown (Rob asked to leave Instagram out)
         photo_url: str(image.absoluteUrl) ?? absolute(host, str(image.url)),
         profile_url: absolute(host, str(p.call_to_action)),
       };

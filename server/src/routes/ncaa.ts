@@ -188,11 +188,13 @@ ncaaRouter.get("/conference/:seo", (req, res) => {
     const table = tableResponse(`stats-${key}`, category.label);
     if (!table) return null;
     const keep = table.rows.map((_, i) => i).filter((i) => table.teams[i]?.conf === seo).slice(0, limit);
+    const players = category.kind === "individual" ? playerLinks(table, table.teams) : undefined;
     return {
       ...table,
       rows: keep.map((i) => table.rows[i]),
       teams: keep.map((i) => table.teams[i]),
       moves: keep.map((i) => table.moves[i]),
+      players: players && keep.map((i) => players[i]),
     };
   };
 

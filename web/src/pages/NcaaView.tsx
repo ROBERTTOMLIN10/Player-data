@@ -224,7 +224,14 @@ function StatsTab() {
   const filtered = useMemo(() => {
     if (!table || conf === "all") return table;
     const keep = table.rows.map((_, i) => i).filter((i) => table.teams[i]?.conf === conf);
-    return { ...table, rows: keep.map((i) => table.rows[i]), teams: keep.map((i) => table.teams[i]), moves: keep.map((i) => table.moves?.[i] ?? null) };
+    // Every per-row list has to be filtered the same way, or photos and profile links land on the wrong rows.
+    return {
+      ...table,
+      rows: keep.map((i) => table.rows[i]),
+      teams: keep.map((i) => table.teams[i]),
+      moves: keep.map((i) => table.moves?.[i] ?? null),
+      players: table.players && keep.map((i) => table.players![i]),
+    };
   }, [table, conf]);
 
   return (

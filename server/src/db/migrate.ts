@@ -11,6 +11,8 @@ export function migrate() {
   const db = getDb();
   db.exec(schema);
   addMissingColumns(db);
+  // Instagram handles aren't shown any more (they didn't always match the player): clear any stored ones.
+  db.exec("UPDATE roster_players SET instagram = NULL WHERE instagram IS NOT NULL; UPDATE team_players SET instagram = NULL WHERE instagram IS NOT NULL;");
   console.log(`Migration applied against ${db.name}`);
 }
 
