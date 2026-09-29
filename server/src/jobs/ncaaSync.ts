@@ -72,6 +72,8 @@ let latestResultAt: number | null = null; // when a game last went final
 
 const lastRun: Record<string, number> = {};
 let running = false;
+let teamsRunning = false;
+const TEAMS_CHECK_MS = 20 * 60_000; // how often to look for teams due a re-read (after games, daily, weekly)
 
 function due(key: string, intervalMs: number): boolean {
   return Date.now() - (lastRun[key] ?? 0) >= intervalMs;
@@ -188,11 +190,18 @@ async function tick() {
       lastRun.stats = Date.now();
       await syncStatsAndRankings();
     }
-    // Other teams' squads from their athletics sites: rosters weekly, stats daily.
-    const teams = teamSyncDue();
-    if ((teams.rosters || teams.stats) && due("teams", 60 * 60_000)) {
+    // Other teams' squads from their athletics sites, in the background so the scoreboard keeps ticking.
+    if (!teamsRunning && due("teams", TEAMS_CHECK_MS)) {
       lastRun.teams = Date.now();
-      await syncTeams({ rosters: teams.rosters });
+      const work = teamSyncDue();
+      // (Daily even with nothing due: that's also when new teams' sites are looked up.)
+      if (work.rosters.length || work.stats.length || due("teamsDiscovered", 24 * 60 * 60_000)) {
+        lastRun.teamsDiscovered = Date.now();
+        teamsRunning = true;
+        void syncTeams(work)
+          .catch((err) => console.error(`[teams] sync failed: ${(err as Error).message}`))
+          .finally(() => (teamsRunning = false));
+      }
     }
   } catch (err) {
     console.error(`[ncaa] sync failed: ${(err as Error).message}`);

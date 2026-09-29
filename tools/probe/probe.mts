@@ -8,8 +8,8 @@ import { d1Teams, discoverTeamSites } from "../../server/src/teams/discover.js";
 migrate();
 const teams = d1Teams();
 console.log("D1 teams:", teams.length);
-for (const seo of ["florida-atlantic", "stanford", "air-force"]) {
-  const html = await fetchText(`https://www.ncaa.com/schools/${seo}`);
+for (const seo of ["fla-atlantic", "stanford", "air-force"]) {
+  const html = await fetchText(`https://www.ncaa.com/schools/${seo}`).catch((e) => String(e));
   const hrefs = [...html.matchAll(/href="(https?:\/\/[^"]+)"/g)].map((m) => m[1]).filter((u) => !/ncaa\.com/.test(u));
   console.log(seo, JSON.stringify(hrefs.slice(0, 40)));
   const i = html.search(/Athletic|athletics/i);
