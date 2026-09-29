@@ -18,6 +18,9 @@ import { migrate } from "../../server/src/db/migrate.js";
 import { syncSchedule } from "../../server/src/import/syncSchedule.js";
 import { syncMinutes } from "../../server/src/import/importMinutes.js";
 import { syncSeason, syncStatsAndRankings } from "../../server/src/jobs/ncaaSync.js";
+import { syncTeams } from "../../server/src/teams/sync.js";
+
+const TEAM_TABLES = ["team_sites", "team_players", "team_player_stats", "team_player_games", "team_boxscores"] as const;
 import { ncaaLogoUrl } from "../../server/src/ncaa/client.js";
 import { recordRanks } from "../../server/src/ncaa/store.js";
 import { fillMinutesFromBoxScores } from "../../server/src/import/importMinutes.js";
@@ -37,6 +40,7 @@ interface Snapshot {
   ncaaGames?: Row[]; // NCAA D1 scoreboard rows (all of this season)
   ncaaCache?: Row[]; // NCAA stat / rankings tables
   ncaaRankHistory?: Row[]; // last few days of ranks, for daily movement arrows
+  teams?: Record<string, Row[]>; // other teams' squads (team_* tables)
 }
 
 const [mode, file] = process.argv.slice(2);
@@ -121,6 +125,11 @@ if (mode === "export") {
     .all(shiftDate(teamToday(), -14)) as Row[]; // two weeks: enough for weekly polls
   console.log(`ncaa: ${snap.ncaaGames.length} games, ${snap.ncaaCache.length} tables`);
 
+  // Other teams' squads from their athletics sites (box scores already read carry over from the previous snapshot).
+  await syncTeams({ rosters: true });
+  snap.teams = Object.fromEntries(TEAM_TABLES.map((t) => [t, db.prepare(`SELECT * FROM ${t}`).all() as Row[]]));
+  console.log(`teams: ${snap.teams.team_players.length} players, ${snap.teams.team_player_games.length} game lines`);
+
   // Logos to embed: every opponent on our schedule and every school on the NCAA
   // scoreboard this season. Each is shrunk to a small 64px WebP (the size the
   // app shows) so all of them fit in the preview page.
@@ -135,17 +144,20 @@ if (mode === "export") {
   snap.logos = {};
   // Player headshots from the roster embed the same way (portrait crop).
   const photos = new Set((snap.rosterPlayers ?? []).map((r) => r.photo_url).filter(Boolean) as string[]);
+  // Other teams' headshots: smaller, there are hundreds.
+  const squadPhotos = new Set(((snap.teams?.team_players ?? []).map((r) => r.photo_url).filter(Boolean) as string[]).filter((u) => !photos.has(u)));
   const urls = [
     ...new Set([
       ...(snap.scheduleGames.map((g) => g.opponent_logo_url).filter(Boolean) as string[]),
       ...[...seos].map((seo) => ncaaLogoUrl(seo)),
       ...photos,
+      ...squadPhotos,
     ]),
   ];
   const failed: string[] = [];
   for (const url of urls) {
     try {
-      const res = await fetch(encodeURI(decodeURI(url)));
+      const res = await fetch(encodeURI(decodeURI(url)), { headers: { "user-agent": "Mozilla/5.0 (compatible; FAU men's soccer staff app)" } });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const type = res.headers.get("content-type")?.split(";")[0] || "image/png";
       let bytes = Buffer.from(await res.arrayBuffer());
@@ -153,6 +165,8 @@ if (mode === "export") {
       if (sharp) {
         bytes = photos.has(url)
           ? await sharp(bytes).resize(192, 240, { fit: "cover", position: "top" }).webp({ quality: 72 }).toBuffer()
+          : squadPhotos.has(url)
+            ? await sharp(bytes).resize(96, 120, { fit: "cover", position: "top" }).webp({ quality: 60 }).toBuffer()
           : await sharp(bytes).resize(64, 64, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).webp({ quality: 80 }).toBuffer();
         outType = "image/webp";
       }
@@ -202,6 +216,14 @@ if (mode === "export") {
     for (const row of snap.ncaaGames ?? []) insert("ncaa_games", row, "contest_id");
     for (const row of snap.ncaaCache ?? []) insert("ncaa_cache", row, "key");
     for (const row of snap.ncaaRankHistory ?? []) insert("ncaa_rank_history", row, "key, day, entity");
+    const conflicts: Record<string, string> = {
+      team_sites: "team_seo",
+      team_players: "team_seo, player_key",
+      team_player_stats: "team_seo, player_key",
+      team_player_games: "team_seo, player_key, boxscore_url",
+      team_boxscores: "team_seo, boxscore_url",
+    };
+    for (const t of TEAM_TABLES) for (const row of snap.teams?.[t] ?? []) insert(t, row, conflicts[t]);
     for (const { _game, _player, ...row } of snap.minutes) {
       const game = db.prepare("SELECT id FROM games WHERE source_file = ?").get(_game) as { id: number } | undefined;
       if (game) insert("minutes_played", { ...row, game_id: game.id, player_id: playerId(_player) }, "game_id, player_id");

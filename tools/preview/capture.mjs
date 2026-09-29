@@ -54,6 +54,26 @@ const statsIndex = await get(coach, "/api/ncaa/stats");
 for (const c of statsIndex.categories) await get(coach, `/api/ncaa/stats/${c.key}`).catch(() => undefined);
 await get(coach, "/api/ncaa/rankings");
 await get(coach, "/api/ncaa/conference/american");
+// NCAA team and player pages: every team on the standings/leader tables, and every player linked from them or in a squad we read.
+{
+  const standings = out["/api/ncaa/standings"];
+  const teamSeos = new Set(standings.conferences.flatMap((c) => c.rows.map((r) => r.seo)));
+  const playerPaths = new Set();
+  for (const [path, table] of Object.entries(out)) {
+    if (!path.startsWith("/api/ncaa/stats/") || !table?.rows) continue;
+    table.teams?.forEach((t, i) => {
+      if (!t) return;
+      teamSeos.add(t.seo);
+      const p = table.players?.[i];
+      if (p) playerPaths.add(`/api/ncaa/player/${t.seo}/${encodeURIComponent(p.key)}`);
+    });
+  }
+  for (const seo of teamSeos) {
+    const page = await get(coach, `/api/ncaa/team/${seo}`).catch(() => null);
+    for (const p of page?.squad ?? []) playerPaths.add(`/api/ncaa/player/${seo}/${encodeURIComponent(p.key)}`);
+  }
+  for (const path of playerPaths) await get(coach, path).catch(() => undefined);
+}
 // player
 out.playerMe = await (await fetch(B + "/api/auth/me", { headers: { cookie: player } })).json();
 await get(player, "/api/me/profile");
