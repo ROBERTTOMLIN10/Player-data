@@ -270,12 +270,15 @@ export async function wmtDirectory(seeds: number[], wanted: string[], year: numb
   const missing = () => wanted.filter((w) => !cached.has(norm(w)));
   const fresh = hit && Date.now() - Date.parse(`${hit.updatedAt.replace(" ", "T")}Z`) < 86400_000;
   if (!missing().length || (fresh && cached.size)) return cached;
+  // Walk teams we still need first (their opponents are the likeliest to include the rest), gently.
   const queue = [...new Set([...seeds, ...cached.values()])];
   const walked = new Set<number>();
+  let failed = 0;
   for (let i = 0; i < queue.length && missing().length && walked.size < 150; i++) {
     const id = queue[i];
     if (walked.has(id)) continue;
     walked.add(id);
+    await new Promise((r) => setTimeout(r, 250));
     try {
       const games = await api<WmtGame[]>(`/teams/${id}/games?per_page=100`);
       for (const g of games)
@@ -284,12 +287,12 @@ export async function wmtDirectory(seeds: number[], wanted: string[], year: numb
           if (!walked.has(c.teamId)) queue.push(c.teamId);
         }
     } catch {
-      /* skip this team */
+      failed++;
     }
   }
   setCache(cacheKey, Object.fromEntries(cached));
   const left = missing();
-  if (left.length) console.log(`[teams] WMT: ${left.length} D1 names not found (${left.slice(0, 12).join(", ")})`);
+  console.log(`[teams] WMT directory: ${cached.size} teams from ${walked.size} schedules (${failed} failed)${left.length ? `; not found: ${left.join(", ")}` : ""}`);
   return cached;
 }
 

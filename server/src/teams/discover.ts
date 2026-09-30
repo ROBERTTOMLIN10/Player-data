@@ -116,8 +116,8 @@ export async function discoverTeamSites(): Promise<{ checked: number; readable: 
       ...[...known.values()].filter((k) => !lastSeason(k.discovered_at)).map((k) => k.stats_team_id ?? 0),
     ].filter(Boolean);
     try {
-      // Every D1 name, so the directory also covers teams whose own site stops working later.
-      const wanted = [...names.values()];
+      // Every D1 team's name, so the directory also covers teams whose own site stops working later.
+      const wanted = d1Teams().map((seo) => names.get(seo)).filter((x): x is string => Boolean(x));
       const dir = seeds.length ? await wmtDirectory(seeds, wanted, year) : new Map<string, number>();
       for (const seo of needId) {
         const id = dir.get(wmtName(names.get(seo) ?? ""));
