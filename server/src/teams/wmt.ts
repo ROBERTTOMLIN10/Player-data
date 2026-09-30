@@ -229,17 +229,21 @@ export async function wmtRoster(teamId: number, rosterUrl: string | null): Promi
   });
 }
 
-/** The WMT team id on a WMT (Nuxt) roster page. */
+/** The men's soccer WMT team id on a WMT roster page (the page also carries other sports' ids, so read the roster's own). */
 export function wmtTeamIdFromPage(html: string): number | null {
-  const m = html.match(/wmt_stats2_team_id\\?"?\s*:\s*(\d{4,})/) ?? html.match(/wmt\.games\/[a-z0-9-]+\/stats\/season\/(\d{4,})/);
-  if (m) return Number(m[1]);
   try {
     const root = parseNuxtPayload(html) as Record<string, any> | null;
-    const view = Object.entries(root?.data ?? {}).find(([k]) => k.startsWith("sport-view-"))?.[1] as Record<string, any> | undefined;
-    return view?.default_roster?.wmt_stats2_team_id ?? null;
+    const data = (root?.data ?? {}) as Record<string, any>;
+    const list = Object.entries(data).find(([k, v]) => /players-list/.test(k) && Array.isArray(v))?.[1] as Record<string, any>[] | undefined;
+    const fromList = list?.find((p) => p?.roster?.wmt_stats2_team_id)?.roster?.wmt_stats2_team_id;
+    if (fromList) return Number(fromList);
+    const view = Object.entries(data).find(([k]) => /^sport-view-/.test(k))?.[1] as Record<string, any> | undefined;
+    if (view?.default_roster?.wmt_stats2_team_id) return Number(view.default_roster.wmt_stats2_team_id);
   } catch {
-    return null;
+    /* not a Nuxt page */
   }
+  const iframe = html.match(/wmt\.games\/[a-z0-9-]+\/stats\/season\/(\d{5,})/);
+  return iframe ? Number(iframe[1]) : null;
 }
 
 // ---- Finding any team's WMT id: walk the season's schedules from a known team, collecting opponents ----
@@ -256,16 +260,19 @@ const norm = (s: string) =>
 /**
  * WMT team ids for this season by team name, found by walking schedules
  * outward from `seeds` (team ids we already know) until every wanted name is
- * found or the walk runs out. Cached for the season.
+ * found or the walk runs out. Cached for the season; walked again at most
+ * daily while names are still missing.
  */
 export async function wmtDirectory(seeds: number[], wanted: string[], year: number): Promise<Map<string, number>> {
   const cacheKey = `wmt-teams-${year}`;
-  const cached = new Map(Object.entries(getCache<Record<string, number>>(cacheKey)?.value ?? {}));
+  const hit = getCache<Record<string, number>>(cacheKey);
+  const cached = new Map(Object.entries(hit?.value ?? {}));
   const missing = () => wanted.filter((w) => !cached.has(norm(w)));
-  if (!missing().length) return cached;
+  const fresh = hit && Date.now() - Date.parse(`${hit.updatedAt.replace(" ", "T")}Z`) < 86400_000;
+  if (!missing().length || (fresh && cached.size)) return cached;
   const queue = [...new Set([...seeds, ...cached.values()])];
   const walked = new Set<number>();
-  for (let i = 0; i < queue.length && missing().length && walked.size < 120; i++) {
+  for (let i = 0; i < queue.length && missing().length && walked.size < 150; i++) {
     const id = queue[i];
     if (walked.has(id)) continue;
     walked.add(id);
@@ -281,7 +288,16 @@ export async function wmtDirectory(seeds: number[], wanted: string[], year: numb
     }
   }
   setCache(cacheKey, Object.fromEntries(cached));
+  const left = missing();
+  if (left.length) console.log(`[teams] WMT: ${left.length} D1 names not found (${left.slice(0, 12).join(", ")})`);
   return cached;
 }
+
+/** A team's WMT id from the season's directory (built during discovery), if known. */
+export function wmtIdByName(name: string, year: number): number | null {
+  return getCache<Record<string, number>>(`wmt-teams-${year}`)?.value?.[norm(name)] ?? null;
+}
+
+export const isWmtBoxscore = (url: string) => url.startsWith(API);
 
 export const wmtName = norm;

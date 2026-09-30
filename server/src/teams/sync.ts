@@ -4,7 +4,8 @@ import { teamToday } from "../lib/readiness.js";
 import { classicBoxscore, classicRoster, classicSeasonStats, nuxtBoxscore, nuxtRoster, nuxtSeasonStats, type SquadPlayer } from "./readers.js";
 import { discoverTeamSites, pool } from "./discover.js";
 import { TEAM_SITES, type TeamPlatform } from "./sites.js";
-import { wmtBoxscore, wmtRoster, wmtSeasonStats } from "./wmt.js";
+import { isWmtBoxscore, wmtBoxscore, wmtIdByName, wmtRoster, wmtSeasonStats } from "./wmt.js";
+import { teamsByName } from "../ncaa/store.js";
 
 /**
  * Keeps every readable D1 team's squad current from its athletics website:
@@ -72,18 +73,43 @@ const readRoster = (site: Site) =>
 const readStats = (site: Site, year: number) =>
   site.platform === "wmt" ? wmtSeasonStats(site.stats_team_id!) : site.platform === "sidearm" ? nuxtSeasonStats(site.host, year) : classicSeasonStats(site.host, year);
 const readBoxscore = (site: Site, url: string) =>
-  site.platform === "wmt" ? wmtBoxscore(url) : site.platform === "sidearm" ? nuxtBoxscore(url) : classicBoxscore(url);
+  isWmtBoxscore(url) ? wmtBoxscore(url) : site.platform === "sidearm" ? nuxtBoxscore(url) : classicBoxscore(url);
+
+/** When a team's own site can't be read this time, its WMT stats (no photos) instead. */
+function wmtFallback(seo: string): Site | null {
+  const year = Number(teamToday().slice(0, 4));
+  const name = [...teamsByName(year).values()].find((t) => t.seo === seo)?.name;
+  const id = name ? wmtIdByName(name, year) : null;
+  return id ? { host: "", platform: "wmt", stats_team_id: id, roster_url: null } : null;
+}
 
 export async function syncTeamRoster(seo: string) {
-  const players = await readRoster(siteOf(seo));
+  const site = siteOf(seo);
+  let players: SquadPlayer[];
+  try {
+    players = await readRoster(site);
+  } catch (err) {
+    const fallback = site.platform !== "wmt" ? wmtFallback(seo) : null;
+    if (!fallback) throw err;
+    players = await readRoster(fallback);
+  }
   saveRoster(seo, players);
   return players.length;
 }
 
 export async function syncTeamStats(seo: string, year = Number(teamToday().slice(0, 4))) {
-  const site = siteOf(seo);
+  let site = siteOf(seo);
   const db = getDb();
-  const stats = await readStats(site, year);
+  let stats: Awaited<ReturnType<typeof readStats>>;
+  try {
+    stats = await readStats(site, year);
+  } catch (err) {
+    const fallback = site.platform !== "wmt" ? wmtFallback(seo) : null;
+    if (!fallback) throw err;
+    console.log(`[teams] ${seo}: site unreadable (${(err as Error).message}), using WMT stats`);
+    site = fallback;
+    stats = await readStats(site, year);
+  }
 
   const fieldCols = ["gp", "gs", "minutes", "goals", "assists", "points", "shots", "shots_on_goal", "yellow_cards", "red_cards", "game_winners", "pk_goals", "pk_attempts"] as const;
   const gkCols = ["gk_minutes", "goals_allowed", "gaa", "saves", "save_pct", "wins", "losses", "ties", "shutouts"] as const;

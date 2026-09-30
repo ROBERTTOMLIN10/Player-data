@@ -109,14 +109,15 @@ export async function discoverTeamSites(): Promise<{ checked: number; readable: 
 
   // Teams we can't read from their own site (or WMT sites whose page didn't give the id): find them in WMT's feed.
   const needId = [...found].filter(([, d]) => d.platform === "other" || (d.platform === "wmt" && !d.statsTeamId)).map(([seo]) => seo);
-  if (needId.length) {
+  {
     const names = new Map([...teamsByName(year).values()].map((t) => [t.seo, t.name]));
     const seeds = [
       ...[...found.values()].map((d) => d.statsTeamId ?? 0),
       ...[...known.values()].filter((k) => !lastSeason(k.discovered_at)).map((k) => k.stats_team_id ?? 0),
     ].filter(Boolean);
     try {
-      const wanted = needId.map((seo) => names.get(seo)).filter((x): x is string => Boolean(x));
+      // Every D1 name, so the directory also covers teams whose own site stops working later.
+      const wanted = [...names.values()];
       const dir = seeds.length ? await wmtDirectory(seeds, wanted, year) : new Map<string, number>();
       for (const seo of needId) {
         const id = dir.get(wmtName(names.get(seo) ?? ""));
