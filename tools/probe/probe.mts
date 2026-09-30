@@ -1,26 +1,22 @@
-// Temporary: NCAA.com game box score sources. Removed before merge.
+// Temporary: NCAA.com gamecenter queries (v2). Removed before merge.
 import fs from "node:fs";
 fs.mkdirSync("probe-out", { recursive: true });
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
-const get = async (u: string) => { const r = await fetch(u, { headers: { "user-agent": UA }, signal: AbortSignal.timeout(25000) }); return { s: r.status, url: r.url, t: await r.text() }; };
-const id = "6642598";
-for (const u of [
-  `https://www.ncaa.com/game/${id}`,
-  `https://www.ncaa.com/game/${id}/boxscore`,
-  `https://data.ncaa.com/casablanca/game/${id}/boxscore.json`,
-  `https://data.ncaa.com/casablanca/game/${id}/gameInfo.json`,
-  `https://data.ncaa.com/casablanca/game/${id}/pbp.json`,
-]) {
-  try {
-    const r = await get(u);
-    const f = u.replace(/^https:\/\//, "").replace(/[^a-z0-9]+/gi, "_") + ".txt";
-    fs.writeFileSync(`probe-out/${f}`, r.t);
-    console.log("==", u, r.s, r.url, r.t.length, r.t.slice(0, 300).replace(/\s+/g, " "));
-    const q = [...new Set(r.t.match(/[A-Za-z_]+_web[^"]{0,40}?sha256Hash%22%3A%22[0-9a-f]{64}/g) ?? [])].map((x) => x.replace(/sha256Hash%22%3A%22/, " ").replace(/%22.*? /, " "));
-    if (q.length) console.log("  queries", q.slice(0, 20));
-    const q2 = [...new Set(r.t.match(/"(?:operationName|meta)"\s*:\s*"[A-Za-z_]+"/g) ?? [])];
-    if (q2.length) console.log("  ops", q2.slice(0, 20));
-    const names = [...new Set(r.t.match(/NCAA_[A-Za-z_]+|Get[A-Z][A-Za-z]+_web/g) ?? [])];
-    if (names.length) console.log("  names", names.slice(0, 30));
-  } catch (e) { console.log(u, "ERR", (e as Error).message); }
+const Q: Record<string, string> = {
+  NCAA_GetGamecenterBoxscoreSoccerById_web: "c9070c4e5a76468a4025896df89f8a7b22be8275c54a22ff79619cbb27d63d7d",
+  NCAA_GetGamecenterTeamStatsSoccerById_web: "d3009ee734557a3af9b80a1fd0326575799094e8046a4188c6aebea7072ea7bf",
+  NCAA_GetGamecenterScoringSummaryById_web: "fcd5729c72b0f72a4f659bf07e7b1da0fdce8f41ad286b0ddfe830adc7a45ca3",
+  GetGamecenterGameById_web: "26d14df5714c5cd454c9032a1f8ebb1b1dc35173065ab858709b0fa84dd07b5f",
+};
+for (const id of ["6642598", "6615655"]) {
+  for (const [name, hash] of Object.entries(Q)) {
+    for (const vars of [{ contestId: id, staticTestEnv: null }, { contestId: id }, { id }]) {
+      const url = `https://sdataprod.ncaa.com/?meta=${name}&extensions=${encodeURIComponent(JSON.stringify({ persistedQuery: { version: 1, sha256Hash: hash } }))}&variables=${encodeURIComponent(JSON.stringify(vars))}`;
+      const r = await fetch(url, { headers: { "user-agent": UA }, signal: AbortSignal.timeout(25000) });
+      const t = await r.text();
+      const ok = r.ok && !t.includes('"errors"');
+      console.log(id, name, JSON.stringify(vars), r.status, t.length, t.slice(0, ok ? 1500 : 200).replace(/\s+/g, " "));
+      if (ok) { fs.writeFileSync(`probe-out/${id}-${name}.json`, t); break; }
+    }
+  }
 }

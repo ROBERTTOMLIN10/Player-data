@@ -126,6 +126,10 @@ const teamDir = process.argv[3];
 fs.rmSync(teamDir, { recursive: true, force: true });
 fs.mkdirSync(teamDir, { recursive: true });
 const quotedLogos = Object.entries(logos).map(([url, dataUri]) => [JSON.stringify(url).slice(1, -1), dataUri]);
+// The big logo at the top of a team page: the original SVG, so it's sharp at that size.
+const logosLarge = process.env.SNAPSHOT_FILE && fs.existsSync(process.env.SNAPSHOT_FILE)
+  ? JSON.parse(fs.readFileSync(process.env.SNAPSHOT_FILE, "utf-8")).logosLarge ?? {}
+  : {};
 let total = 0;
 for (const [seo, file] of Object.entries(teamFiles)) {
   // Player pages share their team's header and squad photo (mock.ts puts them back), so each image is stored once.
@@ -134,6 +138,8 @@ for (const [seo, file] of Object.entries(teamFiles)) {
     delete page.team;
     if (page.profile?.photo_url && page.profile.photo_url === squadPhoto.get(key)) page.profile.photo_url = "@squad";
   }
+  const header = file.team?.team;
+  if (header?.logo && logosLarge[header.logo]) header.logo = logosLarge[header.logo];
   let text = JSON.stringify(file);
   for (const [quoted, dataUri] of quotedLogos) if (text.includes(quoted)) text = text.split(quoted).join(dataUri);
   fs.writeFileSync(`${teamDir}/${seo}.json`, text);

@@ -38,6 +38,7 @@ interface Snapshot {
   rosterPlayers?: Row[]; // _player = canonical name (null: keeper not in the app)
   minutes: Row[]; // _game = games.source_file, _player = canonical name
   logos?: Record<string, string>; // logo URL -> data: URI (the preview can't load outside images)
+  logosLarge?: Record<string, string>; // school logo URL -> full-quality data: URI (the SVG itself), for the big logo on team pages
   ncaaGames?: Row[]; // NCAA D1 scoreboard rows (all of this season)
   ncaaCache?: Row[]; // NCAA stat / rankings tables
   ncaaRankHistory?: Row[]; // last few days of ranks, for daily movement arrows
@@ -143,10 +144,12 @@ if (mode === "export") {
   const seos = new Set<string>();
   for (const g of snap.ncaaGames) for (const side of ["home", "away"]) seos.add(String(g[`${side}_seo`]));
   snap.logos = {};
+  snap.logosLarge = {};
   // Player headshots from the roster embed the same way (portrait crop).
   const photos = new Set((snap.rosterPlayers ?? []).map((r) => r.photo_url).filter(Boolean) as string[]);
   // Other teams' headshots: smaller, there are hundreds.
   const squadPhotos = new Set(((snap.teams?.team_players ?? []).map((r) => r.photo_url).filter(Boolean) as string[]).filter((u) => !photos.has(u)));
+  const logoUrls = new Set([...seos].map((seo) => ncaaLogoUrl(seo)));
   const urls = [
     ...new Set([
       ...(snap.scheduleGames.map((g) => g.opponent_logo_url).filter(Boolean) as string[]),
@@ -173,6 +176,10 @@ if (mode === "export") {
       const type = res.headers.get("content-type")?.split(";")[0] || "image/png";
       let bytes = Buffer.from(await res.arrayBuffer());
       let outType = type;
+      // School logos are SVGs: keep the original too, so the big logo on team pages stays sharp at any size.
+      if (logoUrls.has(url) && (type.includes("svg") || url.endsWith(".svg"))) {
+        snap.logosLarge![url] = `data:image/svg+xml;base64,${bytes.toString("base64")}`;
+      }
       if (sharp) {
         bytes = photos.has(url)
           ? await sharp(bytes).resize(192, 240, { fit: "cover", position: "top" }).webp({ quality: 72 }).toBuffer()
