@@ -286,6 +286,16 @@ function teamFile(seo: string): Promise<any> {
     teamFiles.set(seo, realFetch(`./teams/${encodeURIComponent(seo)}.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null));
   return teamFiles.get(seo)!;
 }
+// Game pages live in games.json next to the page, loaded the first time a game is opened.
+let gameFile: Promise<Record<string, any>> | null = null;
+async function ncaaGameRoute(path: string): Promise<Response | null> {
+  const m = path.match(/^\/api\/ncaa\/game\/(\d+)$/);
+  if (!m) return null;
+  gameFile ??= realFetch("./games.json").then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+  const game = (await gameFile)[m[1]];
+  return game ? json(game) : json({ error: "This game's stats aren't in the preview (the live app has every game)." }, 404);
+}
+
 async function ncaaTeamRoute(path: string): Promise<Response | null> {
   const m = path.match(/^\/api\/ncaa\/(team|player)\/([^/]+)(?:\/([^/]+))?$/);
   if (!m) return null;
@@ -305,7 +315,7 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   if (!str.startsWith("/api/")) return realFetch(input, init);
   const url = new URL(str, "http://preview.local");
   const method = (init?.method ?? "GET").toUpperCase();
-  const ncaa = method === "GET" ? await ncaaTeamRoute(url.pathname) : null;
+  const ncaa = method === "GET" ? (await ncaaTeamRoute(url.pathname)) ?? (await ncaaGameRoute(url.pathname)) : null;
   if (ncaa) return ncaa;
   if (url.pathname === "/api/admin/upload-titan" && init?.body instanceof FormData) {
     const file = init.body.get("file");

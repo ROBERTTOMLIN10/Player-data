@@ -92,6 +92,21 @@ const teamFiles = {};
   await Promise.all(Array.from({ length: 6 }, work));
   console.log(Object.keys(teamFiles).length, "team files,", pages, "player pages");
 }
+// Game pages: finished/live games on the captured scoreboard days and all of FAU's. Kept in games.json, loaded on demand.
+const gameFiles = {};
+{
+  const ids = new Set();
+  for (const [path, board] of Object.entries(out)) {
+    if (!path.startsWith("/api/ncaa/scoreboard")) continue;
+    for (const g of board.games ?? []) if (g.state === "F" || g.state === "I") ids.add(g.id);
+  }
+  for (const g of teamFiles["fla-atlantic"]?.team?.games ?? []) if (g.result) ids.add(g.id);
+  for (const id of ids) {
+    const r = await fetch(`${B}/api/ncaa/game/${id}`, { headers: { cookie: coach } });
+    if (r.ok) gameFiles[id] = await r.json();
+  }
+  console.log(Object.keys(gameFiles).length, "game pages,", Object.values(gameFiles).filter((g) => g.teams?.length).length, "with box scores");
+}
 // player
 out.playerMe = await (await fetch(B + "/api/auth/me", { headers: { cookie: player } })).json();
 await get(player, "/api/me/profile");
@@ -146,3 +161,9 @@ for (const [seo, file] of Object.entries(teamFiles)) {
   total += text.length;
 }
 console.log(Object.keys(teamFiles).length, "team files,", (total / 1024 / 1024).toFixed(1), "MB");
+{
+  let text = JSON.stringify(gameFiles);
+  for (const [quoted, dataUri] of quotedLogos) if (text.includes(quoted)) text = text.split(quoted).join(dataUri);
+  fs.writeFileSync(`${teamDir}/../games.json`, text);
+  console.log("games.json", (text.length / 1024 / 1024).toFixed(1), "MB");
+}

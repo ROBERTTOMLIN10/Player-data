@@ -22,8 +22,8 @@ import { syncAllTeams } from "../../server/src/teams/sync.js";
 import { pool } from "../../server/src/teams/discover.js";
 
 const TEAM_TABLES = ["team_sites", "team_players", "team_player_stats", "team_player_games", "team_boxscores"] as const;
-import { ncaaLogoUrl } from "../../server/src/ncaa/client.js";
-import { recordRanks } from "../../server/src/ncaa/store.js";
+import { fetchGameBoxscore, ncaaLogoUrl } from "../../server/src/ncaa/client.js";
+import { recordRanks, setCache } from "../../server/src/ncaa/store.js";
 import { fillMinutesFromBoxScores } from "../../server/src/import/importMinutes.js";
 import { shiftDate, teamToday } from "../../server/src/lib/readiness.js";
 
@@ -121,6 +121,26 @@ if (mode === "export") {
   await syncStatsAndRankings();
   await syncSeason();
   snap.ncaaGames = db.prepare("SELECT * FROM ncaa_games WHERE game_date LIKE ?").all(`${teamToday().slice(0, 4)}-%`) as Row[];
+  // Box scores for the preview's game pages: the last week's finished games and all of FAU's (the server keeps them in ncaa_cache).
+  {
+    const since = shiftDate(teamToday(), -7);
+    const wanted = snap.ncaaGames.filter(
+      (g) => g.state === "F" && (String(g.game_date) >= since || g.home_seo === "fla-atlantic" || g.away_seo === "fla-atlantic"),
+    );
+    let saved = 0;
+    await pool(wanted, 6, async (g) => {
+      try {
+        const box = await fetchGameBoxscore(Number(g.contest_id));
+        if (box.status === "F") {
+          setCache(`game-${g.contest_id}`, box);
+          saved++;
+        }
+      } catch (err) {
+        console.warn(`box score ${g.contest_id} failed: ${(err as Error).message}`);
+      }
+    });
+    console.log(`game box scores: ${saved} of ${wanted.length}`);
+  }
   snap.ncaaCache = db.prepare("SELECT * FROM ncaa_cache").all() as Row[];
   snap.ncaaRankHistory = db
     .prepare("SELECT * FROM ncaa_rank_history WHERE day >= ?")

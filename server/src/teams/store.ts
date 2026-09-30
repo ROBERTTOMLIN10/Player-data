@@ -120,6 +120,7 @@ function teamGames(seo: string) {
     const us = home ? g.home_score : g.away_score;
     const them = home ? g.away_score : g.home_score;
     return {
+      id: g.contest_id,
       date: g.game_date,
       state: g.state,
       home,

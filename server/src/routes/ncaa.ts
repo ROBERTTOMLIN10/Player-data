@@ -1,9 +1,9 @@
 import { Router } from "express";
 import { getDb } from "../db/connection.js";
-import { playerLinks, playerPage, teamPage } from "../teams/store.js";
+import { matchSquadPlayer, playerLinks, playerPage, squadIndex, teamPage } from "../teams/store.js";
 import { ensureDate, POLLS, RANKINGS, STAT_CATEGORIES } from "../jobs/ncaaSync.js";
 import { isIsoDate, teamToday } from "../lib/readiness.js";
-import { ncaaLogoUrl, type HtmlTable } from "../ncaa/client.js";
+import { fetchGameBoxscore, ncaaLogoUrl, type GameBoxscore, type HtmlTable } from "../ncaa/client.js";
 import {
   conferenceLabel,
   rankMoves,
@@ -12,6 +12,7 @@ import {
   enrichTable,
   gamesOn,
   getCache,
+  setCache,
   teamsByName,
   type GameRow,
 } from "../ncaa/store.js";
@@ -163,6 +164,48 @@ ncaaRouter.get("/player/:seo/:key", (req, res) => {
   const page = playerPage(req.params.seo, req.params.key);
   if (!page) return res.status(404).json({ error: "Player not found." });
   res.json({ ...page, ourTeam: OUR_TEAM });
+});
+
+// One game: header, goals, team stats and both line-ups (NCAA.com game center). Finished games are kept; live ones re-read every 30s.
+const liveGames = new Map<number, { at: number; box: GameBoxscore }>();
+ncaaRouter.get("/game/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(404).json({ error: "Game not found." });
+  const row = getDb().prepare("SELECT * FROM ncaa_games WHERE contest_id = ?").get(id) as GameRow | undefined;
+  const cached = getCache<GameBoxscore>(`game-${id}`)?.value ?? null;
+  let box = cached;
+  if (!box) {
+    const recent = liveGames.get(id);
+    if (recent && Date.now() - recent.at < 30_000) box = recent.box;
+    else {
+      try {
+        box = await fetchGameBoxscore(id);
+        if (box.status === "F") setCache(`game-${id}`, box);
+        else liveGames.set(id, { at: Date.now(), box });
+      } catch (err) {
+        if (!row) return res.status(404).json({ error: "Game not found." });
+        console.error(`[ncaa] game ${id} failed: ${(err as Error).message}`);
+      }
+    }
+  }
+  if (!row && !box) return res.status(404).json({ error: "Game not found." });
+  // Link players to the squads we read (photo, profile), by name.
+  const squads = squadIndex();
+  const teams = (box?.teams ?? []).map((t) => ({
+    ...t,
+    players: t.players.map((p) => {
+      const hit = matchSquadPlayer(squads.get(t.seo), p.name);
+      return { ...p, key: hit?.key ?? null, photo_url: hit?.photo_url ?? null, number: p.number ?? hit?.jersey_number ?? null };
+    }),
+  }));
+  res.json({
+    ourTeam: OUR_TEAM,
+    game: row ? toGame(row, conferenceNames()) : null,
+    status: box?.status ?? row?.state ?? null,
+    period: box?.period ?? null,
+    teams,
+    goals: box?.goals ?? [],
+  });
 });
 
 ncaaRouter.get("/rankings", (_req, res) => {
