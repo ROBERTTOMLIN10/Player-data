@@ -7,6 +7,7 @@ import { SessionFlagTag } from "./SessionFlag";
 import { TeamLogo } from "./TeamLogo";
 import { formatDate, formatMetricValue } from "../lib/format";
 import type { GpsSession, MetricDef } from "../types";
+import { OpponentLink } from "./ncaa";
 
 /**
  * Season stats (Averages / Highs / Lows) and the game-by-game chart, shared by
@@ -282,7 +283,7 @@ export function SessionTable({ sessions, metrics }: { sessions: GpsSession[]; me
               <td className="whitespace-nowrap px-4 py-3 font-medium">
                 <span className="flex items-center gap-2">
                   <TeamLogo name={s.opponent ?? "Game"} url={logoFor(s.game_date!)} size="sm" />
-                  {s.opponent ?? "—"}
+                  <OpponentLink date={s.game_date}>{s.opponent ?? "—"}</OpponentLink>
                   <SessionFlagTag s={s} />
                 </span>
               </td>

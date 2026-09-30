@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { getDb } from "../db/connection.js";
-import { matchSquadPlayer, playerLinks, playerPage, squadIndex, teamPage } from "../teams/store.js";
+import { headToHead, matchSquadPlayer, nationalStanding, playerLinks, playerPage, squadIndex, teamForm, teamPage } from "../teams/store.js";
 import { ensureDate, POLLS, RANKINGS, STAT_CATEGORIES } from "../jobs/ncaaSync.js";
 import { isIsoDate, teamToday } from "../lib/readiness.js";
 import { fetchGameBoxscore, ncaaLogoUrl, type GameBoxscore, type HtmlTable } from "../ncaa/client.js";
@@ -166,25 +166,30 @@ ncaaRouter.get("/player/:seo/:key", (req, res) => {
   res.json({ ...page, ourTeam: OUR_TEAM });
 });
 
-// One game: header, goals, team stats and both line-ups (NCAA.com game center). Finished games are kept; live ones re-read every 30s.
+// One game: header, goals, team stats, both line-ups and play-by-play (NCAA.com game center). Finished games are kept;
+// live ones are re-read at most every 20 seconds. Games not started yet also get a preview (form, leaders, head-to-head).
+const LIVE_REFRESH_MS = 20_000;
 const liveGames = new Map<number, { at: number; box: GameBoxscore }>();
 ncaaRouter.get("/game/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return res.status(404).json({ error: "Game not found." });
   const row = getDb().prepare("SELECT * FROM ncaa_games WHERE contest_id = ?").get(id) as GameRow | undefined;
-  const cached = getCache<GameBoxscore>(`game-${id}`)?.value ?? null;
-  let box = cached;
-  if (!box) {
+  let box = getCache<GameBoxscore>(`game-v2-${id}`)?.value ?? null;
+  // Nothing to read until shortly before kick-off.
+  const notYet = row && row.state === "P" && (!row.start_epoch || row.start_epoch * 1000 - Date.now() > 15 * 60_000);
+  if (!box && !notYet) {
     const recent = liveGames.get(id);
-    if (recent && Date.now() - recent.at < 30_000) box = recent.box;
+    if (recent && Date.now() - recent.at < LIVE_REFRESH_MS) box = recent.box;
     else {
       try {
         box = await fetchGameBoxscore(id);
-        if (box.status === "F") setCache(`game-${id}`, box);
+        if (box.status === "F") setCache(`game-v2-${id}`, box);
         else liveGames.set(id, { at: Date.now(), box });
       } catch (err) {
-        if (!row) return res.status(404).json({ error: "Game not found." });
-        console.error(`[ncaa] game ${id} failed: ${(err as Error).message}`);
+        // A live game as last saved (the app preview's snapshot, which can't reach NCAA.com).
+        box = getCache<GameBoxscore>(`game-live-${id}`)?.value ?? null;
+        if (!row && !box) return res.status(404).json({ error: "Game not found." });
+        if (!box) console.error(`[ncaa] game ${id} failed: ${(err as Error).message}`);
       }
     }
   }
@@ -198,15 +203,43 @@ ncaaRouter.get("/game/:id", async (req, res) => {
       return { ...p, key: hit?.key ?? null, photo_url: hit?.photo_url ?? null, number: p.number ?? hit?.jersey_number ?? null };
     }),
   }));
+  const status = box?.status && box.status !== "O" ? box.status : row?.state ?? null;
+  const game = row ? toGame(row, conferenceNames()) : null;
+  // Fresher than the scoreboard while a game is live.
+  if (game && box && status === "I") {
+    for (const t of box.teams) {
+      const side = t.seo === game.home.seo ? game.home : t.seo === game.away.seo ? game.away : null;
+      if (side && t.score !== null && t.score !== undefined) side.score = t.score;
+    }
+  }
+  const homeSeo = game?.home.seo ?? box?.teams.find((t) => t.isHome)?.seo ?? null;
+  const awaySeo = game?.away.seo ?? box?.teams.find((t) => !t.isHome)?.seo ?? null;
   res.json({
     ourTeam: OUR_TEAM,
-    game: row ? toGame(row, conferenceNames()) : null,
-    status: box?.status ?? row?.state ?? null,
+    game,
+    status,
     period: box?.period ?? null,
+    clock: box?.clock ?? null,
     teams,
     goals: box?.goals ?? [],
+    plays: box?.plays ?? [],
+    venue: homeSeo && awaySeo ? ourVenue(row?.game_date, homeSeo, awaySeo) : null,
+    ranks: Object.fromEntries([homeSeo, awaySeo].filter((s): s is string => Boolean(s)).map((s) => [s, nationalStanding(s)])),
+    preview:
+      status !== "I" && status !== "F" && homeSeo && awaySeo
+        ? { home: teamForm(homeSeo), away: teamForm(awaySeo), headToHead: headToHead(homeSeo, awaySeo, id) }
+        : null,
   });
 });
+
+/** Kick-off time and venue from our own schedule, for our games. */
+function ourVenue(date: string | undefined, home: string, away: string) {
+  if (!date || (home !== OUR_TEAM && away !== OUR_TEAM)) return null;
+  const g = getDb().prepare("SELECT game_time, location FROM schedule_games WHERE substr(game_date, 1, 10) = ?").get(date) as
+    | { game_time: string | null; location: string | null }
+    | undefined;
+  return g ? { time: g.game_time, location: g.location } : null;
+}
 
 ncaaRouter.get("/rankings", (_req, res) => {
   res.json({

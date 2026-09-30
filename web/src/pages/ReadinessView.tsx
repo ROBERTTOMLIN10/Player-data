@@ -8,6 +8,7 @@ import { formatDateLong } from "../lib/format";
 import { positionGroup } from "../lib/positions";
 import { STATUS_STYLE, WELLNESS_QUESTIONS, wellnessTextClass } from "../lib/readiness";
 import type { ReadinessStatus, Severity, SquadReadinessPlayer } from "../types";
+import { OpponentLink } from "../components/ncaa";
 
 type Filter = "all" | "flagged" | "missing";
 
@@ -63,7 +64,17 @@ export default function ReadinessView() {
         <div>
           <SectionHeading
             title="Squad Readiness"
-            subtitle={`${formatDateLong(data.date)}${data.game ? ` · Game day vs ${data.game.opponent}` : ""}`}
+            subtitle={
+              <>
+                {formatDateLong(data.date)}
+                {data.game && (
+                  <>
+                    {" · Game day vs "}
+                    <OpponentLink date={data.date}>{data.game.opponent}</OpponentLink>
+                  </>
+                )}
+              </>
+            }
           />
         </div>
         <div className="mb-3 flex items-center gap-1">

@@ -125,14 +125,15 @@ if (mode === "export") {
   {
     const since = shiftDate(teamToday(), -7);
     const wanted = snap.ncaaGames.filter(
-      (g) => g.state === "F" && (String(g.game_date) >= since || g.home_seo === "fla-atlantic" || g.away_seo === "fla-atlantic"),
+      (g) => (g.state === "F" && (String(g.game_date) >= since || g.home_seo === "fla-atlantic" || g.away_seo === "fla-atlantic")) || g.state === "I",
     );
     let saved = 0;
     await pool(wanted, 6, async (g) => {
       try {
         const box = await fetchGameBoxscore(Number(g.contest_id));
-        if (box.status === "F") {
-          setCache(`game-${g.contest_id}`, box);
+        // Live games too, as they stood (the preview can't read NCAA.com while it runs).
+        if (box.status === "F" || box.status === "I") {
+          setCache(box.status === "F" ? `game-v2-${g.contest_id}` : `game-live-${g.contest_id}`, box);
           saved++;
         }
       } catch (err) {

@@ -1,4 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
+import { useSchedule } from "../api/client";
 import { PlayerPhoto } from "./PlayerPhoto";
 import { TeamLogo } from "./TeamLogo";
 import type { NcaaGame, NcaaSide, NcaaStandingRow, NcaaTable } from "../types";
@@ -13,6 +14,18 @@ export function TeamLink({ seo, children, className = "" }: { seo: string | null
     <Link to={teamPath(seo)} className={`hover:text-owl-red-light hover:underline ${className}`} onClick={(e) => e.stopPropagation()}>
       {children}
     </Link>
+  );
+}
+
+/** An FAU opponent's name as a link to their team page (matched through our schedule by game date). */
+export function OpponentLink({ date, children, className = "" }: { date: string | null | undefined; children: React.ReactNode; className?: string }) {
+  const { data } = useSchedule();
+  const day = date?.slice(0, 10);
+  const seo = day ? data?.find((g) => g.game_date.slice(0, 10) === day)?.opponent_seo : null;
+  return (
+    <TeamLink seo={seo} className={className}>
+      {children}
+    </TeamLink>
   );
 }
 
@@ -246,5 +259,24 @@ function PlayerCell({ name, seo, link }: { name: string; seo: string | null | un
     <Link to={playerPath(seo, link.key)} className="hover:text-owl-red-light [&_span.whitespace-nowrap]:hover:underline">
       {inner}
     </Link>
+  );
+}
+
+/** "RPI 23 · No. 5": the team's RPI, plus its United Soccer Coaches rank when it's in the Top 25. */
+export function NationalRank({ rpi, pollRank, className = "" }: { rpi: number | null; pollRank: number | null; className?: string }) {
+  if (rpi === null && pollRank === null) return null;
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${className}`}>
+      {rpi !== null && (
+        <span className="rounded-md border border-border bg-surface-raised px-1.5 py-0.5 text-text-dim" title="NCAA RPI">
+          RPI {rpi}
+        </span>
+      )}
+      {pollRank !== null && (
+        <span className="rounded-md border border-gold/40 bg-gold/10 px-1.5 py-0.5 text-gold" title="United Soccer Coaches Top 25">
+          No. {pollRank}
+        </span>
+      )}
+    </span>
   );
 }

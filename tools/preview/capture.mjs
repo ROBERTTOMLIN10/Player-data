@@ -92,15 +92,15 @@ const teamFiles = {};
   await Promise.all(Array.from({ length: 6 }, work));
   console.log(Object.keys(teamFiles).length, "team files,", pages, "player pages");
 }
-// Game pages: finished/live games on the captured scoreboard days and all of FAU's. Kept in games.json, loaded on demand.
+// Game pages: every game on the captured scoreboard days and all of FAU's. Kept in games.json, loaded on demand.
 const gameFiles = {};
 {
   const ids = new Set();
   for (const [path, board] of Object.entries(out)) {
     if (!path.startsWith("/api/ncaa/scoreboard")) continue;
-    for (const g of board.games ?? []) if (g.state === "F" || g.state === "I") ids.add(g.id);
+    for (const g of board.games ?? []) ids.add(g.id); // upcoming games have preview pages
   }
-  for (const g of teamFiles["fla-atlantic"]?.team?.games ?? []) if (g.result) ids.add(g.id);
+  for (const g of teamFiles["fla-atlantic"]?.team?.games ?? []) ids.add(g.id);
   for (const id of ids) {
     const r = await fetch(`${B}/api/ncaa/game/${id}`, { headers: { cookie: coach } });
     if (r.ok) gameFiles[id] = await r.json();

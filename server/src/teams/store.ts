@@ -85,6 +85,23 @@ function nationalRanks(seo: string, name: string) {
   return out;
 }
 
+/** A team's place in one of NCAA.com's ranking tables (the RPI, the United Soccer Coaches poll), or null when it isn't in it. */
+function rankIn(cacheKey: string, seo: string): number | null {
+  const cached = getCache<HtmlTable>(cacheKey);
+  if (!cached) return null;
+  const t = enrichTable(cached.value);
+  const i = t.teams.findIndex((x) => x?.seo === seo);
+  if (i === -1) return null;
+  const col = t.columns.findIndex((c) => c.toLowerCase() === "rank");
+  const n = parseInt(col === -1 ? String(i + 1) : t.rows[i][col], 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** RPI (every team) and United Soccer Coaches Top 25 rank (only when ranked). */
+export function nationalStanding(seo: string) {
+  return { rpi: rankIn("rankings-rpi", seo), pollRank: rankIn("rankings-poll", seo) };
+}
+
 function teamInfo(seo: string) {
   const year = Number(teamToday().slice(0, 4));
   const info = [...teamsByName(year).values()].find((t) => t.seo === seo) ?? null;
@@ -107,6 +124,7 @@ function teamInfo(seo: string) {
     site: site?.host ? `https://${site.host}` : null,
     covered: Boolean(site && site.platform !== "other" && (site.roster_synced_at || site.stats_synced_at)),
     updatedAt: site?.stats_synced_at ?? site?.roster_synced_at ?? null,
+    ...nationalStanding(seo),
   };
 }
 
@@ -133,6 +151,50 @@ function teamGames(seo: string) {
         g.state === "F" && us !== null && them !== null ? `${us > them ? "W" : us < them ? "L" : "T"} ${us}-${them}` : null,
     };
   });
+}
+
+/** One side of a game preview: standing, last five results and the leading players. */
+export function teamForm(seo: string) {
+  const db = getDb();
+  const team = teamInfo(seo);
+  const lastFive = teamGames(seo).filter((g) => g.result).slice(-5).reverse();
+  const photo = `(SELECT p.photo_url FROM team_players p WHERE p.team_seo = s.team_seo AND p.player_key = s.player_key)`;
+  const scorers = db
+    .prepare(
+      `SELECT s.player_key AS key, s.name, s.jersey_number, ${photo} AS photo_url, s.gp, s.goals, s.assists, s.points, s.shots
+       FROM team_player_stats s WHERE s.team_seo = ? AND ${NOT_TOTALS} AND COALESCE(s.is_goalkeeper, 0) = 0 AND COALESCE(s.points, 0) > 0
+       ORDER BY s.points DESC, s.goals DESC, s.gp ASC LIMIT 3`,
+    )
+    .all(seo);
+  const keeper =
+    db
+      .prepare(
+        `SELECT s.player_key AS key, s.name, s.jersey_number, ${photo} AS photo_url, s.gp, s.saves, s.gaa, s.save_pct, s.shutouts
+         FROM team_player_stats s WHERE s.team_seo = ? AND ${NOT_TOTALS} AND s.is_goalkeeper = 1
+         ORDER BY COALESCE(s.minutes, 0) DESC, COALESCE(s.gp, 0) DESC LIMIT 1`,
+      )
+      .get(seo) ?? null;
+  return { team, lastFive, scorers, keeper };
+}
+
+/** Earlier meetings between two teams this season (finished games). */
+export function headToHead(a: string, b: string, exceptId: number) {
+  const rows = getDb()
+    .prepare(
+      `SELECT * FROM ncaa_games WHERE ((home_seo = @a AND away_seo = @b) OR (home_seo = @b AND away_seo = @a)) AND contest_id != @id AND state = 'F'
+       ORDER BY game_date DESC`,
+    )
+    .all({ a, b, id: exceptId }) as GameRow[];
+  return rows.map((g) => ({
+    id: g.contest_id,
+    date: g.game_date,
+    homeSeo: g.home_seo,
+    homeName: g.home_name,
+    homeScore: g.home_score,
+    awaySeo: g.away_seo,
+    awayName: g.away_name,
+    awayScore: g.away_score,
+  }));
 }
 
 /** Team page: header info, the whole squad with season stats, and the season's games. */
@@ -170,8 +232,16 @@ export function playerPage(seo: string, key: string) {
     if (hit) return playerPage(seo, hit.key);
   }
   const name = String(profile?.name ?? stats?.name ?? "");
+  // Each game line links to its game page and the opponent's team page (NCAA.com's game on that date).
   const games = db
-    .prepare("SELECT * FROM team_player_games WHERE team_seo = ? AND player_key = ? ORDER BY game_date")
+    .prepare(
+      `SELECT g.*, n.contest_id AS game_id, CASE WHEN n.home_seo = g.team_seo THEN n.away_seo ELSE n.home_seo END AS opponent_seo
+       FROM team_player_games g
+       LEFT JOIN ncaa_games n ON n.contest_id = (
+         SELECT contest_id FROM ncaa_games WHERE game_date = g.game_date AND (home_seo = g.team_seo OR away_seo = g.team_seo) LIMIT 1
+       )
+       WHERE g.team_seo = ? AND g.player_key = ? ORDER BY g.game_date`,
+    )
     .all(seo, key);
   if (profile || stats) return { team, key, name, profile: profile ?? null, stats: stats ?? null, games, national: nationalRanks(seo, name), source: "team" as const };
 

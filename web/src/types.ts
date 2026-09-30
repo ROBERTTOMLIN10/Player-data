@@ -146,6 +146,8 @@ export interface ScheduleGame {
   opponent_score: number | null;
   boxscore_url: string | null;
   recap_url: string | null;
+  ncaa_game_id: number | null; // NCAA.com game (for the game page)
+  opponent_seo: string | null; // NCAA.com team (for the team page)
 }
 
 export interface GameTeamTotals {
@@ -484,6 +486,8 @@ export interface NcaaTeamInfo {
   site: string | null;
   covered: boolean; // squad read from the team's athletics site
   updatedAt: string | null;
+  rpi: number | null;
+  pollRank: number | null; // United Soccer Coaches Top 25, only when ranked
 }
 
 export interface NcaaSquadPlayer {
@@ -537,6 +541,8 @@ export interface NcaaTeamPage {
 
 export interface NcaaPlayerGame {
   game_date: string;
+  game_id?: number | null; // NCAA.com game
+  opponent_seo?: string | null;
   opponent: string | null;
   home_away: string | null;
   result: string | null;
@@ -760,11 +766,45 @@ export interface NcaaGameTeamStats {
   redCards: number | null;
 }
 
+export type NcaaPlayKind = "goal" | "shot" | "save" | "corner" | "foul" | "offside" | "sub" | "yellow" | "red" | "other";
+
+export interface NcaaFormPlayer {
+  key: string;
+  name: string;
+  jersey_number: string | null;
+  photo_url: string | null;
+  gp: number | null;
+  goals?: number | null;
+  assists?: number | null;
+  points?: number | null;
+  shots?: number | null;
+  saves?: number | null;
+  gaa?: number | null;
+  save_pct?: number | null;
+  shutouts?: number | null;
+}
+
+export interface NcaaTeamForm {
+  team: NcaaTeamInfo;
+  lastFive: NcaaTeamGame[];
+  scorers: NcaaFormPlayer[];
+  keeper: NcaaFormPlayer | null;
+}
+
 export interface NcaaGameDetail {
   ourTeam: string;
   game: NcaaGame | null;
   status: string | null; // P | I | F
   period: string | null;
-  teams: { seo: string; name: string; isHome: boolean; color: string | null; players: NcaaGamePlayer[]; stats: NcaaGameTeamStats | null }[];
+  clock: string | null; // live game clock
+  teams: { seo: string; name: string; isHome: boolean; color: string | null; score?: number | null; players: NcaaGamePlayer[]; stats: NcaaGameTeamStats | null }[];
   goals: { period: string; time: string; seo: string | null; text: string; homeScore: number | null; awayScore: number | null }[];
+  plays: { period: string; clock: string; seo: string | null; kind: NcaaPlayKind; text: string }[];
+  venue: { time: string | null; location: string | null } | null;
+  ranks: Record<string, { rpi: number | null; pollRank: number | null }>;
+  preview: {
+    home: NcaaTeamForm;
+    away: NcaaTeamForm;
+    headToHead: { id: number; date: string; homeSeo: string; homeName: string; homeScore: number | null; awaySeo: string; awayName: string; awayScore: number | null }[];
+  } | null;
 }

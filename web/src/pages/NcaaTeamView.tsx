@@ -1,7 +1,7 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useNcaaTeam } from "../api/client";
 import { Card, SectionHeading } from "../components/Card";
-import { gamePath, playerPath, TeamLink, updatedLabel } from "../components/ncaa";
+import { gamePath, NationalRank, playerPath, TeamLink, updatedLabel } from "../components/ncaa";
 import { PlayerPhoto } from "../components/PlayerPhoto";
 import { TeamLogo } from "../components/TeamLogo";
 import { formatDate } from "../lib/format";
@@ -32,7 +32,10 @@ export default function NcaaTeamView() {
       <Card className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <TeamLogo name={team.name} url={team.logo} size="lg" />
         <div className="min-w-0 flex-1">
-          <h2 className="font-display text-2xl font-bold">{team.name}</h2>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h2 className="font-display text-2xl font-bold">{team.name}</h2>
+            <NationalRank rpi={team.rpi} pollRank={team.pollRank} />
+          </div>
           <p className="text-sm text-text-dim">
             {[team.conference, team.record && `${team.record} overall`, team.conferenceRecord && `${team.conferenceRecord} conference`, team.conferencePosition && `${ordinal(team.conferencePosition)} of ${team.conferenceTeams}`]
               .filter(Boolean)

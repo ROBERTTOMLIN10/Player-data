@@ -418,7 +418,8 @@ export function useNcaaGame(id: string | undefined) {
     queryKey: ["ncaaGame", id],
     queryFn: () => fetchJson<NcaaGameDetail>(`/api/ncaa/game/${id}`),
     enabled: Boolean(id),
-    refetchInterval: (q) => (q.state.data?.status === "I" ? 30_000 : false),
+    // Live games: every 20 seconds (the server re-reads NCAA.com at most that often).
+    refetchInterval: (q) => (q.state.data?.status === "I" ? 20_000 : false),
   });
 }
 

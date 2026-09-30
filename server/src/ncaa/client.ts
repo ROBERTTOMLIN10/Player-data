@@ -232,6 +232,7 @@ const gameQueryIds: Record<string, string> = {
   NCAA_GetGamecenterBoxscoreSoccerById_web: "c9070c4e5a76468a4025896df89f8a7b22be8275c54a22ff79619cbb27d63d7d",
   NCAA_GetGamecenterTeamStatsSoccerById_web: "d3009ee734557a3af9b80a1fd0326575799094e8046a4188c6aebea7072ea7bf",
   NCAA_GetGamecenterScoringSummaryById_web: "fcd5729c72b0f72a4f659bf07e7b1da0fdce8f41ad286b0ddfe830adc7a45ca3",
+  NCAA_GetGamecenterPbpGenericById_web: "57f922d56d60d88326b62202b3d88e8cd3cfb6687931bc0b5b3dfab089b84faa",
 };
 
 /** Re-reads the game center query ids from a game page (they're listed there as "name":"hash"). */
@@ -287,12 +288,22 @@ export interface GameTeamStats {
   yellowCards: number | null;
   redCards: number | null;
 }
+export type PlayKind = "goal" | "shot" | "save" | "corner" | "foul" | "offside" | "sub" | "yellow" | "red" | "other";
+export interface GamePlay {
+  period: string;
+  clock: string;
+  seo: string | null; // the team it's about, when the text makes that clear
+  kind: PlayKind;
+  text: string;
+}
 export interface GameBoxscore {
   contestId: number;
   status: string; // P | I | F
   period: string;
-  teams: { seo: string; name: string; isHome: boolean; color: string | null; players: GamePlayer[]; stats: GameTeamStats | null }[];
+  clock: string | null; // live games: the game clock, e.g. "63:12"
+  teams: { seo: string; name: string; isHome: boolean; color: string | null; score: number | null; players: GamePlayer[]; stats: GameTeamStats | null }[];
   goals: { period: string; time: string; seo: string | null; text: string; homeScore: number | null; awayScore: number | null }[];
+  plays: GamePlay[]; // play-by-play, oldest first
 }
 
 const n = (v: unknown): number | null => (v === null || v === undefined || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
@@ -308,20 +319,25 @@ const consistentShots = (shots: number | null, onGoal: number | null) => (shots 
 
 /** One game's box score from NCAA.com's game center (works for live and final games). */
 export async function fetchGameBoxscore(contestId: number): Promise<GameBoxscore> {
-  const [box, teamStats, scoring] = await Promise.all([
+  const [box, teamStats, scoring, pbp] = await Promise.all([
     gameQuery<{ boxscore: Rec }>("NCAA_GetGamecenterBoxscoreSoccerById_web", contestId),
     gameQuery<{ boxscore: Rec }>("NCAA_GetGamecenterTeamStatsSoccerById_web", contestId).catch(() => null),
     gameQuery<{ scoringSummary: Rec }>("NCAA_GetGamecenterScoringSummaryById_web", contestId).catch(() => null),
+    gameQuery<{ playbyplay: Rec }>("NCAA_GetGamecenterPbpGenericById_web", contestId).catch(() => null),
   ]);
   const b = box.boxscore ?? {};
   const teams = (b.teams ?? []) as Rec[];
   const seoById = new Map(teams.map((t) => [String(t.teamId), String(t.seoname)]));
   const statsById = new Map(((teamStats?.boxscore?.teamBoxscore ?? []) as Rec[]).map((t) => [String(t.teamId), t.teamStats as Rec | null]));
   const playersById = new Map(((b.teamBoxscore ?? []) as Rec[]).map((t) => [String(t.teamId), (t.playerStats ?? []) as Rec[]]));
+  const scoreById = new Map(((scoring?.scoringSummary?.teams ?? []) as Rec[]).map((t) => [String(t.teamId), n(t.score)]));
+  const live = String(b.status ?? "") === "I" && b.minutes !== null && b.minutes !== undefined;
   return {
     contestId,
     status: String(b.status ?? ""),
     period: String(b.period ?? ""),
+    clock: live ? `${String(b.minutes).padStart(2, "0")}:${String(b.seconds ?? 0).padStart(2, "0")}` : null,
+    plays: pbp ? parsePlays(pbp.playbyplay, teams) : [],
     teams: teams.map((t) => {
       const s = statsById.get(String(t.teamId));
       return {
@@ -329,6 +345,7 @@ export async function fetchGameBoxscore(contestId: number): Promise<GameBoxscore
         name: String(t.nameShort ?? t.nameFull ?? ""),
         isHome: Boolean(t.isHome),
         color: t.color ?? null,
+        score: scoreById.get(String(t.teamId)) ?? n(s?.goals),
         players: (playersById.get(String(t.teamId)) ?? [])
           .filter((p) => p.participated !== false)
           .map((p) => {
@@ -369,4 +386,50 @@ export async function fetchGameBoxscore(contestId: number): Promise<GameBoxscore
       })),
     ),
   };
+}
+
+function playKind(text: string): PlayKind {
+  const t = text.toLowerCase();
+  if (/^goal by|\bgoal by\b/.test(t)) return "goal";
+  if (/red card|second yellow/.test(t)) return "red";
+  if (/yellow card/.test(t)) return "yellow";
+  if (/substitution/.test(t)) return "sub";
+  if (/saved by/.test(t)) return "save";
+  if (/^shot by/.test(t)) return "shot";
+  if (/corner kick/.test(t)) return "corner";
+  if (/offside/.test(t)) return "offside";
+  if (/^foul on/.test(t)) return "foul";
+  return "other";
+}
+
+/**
+ * NCAA's play-by-play for soccer. Its team tag is sometimes the wrong team (a
+ * substitution tagged to the other side), so the team is read from the text
+ * first ("Shot by MAN …", "Offside against Manhattan"), then the tag.
+ */
+function parsePlays(pbp: Rec | undefined, teams: Rec[]): GamePlay[] {
+  if (!pbp) return [];
+  const sides = teams.map((t) => ({
+    id: String(t.teamId),
+    seo: String(t.seoname),
+    names: [String(t.nameShort ?? ""), String(t.nameFull ?? "")].filter(Boolean).map((x) => x.toLowerCase()),
+    code: String(t.name6Char ?? t.nameShort ?? "").toUpperCase().replace(/[^A-Z]/g, ""),
+  }));
+  const teamOf = (text: string, tagged: string) => {
+    const codes = [...text.matchAll(/\b([A-Z]{2,6})\b/g)].map((m) => m[1]);
+    const byCode = sides.filter((s) => codes.some((c) => s.code.startsWith(c)));
+    if (byCode.length === 1) return byCode[0].seo;
+    const lower = text.toLowerCase();
+    const byName = sides.filter((s) => s.names.some((nm) => nm && lower.includes(nm)));
+    if (byName.length === 1) return byName[0].seo;
+    return sides.find((s) => s.id === tagged)?.seo ?? null;
+  };
+  return ((pbp.periods ?? []) as Rec[]).flatMap((p) =>
+    ((p.playbyplayStats ?? []) as Rec[]).flatMap((e) =>
+      ((e.plays ?? []) as Rec[])
+        .map((pl) => String(pl.playText ?? "").trim())
+        .filter((text) => text && !/ at goalie for /i.test(text))
+        .map((text) => ({ period: String(p.periodDisplay ?? ""), clock: String(e.clock ?? ""), seo: teamOf(text, String(e.teamId ?? "")), kind: playKind(text), text })),
+    ),
+  );
 }

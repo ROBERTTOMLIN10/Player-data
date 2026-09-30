@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { useNcaaConference, useSchedule, useTeamStats } from "../api/client";
 import { Card, SectionHeading } from "../components/Card";
 import { ScheduleCalendar } from "../components/ScheduleCalendar";
 import { Segmented } from "../components/SeasonStats";
 import { TeamLogo } from "../components/TeamLogo";
-import { NcaaStatTable, StandingsTable, updatedLabel } from "../components/ncaa";
+import { gamePath, NcaaStatTable, StandingsTable, TeamLink, updatedLabel } from "../components/ncaa";
 import { formatDateLong } from "../lib/format";
 import type { ScheduleGame } from "../types";
 
@@ -82,14 +83,19 @@ export default function HomeView() {
               <OpponentLogo game={nextGame} />
               <div>
                 <div className="font-display text-lg font-semibold">
-                  {nextGame.home_away === "A" ? "at " : nextGame.home_away === "N" ? "vs " : "vs "}
-                  {nextGame.opponent}
+                  {nextGame.home_away === "A" ? "at " : "vs "}
+                  <TeamLink seo={nextGame.opponent_seo}>{nextGame.opponent}</TeamLink>
                 </div>
                 <div className="text-sm text-text-dim">
                   {formatDateLong(nextGame.game_date)}
                   {nextGame.game_time ? ` · ${nextGame.game_time}` : ""}
                   {nextGame.location ? ` · ${nextGame.location}` : ""}
                 </div>
+                {nextGame.ncaa_game_id && (
+                  <Link to={gamePath(nextGame.ncaa_game_id)} className="mt-1 inline-block text-xs text-teal hover:underline">
+                    Game preview ›
+                  </Link>
+                )}
               </div>
               {nextGame.is_conference === 1 && (
                 <span className="ml-auto rounded-full border border-owl-red/40 bg-owl-red/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-owl-red-light">
@@ -127,12 +133,12 @@ export default function HomeView() {
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {upcoming.map((g) => (
-              <Card key={g.id} className="flex items-center gap-3">
+              <GameCardLink key={g.id} game={g}>
                 <OpponentLogo game={g} />
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium">
                     {g.home_away === "A" ? "at " : "vs "}
-                    {g.opponent}
+                    <TeamLink seo={g.opponent_seo}>{g.opponent}</TeamLink>
                   </div>
                   <div className="truncate text-xs text-text-dim">
                     {formatDateLong(g.game_date)}
@@ -145,7 +151,7 @@ export default function HomeView() {
                     Conf
                   </span>
                 )}
-              </Card>
+              </GameCardLink>
             ))}
           </div>
         )}
@@ -176,7 +182,7 @@ export default function HomeView() {
                         <TeamLogo name={g.opponent} url={g.opponent_logo_url} size="sm" />
                         <span>
                           {g.home_away === "A" ? "at " : "vs "}
-                          {g.opponent}
+                          <TeamLink seo={g.opponent_seo}>{g.opponent}</TeamLink>
                         </span>
                       </span>
                     </td>
@@ -188,7 +194,12 @@ export default function HomeView() {
                     <td className="px-4 py-3 text-text-dim">
                       {g.team_score != null && g.opponent_score != null ? `${g.team_score}–${g.opponent_score}` : "—"}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="whitespace-nowrap px-4 py-3 text-right">
+                      {g.ncaa_game_id && (
+                        <Link to={gamePath(g.ncaa_game_id)} className="mr-3 text-xs font-medium text-owl-red-light hover:underline">
+                          Match stats ›
+                        </Link>
+                      )}
                       {g.boxscore_url && (
                         <a
                           href={g.boxscore_url}
@@ -207,6 +218,23 @@ export default function HomeView() {
           </Card>
         )}
       </section>
+    </div>
+  );
+}
+
+/** An upcoming game as a card that opens its game page (the opponent's name still opens their team page). */
+function GameCardLink({ game, children }: { game: ScheduleGame; children: React.ReactNode }) {
+  const navigate = useNavigate();
+  const to = game.ncaa_game_id ? gamePath(game.ncaa_game_id) : null;
+  return (
+    <div
+      role={to ? "link" : undefined}
+      tabIndex={to ? 0 : undefined}
+      onClick={() => to && navigate(to)}
+      onKeyDown={(e) => to && e.key === "Enter" && navigate(to)}
+      className={`flex items-center gap-3 rounded-xl border border-border bg-surface p-4 sm:p-5 ${to ? "cursor-pointer transition-colors hover:border-owl-red/60" : ""}`}
+    >
+      {children}
     </div>
   );
 }
