@@ -10,10 +10,10 @@ import { wmtDirectory, wmtName, wmtTeamIdFromPage } from "./wmt.js";
  * Finds every D1 team's athletics website (from its NCAA.com school page) and
  * which platform it runs, so their squads can be read. Teams whose own site
  * can't be read are looked up in WMT's stats feed instead (squads and stats
- * without photos); anything left is stored as 'other' and retried monthly.
+ * without photos); anything left is stored as 'other' and retried daily.
  */
 
-const REDISCOVER_DAYS = 30;
+const REDISCOVER_DAYS = 1;
 const CONCURRENCY = 8;
 
 /** The athletics site linked from a school's NCAA.com page (the "web" link in its school links). */
@@ -61,7 +61,7 @@ export async function pool<T>(items: T[], n: number, fn: (item: T) => Promise<vo
   }));
 }
 
-/** Finds the site and platform for D1 teams not looked up yet (or not readable last time, monthly). */
+/** Finds the site and platform for D1 teams not looked up yet (or not readable last time). */
 export async function discoverTeamSites(): Promise<{ checked: number; readable: number }> {
   const db = getDb();
   const year = Number(teamToday().slice(0, 4));
@@ -82,10 +82,10 @@ export async function discoverTeamSites(): Promise<{ checked: number; readable: 
   const todo = d1Teams().filter((seo) => {
     if (TEAM_SITES[seo]) return false; // checked by hand
     const k = known.get(seo);
-    // Lookups that failed on a network error (no host saved) are retried daily; unsupported sites monthly.
+    // Teams we can't read yet are looked up again daily (a site move, or a network error last time).
     return (
       !k ||
-      (k.platform === "other" && (!k.host || stale(k.discovered_at))) ||
+      (k.platform === "other" && stale(k.discovered_at)) ||
       (k.platform === "wmt" && (!k.stats_team_id || lastSeason(k.discovered_at)))
     );
   });
