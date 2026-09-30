@@ -143,6 +143,12 @@ interface SiteExtra {
 
 const lastName = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z ]/g, "").trim().split(" ").pop() ?? "";
 
+/** The smallest size of a WMT image (their full size is ~2000px wide; the app shows 30–112px). */
+function smallest(photo: { url?: string; srcset?: string } | null | undefined): string | null {
+  const first = photo?.srcset?.split(",")[0]?.trim().split(/\s+/)[0];
+  return first || photo?.url || null;
+}
+
 /** Photos and bios from a WMT (Nuxt) roster page: its "roster-…-players-list" data. */
 function nuxtExtras(html: string, pageUrl: string): SiteExtra[] {
   const root = parseNuxtPayload(html) as Record<string, any> | null;
@@ -152,7 +158,7 @@ function nuxtExtras(html: string, pageUrl: string): SiteExtra[] {
   return (list ?? []).map((p) => ({
     name: String(p.player?.full_name ?? `${p.player?.first_name ?? ""} ${p.player?.last_name ?? ""}`).trim(),
     jersey: p.jersey_number_label ?? (p.jersey_number !== null && p.jersey_number !== undefined ? String(p.jersey_number) : null),
-    photo_url: p.photo?.url ?? p.player?.master_photo?.url ?? null,
+    photo_url: smallest(p.photo) ?? smallest(p.player?.master_photo),
     profile_url: p.player?.slug ? `${base}/player/${p.player.slug}` : null,
     weight: typeof p.weight === "number" ? p.weight : null,
     hometown: p.player?.hometown ?? null,
