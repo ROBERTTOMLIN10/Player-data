@@ -6,7 +6,7 @@ import { Segmented } from "../components/SeasonStats";
 import { gamePath, NationalRank, playerPath, TeamLink } from "../components/ncaa";
 import { PlayerPhoto } from "../components/PlayerPhoto";
 import { TeamLogo } from "../components/TeamLogo";
-import { formatDate, formatDateLong } from "../lib/format";
+import { formatDate, formatDateLong, kickoffTime } from "../lib/format";
 import type { NcaaFormPlayer, NcaaGameDetail, NcaaGamePlayer, NcaaGameTeamStats, NcaaTeamForm } from "../types";
 
 type Team = NcaaGameDetail["teams"][number];
@@ -26,7 +26,8 @@ export default function NcaaGameView() {
   const live = data.status === "I";
   const final = data.status === "F";
   const upcoming = !live && !final;
-  const kickoff = g?.startEpoch ? new Date(g.startEpoch * 1000).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }) : data.venue?.time ?? null;
+  // Our games: the time from our schedule ("7 p.m."); others: NCAA.com's, in Eastern time.
+  const kickoff = data.venue?.time ?? (g?.startEpoch ? kickoffTime(g.startEpoch) : null);
   const status = live
     ? `Live · ${data.period || g?.period || ""}${data.clock ? ` ${data.clock}` : g?.clock ? ` ${g.clock}` : ""}`
     : final

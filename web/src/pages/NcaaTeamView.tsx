@@ -4,7 +4,7 @@ import { Card, SectionHeading } from "../components/Card";
 import { gamePath, NationalRank, playerPath, TeamLink, updatedLabel } from "../components/ncaa";
 import { PlayerPhoto } from "../components/PlayerPhoto";
 import { TeamLogo } from "../components/TeamLogo";
-import { formatDate } from "../lib/format";
+import { formatDate, kickoffTime } from "../lib/format";
 import type { NcaaSquadPlayer } from "../types";
 
 const dash = (v: number | null | undefined, digits = 0) => (v === null || v === undefined ? "—" : digits ? v.toFixed(digits) : String(v));
@@ -194,12 +194,12 @@ function GameList({ title, games, ourTeam }: { title: string; games: import("../
                 </TeamLink>
                 {g.isConference && <span className="text-[10px] uppercase tracking-wide text-text-dim">Conf</span>}
                 <span
-                  className={`w-16 shrink-0 text-right font-semibold ${
+                  className={`shrink-0 whitespace-nowrap text-right font-semibold ${g.result ? "w-16" : ""} ${
                     g.result?.startsWith("W") ? "text-teal" : g.result?.startsWith("L") ? "text-owl-red-light" : "text-text-dim"
                   }`}
                 >
                   {g.result ??
-                    (g.startEpoch ? new Date(g.startEpoch * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "TBA")}
+                    (g.startEpoch ? kickoffTime(g.startEpoch) : "TBA")}
                 </span>
               </li>
             ))}

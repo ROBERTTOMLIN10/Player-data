@@ -307,9 +307,15 @@ export interface GameBoxscore {
 }
 
 const n = (v: unknown): number | null => (v === null || v === undefined || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
+/** NCAA's feed sometimes sends accented names double-encoded ("JoÃ£o"): read them back as UTF-8 ("João"). */
+const fixEncoding = (s: string) => {
+  if (!/[ÃÂ][\u0080-\u00ff]/.test(s)) return s;
+  const fixed = Buffer.from(s, "latin1").toString("utf8");
+  return fixed.includes("\ufffd") ? s : fixed;
+};
 /** "CLAYTON HAMLER" → "Clayton Hamler" (keeps Mc/O' etc. readable). */
 const titleCase = (s: string) =>
-  s
+  fixEncoding(s)
     .toLowerCase()
     .replace(/(^|[\s'-])\p{L}/gu, (m) => m.toUpperCase())
     .replace(/\bMc(\p{L})/gu, (_, c: string) => `Mc${c.toUpperCase()}`);
@@ -380,7 +386,7 @@ export async function fetchGameBoxscore(contestId: number): Promise<GameBoxscore
         period: String(p.title ?? ""),
         time: String(g.time ?? ""),
         seo: seoById.get(String(g.teamId)) ?? null,
-        text: String(g.scoreText ?? ""),
+        text: fixEncoding(String(g.scoreText ?? "")),
         homeScore: n(g.homeScore),
         awayScore: n(g.visitScore),
       })),
@@ -427,7 +433,7 @@ function parsePlays(pbp: Rec | undefined, teams: Rec[]): GamePlay[] {
   return ((pbp.periods ?? []) as Rec[]).flatMap((p) =>
     ((p.playbyplayStats ?? []) as Rec[]).flatMap((e) =>
       ((e.plays ?? []) as Rec[])
-        .map((pl) => String(pl.playText ?? "").trim())
+        .map((pl) => fixEncoding(String(pl.playText ?? "").trim()))
         .filter((text) => text && !/ at goalie for /i.test(text))
         .map((text) => ({ period: String(p.periodDisplay ?? ""), clock: String(e.clock ?? ""), seo: teamOf(text, String(e.teamId ?? "")), kind: playKind(text), text })),
     ),

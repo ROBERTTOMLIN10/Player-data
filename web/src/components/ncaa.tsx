@@ -3,6 +3,7 @@ import { useSchedule } from "../api/client";
 import { PlayerPhoto } from "./PlayerPhoto";
 import { TeamLogo } from "./TeamLogo";
 import type { NcaaGame, NcaaSide, NcaaStandingRow, NcaaTable } from "../types";
+import { kickoffTime } from "../lib/format";
 
 export const teamPath = (seo: string) => `/ncaa/team/${seo}`;
 export const playerPath = (seo: string, key: string) => `/ncaa/player/${seo}/${encodeURIComponent(key)}`;
@@ -56,7 +57,7 @@ export function GameCard({ game, ourTeam }: { game: NcaaGame; ourTeam: string })
     : final
       ? game.finalMessage || "Final"
       : game.startEpoch
-        ? new Date(game.startEpoch * 1000).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+        ? kickoffTime(game.startEpoch)
         : "TBA";
 
   // Live and finished games open their box score.
