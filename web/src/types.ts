@@ -738,7 +738,7 @@ export interface NcaaGamePlayer {
   minutes: number | null;
   goals: number;
   assists: number;
-  shots: number;
+  shots: number | null;
   shotsOnGoal: number;
   yellowCards: number;
   redCards: number;

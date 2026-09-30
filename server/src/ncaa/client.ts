@@ -269,7 +269,7 @@ export interface GamePlayer {
   minutes: number | null;
   goals: number;
   assists: number;
-  shots: number;
+  shots: number | null; // null when NCAA's feed has fewer shots than shots on target (it sometimes leaves shots at 0)
   shotsOnGoal: number;
   yellowCards: number;
   redCards: number;
@@ -304,6 +304,7 @@ const titleCase = (s: string) =>
     .replace(/\bMc(\p{L})/gu, (_, c: string) => `Mc${c.toUpperCase()}`);
 
 type Rec = Record<string, any>;
+const consistentShots = (shots: number | null, onGoal: number | null) => (shots !== null && onGoal !== null && shots < onGoal ? null : shots ?? 0);
 
 /** One game's box score from NCAA.com's game center (works for live and final games). */
 export async function fetchGameBoxscore(contestId: number): Promise<GameBoxscore> {
@@ -337,10 +338,10 @@ export async function fetchGameBoxscore(contestId: number): Promise<GameBoxscore
               name: titleCase(`${p.firstName ?? ""} ${p.lastName ?? ""}`.trim()),
               position: p.position ?? null,
               starter: Boolean(p.starter),
-              minutes: n(p.minutesPlayed),
+              minutes: n(p.minutesPlayed) === null ? null : Math.round(n(p.minutesPlayed)!),
               goals: n(p.goals) ?? 0,
               assists: n(p.assists) ?? 0,
-              shots: n(p.shots) ?? 0,
+              shots: consistentShots(n(p.shots), n(p.shotsOnGoal)),
               shotsOnGoal: n(p.shotsOnGoal) ?? 0,
               yellowCards: n(p.penalties?.yellowCards) ?? 0,
               redCards: n(p.penalties?.redCards) ?? 0,
@@ -350,7 +351,7 @@ export async function fetchGameBoxscore(contestId: number): Promise<GameBoxscore
           }),
         stats: s
           ? {
-              goals: n(s.goals), shots: n(s.shots), shotsOnGoal: n(s.shotsOnGoal), corners: n(s.corners),
+              goals: n(s.goals), shots: consistentShots(n(s.shots), n(s.shotsOnGoal)), shotsOnGoal: n(s.shotsOnGoal), corners: n(s.corners),
               fouls: n(s.penalties?.fouls ?? s.fouls), offsides: n(s.offsides), saves: n(s.goalie?.saves ?? s.saves),
               yellowCards: n(s.penalties?.yellowCards), redCards: n(s.penalties?.redCards),
             }

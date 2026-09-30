@@ -87,7 +87,7 @@ export default function NcaaGameView() {
               <span>{h.name}</span>
             </div>
             {STAT_ROWS.map(([label, k]) => (
-              <StatBar key={k} label={label} away={away.stats![k]} home={home.stats![k]} />
+              <StatBar key={k} label={label} away={statValue(away.stats!, k)} home={statValue(home.stats!, k)} />
             ))}
           </Card>
         </section>
@@ -127,6 +127,12 @@ const STAT_ROWS: [string, keyof NcaaGameTeamStats][] = [
   ["Yellow cards", "yellowCards"],
   ["Red cards", "redCards"],
 ];
+
+/** NCAA's feed sometimes leaves shots at 0 while counting shots on target: show those as unknown. */
+function statValue(s: NcaaGameTeamStats, k: keyof NcaaGameTeamStats) {
+  if (k === "shots" && s.shots !== null && s.shotsOnGoal !== null && s.shots < s.shotsOnGoal) return null;
+  return s[k];
+}
 
 function StatBar({ label, away, home }: { label: string; away: number | null; home: number | null }) {
   if (away === null && home === null) return null;
@@ -172,10 +178,10 @@ function Lineup({ team, name }: { team: Team; name: string }) {
                 <td className="px-3 py-2">
                   <PlayerName team={team.seo} p={p} />
                 </td>
-                <td className="px-2 py-2 text-center text-text-dim">{p.minutes ?? "–"}</td>
+                <td className="px-2 py-2 text-center text-text-dim">{p.minutes === null ? "–" : Math.round(p.minutes)}</td>
                 <td className={`px-2 py-2 text-center ${p.goals ? "font-semibold text-teal" : ""}`}>{p.goals}</td>
                 <td className={`px-2 py-2 text-center ${p.assists ? "font-semibold" : ""}`}>{p.assists}</td>
-                <td className="px-2 py-2 text-center text-text-dim">{p.shots}</td>
+                <td className="px-2 py-2 text-center text-text-dim">{p.shots !== null && p.shots >= p.shotsOnGoal ? p.shots : "–"}</td>
                 <td className="px-2 py-2 text-center text-text-dim">{p.shotsOnGoal}</td>
                 <td className="px-2 py-2 text-center">
                   {p.yellowCards > 0 && <span className="mr-1 inline-block h-3 w-2.5 rounded-sm bg-gold" title="Yellow" />}

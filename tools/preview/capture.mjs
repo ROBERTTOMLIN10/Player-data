@@ -163,6 +163,11 @@ for (const [seo, file] of Object.entries(teamFiles)) {
 console.log(Object.keys(teamFiles).length, "team files,", (total / 1024 / 1024).toFixed(1), "MB");
 {
   let text = JSON.stringify(gameFiles);
+  // Big logos on game pages too: the original SVGs first, then the small copies for anything else.
+  for (const [url, dataUri] of Object.entries(logosLarge)) {
+    const quoted = JSON.stringify(url).slice(1, -1);
+    if (text.includes(quoted)) text = text.split(quoted).join(dataUri);
+  }
   for (const [quoted, dataUri] of quotedLogos) if (text.includes(quoted)) text = text.split(quoted).join(dataUri);
   fs.writeFileSync(`${teamDir}/../games.json`, text);
   console.log("games.json", (text.length / 1024 / 1024).toFixed(1), "MB");
