@@ -160,6 +160,8 @@ export async function syncTeamStats(seo: string, year = Number(teamToday().slice
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       db.transaction(() => {
+        // One game per team per day and opponent: replace any lines saved for it from another source.
+        db.prepare("DELETE FROM team_player_games WHERE team_seo = ? AND game_date = ? AND opponent = ?").run(seo, g.date, g.opponent);
         for (const l of lines.filter(isPlayer))
           insert.run(seo, l.key, g.date, g.opponent, g.home ? "home" : "away", g.result, l.started ? 1 : 0, l.minutes, l.goals, l.assists,
             l.shots, l.shots_on_goal, l.yellow_cards, l.red_cards, l.saves, l.goals_allowed, g.boxscoreUrl);
