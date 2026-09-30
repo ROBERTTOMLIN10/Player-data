@@ -4,6 +4,7 @@ import { getDb } from "../../server/src/db/connection.js";
 import { syncAllTeams } from "../../server/src/teams/sync.js";
 
 migrate();
+getDb().prepare("UPDATE team_sites SET discovered_at = NULL WHERE platform = 'other'").run(); // as if a day has passed
 const t0 = Date.now();
 await syncAllTeams({ rosters: true });
 console.log(`TOTAL ${Math.round((Date.now() - t0) / 1000)}s`);
