@@ -1,6 +1,8 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useNcaaConference, useSchedule, useTeamStats } from "../api/client";
 import { Card, SectionHeading } from "../components/Card";
+import { ScheduleCalendar } from "../components/ScheduleCalendar";
+import { Segmented } from "../components/SeasonStats";
 import { TeamLogo } from "../components/TeamLogo";
 import { NcaaStatTable, StandingsTable, updatedLabel } from "../components/ncaa";
 import { formatDateLong } from "../lib/format";
@@ -17,9 +19,35 @@ function OpponentLogo({ game }: { game: ScheduleGame }) {
   return <TeamLogo name={game.opponent} url={game.opponent_logo_url} />;
 }
 
+type UpcomingView = "list" | "calendar";
+const VIEW_KEY = "home-upcoming-view";
+
+/** List or calendar, remembered on this device. */
+function useUpcomingView(): [UpcomingView, (v: UpcomingView) => void] {
+  const [view, setView] = useState<UpcomingView>(() => {
+    try {
+      return localStorage.getItem(VIEW_KEY) === "calendar" ? "calendar" : "list";
+    } catch {
+      return "list";
+    }
+  });
+  return [
+    view,
+    (v) => {
+      setView(v);
+      try {
+        localStorage.setItem(VIEW_KEY, v);
+      } catch {
+        /* not remembered */
+      }
+    },
+  ];
+}
+
 export default function HomeView() {
   const { data: schedule, isLoading: scheduleLoading } = useSchedule();
   const { data: teamStats } = useTeamStats();
+  const [upcomingView, setUpcomingView] = useUpcomingView();
 
   const { upcoming, results, nextGame } = useMemo(() => {
     const games = schedule ?? [];
@@ -78,9 +106,24 @@ export default function HomeView() {
       <ConferenceSection />
 
       <section>
-        <SectionHeading title="Upcoming Games" subtitle="Rest of the season schedule" />
+        <div className="flex flex-wrap items-end justify-between gap-x-4">
+          <SectionHeading title="Upcoming Games" subtitle="Rest of the season schedule" />
+          <div className="mb-3">
+            <Segmented
+              value={upcomingView}
+              options={[
+                { key: "list", label: "List" },
+                { key: "calendar", label: "Calendar" },
+              ]}
+              onChange={setUpcomingView}
+              label="Upcoming games view"
+            />
+          </div>
+        </div>
         {upcoming.length === 0 ? (
           <Card className="text-center text-sm text-text-dim">No upcoming games on the published schedule yet.</Card>
+        ) : upcomingView === "calendar" ? (
+          <ScheduleCalendar games={schedule ?? []} />
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {upcoming.map((g) => (
