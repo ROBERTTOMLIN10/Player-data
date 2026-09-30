@@ -1,0 +1,142 @@
+[
+ {
+  "contestId": 6616032,
+  "date": "2026-09-30",
+  "startEpoch": 1790787600,
+  "startTime": "13:00",
+  "hasStartTime": true,
+  "state": "F",
+  "status": "final",
+  "period": "FINAL",
+  "clock": "",
+  "finalMessage": "FINAL",
+  "home": {
+   "seo": "iona",
+   "name": "Iona",
+   "rank": null,
+   "score": 2,
+   "conf": "metro",
+   "isHome": true
+  },
+  "away": {
+   "seo": "rider",
+   "name": "Rider",
+   "rank": null,
+   "score": 2,
+   "conf": "metro",
+   "isHome": false
+  }
+ },
+ {
+  "contestId": 6616859,
+  "date": "2026-09-30",
+  "startEpoch": 1790791200,
+  "startTime": "14:00",
+  "hasStartTime": true,
+  "state": "F",
+  "status": "final",
+  "period": "FINAL",
+  "clock": "",
+  "finalMessage": "FINAL",
+  "home": {
+   "seo": "radford",
+   "name": "Radford",
+   "rank": null,
+   "score": 0,
+   "conf": "big-south",
+   "isHome": true
+  },
+  "away": {
+   "seo": "east-tenn-st",
+   "name": "ETSU",
+   "rank": null,
+   "score": 0,
+   "conf": "socon",
+   "isHome": false
+  }
+ },
+ {
+  "contestId": 6616110,
+  "date": "2026-09-30",
+  "startEpoch": 1790794800,
+  "startTime": "15:00",
+  "hasStartTime": true,
+  "state": "F",
+  "status": "final",
+  "period": "FINAL",
+  "clock": "",
+  "finalMessage": "FINAL",
+  "home": {
+   "seo": "canisius",
+   "name": "Canisius",
+   "rank": null,
+   "score": 1,
+   "conf": "metro",
+   "isHome": true
+  },
+  "away": {
+   "seo": "mt-st-marys",
+   "name": "Mount St. Mary's",
+   "rank": null,
+   "score": 1,
+   "conf": "metro",
+   "isHome": false
+  }
+ },
+ {
+  "contestId": 6616645,
+  "date": "2026-09-30",
+  "startEpoch": 1790794800,
+  "startTime": "15:00",
+  "hasStartTime": true,
+  "state": "F",
+  "status": "final",
+  "period": "FINAL",
+  "clock": "",
+  "finalMessage": "FINAL",
+  "home": {
+   "seo": "st-peters",
+   "name": "Saint Peter's",
+   "rank": null,
+   "score": 0,
+   "conf": "metro",
+   "isHome": true
+  },
+  "away": {
+   "seo": "fairfield",
+   "name": "Fairfield",
+   "rank": null,
+   "score": 4,
+   "conf": "metro",
+   "isHome": false
+  }
+ },
+ {
+  "contestId": 6615625,
+  "date": "2026-09-30",
+  "startEpoch": 1790798400,
+  "startTime": "16:00",
+  "hasStartTime": true,
+  "state": "F",
+  "status": "final",
+  "period": "FINAL",
+  "clock": "",
+  "finalMessage": "FINAL",
+  "home": {
+   "seo": "loyola-marymount",
+   "name": "LMU (CA)",
+   "rank": null,
+   "score": 1,
+   "conf": "wcc",
+   "isHome": true
+  },
+  "away": {
+   "seo": "san-diego",
+   "name": "San Diego",
+   "rank": 22,
+   "score": 2,
+   "conf": "wcc",
+   "isHome": false
+  }
+ }
+]
