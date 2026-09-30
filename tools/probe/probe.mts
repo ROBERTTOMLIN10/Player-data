@@ -6,12 +6,13 @@ const UAS = {
   browser: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
 };
 const urls = [
-  "https://ccsubluedevils.com/sports/msoc/2026-27/roster?view=headshot",
-  "https://ccsubluedevils.com/sports/msoc/2026-27/roster",
-  "https://gocolgateraiders.com/sports/mens-soccer/roster?view=headshot",
-  "https://gocolgateraiders.com/sports/msoc/2026-27/roster?view=headshot",
-  "https://tommiesports.com/sports/mens-soccer/roster?view=headshot",
-  "https://tommiesports.com/sports/mens-soccer/roster/2026?view=headshot",
+  "https://tommiesports.com/sports/msoc/2026-27/roster?view=headshot",
+  "https://tommiesports.com/sports/mens-soccer/roster/2026-27?view=headshot",
+  "https://tommiesports.com/api/v2/Rosters/bySport/mens-soccer?season=2026-27",
+  "https://tommiesports.com/api/v2/Rosters/bySport/msoc",
+  "https://necsports.com/roster.aspx?path=msoc&school=ccsu",
+  "https://patriotleague.org/roster.aspx?path=msoc&school=col",
+  "https://thesummitleague.org/roster.aspx?path=msoc&school=stthomas",
 ];
 for (const u of urls) for (const [who, ua] of Object.entries(UAS)) {
   try {
