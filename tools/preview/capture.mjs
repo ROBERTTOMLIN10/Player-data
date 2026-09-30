@@ -92,6 +92,21 @@ const teamFiles = {};
   await Promise.all(Array.from({ length: 6 }, work));
   console.log(Object.keys(teamFiles).length, "team files,", pages, "player pages");
 }
+// Game pages: finished/live games on the captured scoreboard days and all of FAU's. Kept in games.json, loaded on demand.
+const gameFiles = {};
+{
+  const ids = new Set();
+  for (const [path, board] of Object.entries(out)) {
+    if (!path.startsWith("/api/ncaa/scoreboard")) continue;
+    for (const g of board.games ?? []) if (g.state === "F" || g.state === "I") ids.add(g.id);
+  }
+  for (const g of teamFiles["fla-atlantic"]?.team?.games ?? []) if (g.result) ids.add(g.id);
+  for (const id of ids) {
+    const r = await fetch(`${B}/api/ncaa/game/${id}`, { headers: { cookie: coach } });
+    if (r.ok) gameFiles[id] = await r.json();
+  }
+  console.log(Object.keys(gameFiles).length, "game pages,", Object.values(gameFiles).filter((g) => g.teams?.length).length, "with box scores");
+}
 // player
 out.playerMe = await (await fetch(B + "/api/auth/me", { headers: { cookie: player } })).json();
 await get(player, "/api/me/profile");
@@ -126,6 +141,10 @@ const teamDir = process.argv[3];
 fs.rmSync(teamDir, { recursive: true, force: true });
 fs.mkdirSync(teamDir, { recursive: true });
 const quotedLogos = Object.entries(logos).map(([url, dataUri]) => [JSON.stringify(url).slice(1, -1), dataUri]);
+// The big logo at the top of a team page: the original SVG, so it's sharp at that size.
+const logosLarge = process.env.SNAPSHOT_FILE && fs.existsSync(process.env.SNAPSHOT_FILE)
+  ? JSON.parse(fs.readFileSync(process.env.SNAPSHOT_FILE, "utf-8")).logosLarge ?? {}
+  : {};
 let total = 0;
 for (const [seo, file] of Object.entries(teamFiles)) {
   // Player pages share their team's header and squad photo (mock.ts puts them back), so each image is stored once.
@@ -134,9 +153,22 @@ for (const [seo, file] of Object.entries(teamFiles)) {
     delete page.team;
     if (page.profile?.photo_url && page.profile.photo_url === squadPhoto.get(key)) page.profile.photo_url = "@squad";
   }
+  const header = file.team?.team;
+  if (header?.logo && logosLarge[header.logo]) header.logo = logosLarge[header.logo];
   let text = JSON.stringify(file);
   for (const [quoted, dataUri] of quotedLogos) if (text.includes(quoted)) text = text.split(quoted).join(dataUri);
   fs.writeFileSync(`${teamDir}/${seo}.json`, text);
   total += text.length;
 }
 console.log(Object.keys(teamFiles).length, "team files,", (total / 1024 / 1024).toFixed(1), "MB");
+{
+  let text = JSON.stringify(gameFiles);
+  // Big logos on game pages too: the original SVGs first, then the small copies for anything else.
+  for (const [url, dataUri] of Object.entries(logosLarge)) {
+    const quoted = JSON.stringify(url).slice(1, -1);
+    if (text.includes(quoted)) text = text.split(quoted).join(dataUri);
+  }
+  for (const [quoted, dataUri] of quotedLogos) if (text.includes(quoted)) text = text.split(quoted).join(dataUri);
+  fs.writeFileSync(`${teamDir}/../games.json`, text);
+  console.log("games.json", (text.length / 1024 / 1024).toFixed(1), "MB");
+}

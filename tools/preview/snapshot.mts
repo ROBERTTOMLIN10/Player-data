@@ -22,8 +22,8 @@ import { syncAllTeams } from "../../server/src/teams/sync.js";
 import { pool } from "../../server/src/teams/discover.js";
 
 const TEAM_TABLES = ["team_sites", "team_players", "team_player_stats", "team_player_games", "team_boxscores"] as const;
-import { ncaaLogoUrl } from "../../server/src/ncaa/client.js";
-import { recordRanks } from "../../server/src/ncaa/store.js";
+import { fetchGameBoxscore, ncaaLogoUrl } from "../../server/src/ncaa/client.js";
+import { recordRanks, setCache } from "../../server/src/ncaa/store.js";
 import { fillMinutesFromBoxScores } from "../../server/src/import/importMinutes.js";
 import { shiftDate, teamToday } from "../../server/src/lib/readiness.js";
 
@@ -38,6 +38,7 @@ interface Snapshot {
   rosterPlayers?: Row[]; // _player = canonical name (null: keeper not in the app)
   minutes: Row[]; // _game = games.source_file, _player = canonical name
   logos?: Record<string, string>; // logo URL -> data: URI (the preview can't load outside images)
+  logosLarge?: Record<string, string>; // school logo URL -> full-quality data: URI (the SVG itself), for the big logo on team pages
   ncaaGames?: Row[]; // NCAA D1 scoreboard rows (all of this season)
   ncaaCache?: Row[]; // NCAA stat / rankings tables
   ncaaRankHistory?: Row[]; // last few days of ranks, for daily movement arrows
@@ -120,6 +121,26 @@ if (mode === "export") {
   await syncStatsAndRankings();
   await syncSeason();
   snap.ncaaGames = db.prepare("SELECT * FROM ncaa_games WHERE game_date LIKE ?").all(`${teamToday().slice(0, 4)}-%`) as Row[];
+  // Box scores for the preview's game pages: the last week's finished games and all of FAU's (the server keeps them in ncaa_cache).
+  {
+    const since = shiftDate(teamToday(), -7);
+    const wanted = snap.ncaaGames.filter(
+      (g) => g.state === "F" && (String(g.game_date) >= since || g.home_seo === "fla-atlantic" || g.away_seo === "fla-atlantic"),
+    );
+    let saved = 0;
+    await pool(wanted, 6, async (g) => {
+      try {
+        const box = await fetchGameBoxscore(Number(g.contest_id));
+        if (box.status === "F") {
+          setCache(`game-${g.contest_id}`, box);
+          saved++;
+        }
+      } catch (err) {
+        console.warn(`box score ${g.contest_id} failed: ${(err as Error).message}`);
+      }
+    });
+    console.log(`game box scores: ${saved} of ${wanted.length}`);
+  }
   snap.ncaaCache = db.prepare("SELECT * FROM ncaa_cache").all() as Row[];
   snap.ncaaRankHistory = db
     .prepare("SELECT * FROM ncaa_rank_history WHERE day >= ?")
@@ -143,10 +164,12 @@ if (mode === "export") {
   const seos = new Set<string>();
   for (const g of snap.ncaaGames) for (const side of ["home", "away"]) seos.add(String(g[`${side}_seo`]));
   snap.logos = {};
+  snap.logosLarge = {};
   // Player headshots from the roster embed the same way (portrait crop).
   const photos = new Set((snap.rosterPlayers ?? []).map((r) => r.photo_url).filter(Boolean) as string[]);
   // Other teams' headshots: smaller, there are hundreds.
   const squadPhotos = new Set(((snap.teams?.team_players ?? []).map((r) => r.photo_url).filter(Boolean) as string[]).filter((u) => !photos.has(u)));
+  const logoUrls = new Set([...seos].map((seo) => ncaaLogoUrl(seo)));
   const urls = [
     ...new Set([
       ...(snap.scheduleGames.map((g) => g.opponent_logo_url).filter(Boolean) as string[]),
@@ -173,6 +196,10 @@ if (mode === "export") {
       const type = res.headers.get("content-type")?.split(";")[0] || "image/png";
       let bytes = Buffer.from(await res.arrayBuffer());
       let outType = type;
+      // School logos are SVGs: keep the original too, so the big logo on team pages stays sharp at any size.
+      if (logoUrls.has(url) && (type.includes("svg") || url.endsWith(".svg"))) {
+        snap.logosLarge![url] = `data:image/svg+xml;base64,${bytes.toString("base64")}`;
+      }
       if (sharp) {
         bytes = photos.has(url)
           ? await sharp(bytes).resize(192, 240, { fit: "cover", position: "top" }).webp({ quality: 72 }).toBuffer()

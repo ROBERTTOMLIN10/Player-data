@@ -516,6 +516,7 @@ export interface NcaaSquadPlayer {
 }
 
 export interface NcaaTeamGame {
+  id: number;
   date: string;
   state: string | null;
   home: boolean;
@@ -727,4 +728,43 @@ export interface RpeTrends {
   daily: { date: string; average: number | null; logged: number; keepers: number | null }[];
   squad: RpeAverages; // outfield
   keeperAverages: RpeAverages;
+}
+
+export interface NcaaGamePlayer {
+  number: string | null;
+  name: string;
+  position: string | null;
+  starter: boolean;
+  minutes: number | null;
+  goals: number;
+  assists: number;
+  shots: number | null;
+  shotsOnGoal: number;
+  yellowCards: number;
+  redCards: number;
+  saves: number | null;
+  goalsAllowed: number | null;
+  key: string | null; // squad player (profile link) when matched
+  photo_url: string | null;
+}
+
+export interface NcaaGameTeamStats {
+  goals: number | null;
+  shots: number | null;
+  shotsOnGoal: number | null;
+  corners: number | null;
+  fouls: number | null;
+  offsides: number | null;
+  saves: number | null;
+  yellowCards: number | null;
+  redCards: number | null;
+}
+
+export interface NcaaGameDetail {
+  ourTeam: string;
+  game: NcaaGame | null;
+  status: string | null; // P | I | F
+  period: string | null;
+  teams: { seo: string; name: string; isHome: boolean; color: string | null; players: NcaaGamePlayer[]; stats: NcaaGameTeamStats | null }[];
+  goals: { period: string; time: string; seo: string | null; text: string; homeScore: number | null; awayScore: number | null }[];
 }

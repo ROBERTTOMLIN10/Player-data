@@ -225,3 +225,148 @@ export async function fetchTopDrawerTop25(): Promise<HtmlTable> {
 export function ncaaLogoUrl(seo: string): string {
   return `${SITE}/sites/default/files/images/logos/schools/bgl/${seo}.svg`;
 }
+
+// ---- Game center (one game's box score, team stats and goals) ---------------------
+
+const gameQueryIds: Record<string, string> = {
+  NCAA_GetGamecenterBoxscoreSoccerById_web: "c9070c4e5a76468a4025896df89f8a7b22be8275c54a22ff79619cbb27d63d7d",
+  NCAA_GetGamecenterTeamStatsSoccerById_web: "d3009ee734557a3af9b80a1fd0326575799094e8046a4188c6aebea7072ea7bf",
+  NCAA_GetGamecenterScoringSummaryById_web: "fcd5729c72b0f72a4f659bf07e7b1da0fdce8f41ad286b0ddfe830adc7a45ca3",
+};
+
+/** Re-reads the game center query ids from a game page (they're listed there as "name":"hash"). */
+async function refreshGameQueryIds(contestId: number) {
+  const html = await fetchText(`${SITE}/game/${contestId}`);
+  for (const name of Object.keys(gameQueryIds)) {
+    const match = html.match(new RegExp(`"${name}":"([0-9a-f]{64})"`));
+    if (match) gameQueryIds[name] = match[1];
+  }
+}
+
+async function gameQuery<T>(name: string, contestId: number): Promise<T> {
+  const attempt = async () => {
+    const url =
+      `${DATA_HOST}?meta=${name}` +
+      `&extensions=${encodeURIComponent(JSON.stringify({ persistedQuery: { version: 1, sha256Hash: gameQueryIds[name] } }))}` +
+      `&variables=${encodeURIComponent(JSON.stringify({ contestId: String(contestId), staticTestEnv: null }))}`;
+    const body = JSON.parse(await fetchText(url)) as { data?: T; errors?: { message: string }[] };
+    if (!body.data || body.errors?.length) throw new Error(body.errors?.[0]?.message ?? "no data");
+    return body.data;
+  };
+  try {
+    return await attempt();
+  } catch {
+    await refreshGameQueryIds(contestId);
+    return attempt();
+  }
+}
+
+export interface GamePlayer {
+  number: string | null;
+  name: string;
+  position: string | null;
+  starter: boolean;
+  minutes: number | null;
+  goals: number;
+  assists: number;
+  shots: number | null; // null when NCAA's feed has fewer shots than shots on target (it sometimes leaves shots at 0)
+  shotsOnGoal: number;
+  yellowCards: number;
+  redCards: number;
+  saves: number | null;
+  goalsAllowed: number | null;
+}
+export interface GameTeamStats {
+  goals: number | null;
+  shots: number | null;
+  shotsOnGoal: number | null;
+  corners: number | null;
+  fouls: number | null;
+  offsides: number | null;
+  saves: number | null;
+  yellowCards: number | null;
+  redCards: number | null;
+}
+export interface GameBoxscore {
+  contestId: number;
+  status: string; // P | I | F
+  period: string;
+  teams: { seo: string; name: string; isHome: boolean; color: string | null; players: GamePlayer[]; stats: GameTeamStats | null }[];
+  goals: { period: string; time: string; seo: string | null; text: string; homeScore: number | null; awayScore: number | null }[];
+}
+
+const n = (v: unknown): number | null => (v === null || v === undefined || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
+/** "CLAYTON HAMLER" → "Clayton Hamler" (keeps Mc/O' etc. readable). */
+const titleCase = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/(^|[\s'-])\p{L}/gu, (m) => m.toUpperCase())
+    .replace(/\bMc(\p{L})/gu, (_, c: string) => `Mc${c.toUpperCase()}`);
+
+type Rec = Record<string, any>;
+const consistentShots = (shots: number | null, onGoal: number | null) => (shots !== null && onGoal !== null && shots < onGoal ? null : shots ?? 0);
+
+/** One game's box score from NCAA.com's game center (works for live and final games). */
+export async function fetchGameBoxscore(contestId: number): Promise<GameBoxscore> {
+  const [box, teamStats, scoring] = await Promise.all([
+    gameQuery<{ boxscore: Rec }>("NCAA_GetGamecenterBoxscoreSoccerById_web", contestId),
+    gameQuery<{ boxscore: Rec }>("NCAA_GetGamecenterTeamStatsSoccerById_web", contestId).catch(() => null),
+    gameQuery<{ scoringSummary: Rec }>("NCAA_GetGamecenterScoringSummaryById_web", contestId).catch(() => null),
+  ]);
+  const b = box.boxscore ?? {};
+  const teams = (b.teams ?? []) as Rec[];
+  const seoById = new Map(teams.map((t) => [String(t.teamId), String(t.seoname)]));
+  const statsById = new Map(((teamStats?.boxscore?.teamBoxscore ?? []) as Rec[]).map((t) => [String(t.teamId), t.teamStats as Rec | null]));
+  const playersById = new Map(((b.teamBoxscore ?? []) as Rec[]).map((t) => [String(t.teamId), (t.playerStats ?? []) as Rec[]]));
+  return {
+    contestId,
+    status: String(b.status ?? ""),
+    period: String(b.period ?? ""),
+    teams: teams.map((t) => {
+      const s = statsById.get(String(t.teamId));
+      return {
+        seo: String(t.seoname),
+        name: String(t.nameShort ?? t.nameFull ?? ""),
+        isHome: Boolean(t.isHome),
+        color: t.color ?? null,
+        players: (playersById.get(String(t.teamId)) ?? [])
+          .filter((p) => p.participated !== false)
+          .map((p) => {
+            const keeper = p.saves !== null && p.goalsAllowed !== null && p.goalsAllowed !== undefined;
+            return {
+              number: p.number === null || p.number === undefined ? null : String(p.number),
+              name: titleCase(`${p.firstName ?? ""} ${p.lastName ?? ""}`.trim()),
+              position: p.position ?? null,
+              starter: Boolean(p.starter),
+              minutes: n(p.minutesPlayed) === null ? null : Math.round(n(p.minutesPlayed)!),
+              goals: n(p.goals) ?? 0,
+              assists: n(p.assists) ?? 0,
+              shots: consistentShots(n(p.shots), n(p.shotsOnGoal)),
+              shotsOnGoal: n(p.shotsOnGoal) ?? 0,
+              yellowCards: n(p.penalties?.yellowCards) ?? 0,
+              redCards: n(p.penalties?.redCards) ?? 0,
+              saves: keeper ? n(p.saves) : null,
+              goalsAllowed: keeper ? n(p.goalsAllowed) : null,
+            };
+          }),
+        stats: s
+          ? {
+              goals: n(s.goals), shots: consistentShots(n(s.shots), n(s.shotsOnGoal)), shotsOnGoal: n(s.shotsOnGoal), corners: n(s.corners),
+              fouls: n(s.penalties?.fouls ?? s.fouls), offsides: n(s.offsides), saves: n(s.goalie?.saves ?? s.saves),
+              yellowCards: n(s.penalties?.yellowCards), redCards: n(s.penalties?.redCards),
+            }
+          : null,
+      };
+    }),
+    goals: ((scoring?.scoringSummary?.periods ?? []) as Rec[]).flatMap((p) =>
+      ((p.summary ?? []) as Rec[]).map((g) => ({
+        period: String(p.title ?? ""),
+        time: String(g.time ?? ""),
+        seo: seoById.get(String(g.teamId)) ?? null,
+        text: String(g.scoreText ?? ""),
+        homeScore: n(g.homeScore),
+        awayScore: n(g.visitScore),
+      })),
+    ),
+  };
+}

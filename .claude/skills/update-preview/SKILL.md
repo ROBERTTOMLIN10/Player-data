@@ -63,7 +63,7 @@ Data page (see step 0).
    `<\/script` back into `</script`). The NCAA D1 team and player pages are
    separate files, `/tmp/fau-preview/teams/<team>.json` (one per D1 team,
    ~27 MB in all), which the preview loads when a team or player is opened:
-   publish each as `teams/<team>.json`. Publish `index.html` with the Artifact
+   publish each as `teams/<team>.json`. Game pages (box scores) are in `/tmp/fau-preview/games.json`: publish it as `games.json`. Publish `index.html` with the Artifact
    tool (`url` set to the link above, `files` mapping `app.js`, `app.css` and
    every `teams/*.json` (about 215 files; keep one publish under 255 files),
    no `icon`, and no `capabilities`, which keeps the stored `assets` + `db`

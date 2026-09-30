@@ -30,6 +30,7 @@ import type {
   NcaaTable,
   NcaaPlayerPage,
   NcaaTeamPage,
+  NcaaGameDetail,
   PlayerRpe,
   RpeSession,
   RpeSessionSummary,
@@ -408,6 +409,16 @@ export function useNcaaTeam(seo: string | undefined) {
     queryKey: ["ncaaTeam", seo],
     queryFn: () => fetchJson<NcaaTeamPage>(`/api/ncaa/team/${seo}`),
     enabled: Boolean(seo),
+  });
+}
+
+/** One game's box score; live games refresh every 30 seconds. */
+export function useNcaaGame(id: string | undefined) {
+  return useQuery({
+    queryKey: ["ncaaGame", id],
+    queryFn: () => fetchJson<NcaaGameDetail>(`/api/ncaa/game/${id}`),
+    enabled: Boolean(id),
+    refetchInterval: (q) => (q.state.data?.status === "I" ? 30_000 : false),
   });
 }
 

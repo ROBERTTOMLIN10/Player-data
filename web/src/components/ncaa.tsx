@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { PlayerPhoto } from "./PlayerPhoto";
 import { TeamLogo } from "./TeamLogo";
 import type { NcaaGame, NcaaSide, NcaaStandingRow, NcaaTable } from "../types";
@@ -46,11 +46,18 @@ export function GameCard({ game, ourTeam }: { game: NcaaGame; ourTeam: string })
         ? new Date(game.startEpoch * 1000).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
         : "TBA";
 
+  // Live and finished games open their box score.
+  const navigate = useNavigate();
+  const opens = live || final;
   return (
     <div
+      role={opens ? "link" : undefined}
+      tabIndex={opens ? 0 : undefined}
+      onClick={opens ? () => navigate(gamePath(game.id)) : undefined}
+      onKeyDown={opens ? (e) => e.key === "Enter" && navigate(gamePath(game.id)) : undefined}
       className={`flex flex-col gap-2 rounded-xl border bg-surface p-3 ${
         ours ? "border-owl-red/60" : live ? "border-teal/50" : "border-border"
-      }`}
+      } ${opens ? "cursor-pointer transition-colors hover:bg-surface-raised" : ""}`}
     >
       <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide">
         <span className={`flex items-center gap-1.5 ${live ? "text-teal" : "text-text-dim"}`}>
@@ -61,9 +68,12 @@ export function GameCard({ game, ourTeam }: { game: NcaaGame; ourTeam: string })
       </div>
       <TeamLine side={game.away} other={game.home} final={final} showScore={live || final} />
       <TeamLine side={game.home} other={game.away} final={final} showScore={live || final} />
+      {opens && <span className="text-right text-[11px] font-medium text-owl-red-light">Match stats ›</span>}
     </div>
   );
 }
+
+export const gamePath = (id: number) => `/ncaa/game/${id}`;
 
 function TeamLine({ side, other, final, showScore }: { side: NcaaSide; other: NcaaSide; final: boolean; showScore: boolean }) {
   const won = final && side.score !== null && other.score !== null && side.score > other.score;

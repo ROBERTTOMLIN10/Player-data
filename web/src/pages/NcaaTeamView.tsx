@@ -1,7 +1,7 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useNcaaTeam } from "../api/client";
 import { Card, SectionHeading } from "../components/Card";
-import { playerPath, TeamLink, updatedLabel } from "../components/ncaa";
+import { gamePath, playerPath, TeamLink, updatedLabel } from "../components/ncaa";
 import { PlayerPhoto } from "../components/PlayerPhoto";
 import { TeamLogo } from "../components/TeamLogo";
 import { formatDate } from "../lib/format";
@@ -166,6 +166,7 @@ function ordinal(n: number) {
 }
 
 function GameList({ title, games, ourTeam }: { title: string; games: import("../types").NcaaTeamGame[]; ourTeam: string }) {
+  const navigate = useNavigate();
   return (
     <div>
       <SectionHeading title={title} subtitle={`${games.length} game${games.length === 1 ? "" : "s"}`} />
@@ -175,7 +176,13 @@ function GameList({ title, games, ourTeam }: { title: string; games: import("../
         ) : (
           <ul className="divide-y divide-border/60">
             {games.map((g) => (
-              <li key={`${g.date}-${g.opponentSeo}`} className={`flex items-center gap-3 px-4 py-2.5 text-sm ${g.opponentSeo === ourTeam ? "bg-owl-red/10" : ""}`}>
+              <li
+                key={`${g.date}-${g.opponentSeo}`}
+                onClick={g.result ? () => navigate(gamePath(g.id)) : undefined}
+                className={`flex items-center gap-3 px-4 py-2.5 text-sm ${g.opponentSeo === ourTeam ? "bg-owl-red/10" : ""} ${
+                  g.result ? "cursor-pointer hover:bg-surface-raised" : ""
+                }`}
+              >
                 <span className="w-14 shrink-0 text-text-dim">{formatDate(g.date)}</span>
                 <span className="w-5 shrink-0 text-center text-xs text-text-dim">{g.home ? "vs" : "@"}</span>
                 <TeamLogo name={g.opponent} url={g.opponentLogo} size="sm" />
