@@ -4,6 +4,8 @@ on:
   push:
     branches: [claude/friendly-dijkstra-s2fxp1]
     paths: [tools/probe/**, .github/workflows/probe.yml]
+permissions:
+  contents: write
 jobs:
   probe:
     runs-on: ubuntu-latest
@@ -13,3 +15,10 @@ jobs:
         with: { node-version: 22 }
       - run: npm install --no-audit --no-fund
       - run: npx tsx tools/probe/probe.mts > probe.log 2>&1; head -c 150000 probe.log
+      - name: Save samples to the probe-data branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cp probe.log probe-out/ && cd probe-out && git init -q -b probe-data && git add . \
+            && git -c user.name=bot -c user.email=bot@example.com commit -qm samples \
+            && git push -q -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" probe-data
