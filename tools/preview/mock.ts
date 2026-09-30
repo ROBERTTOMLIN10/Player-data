@@ -292,8 +292,16 @@ async function ncaaGameRoute(path: string): Promise<Response | null> {
   const m = path.match(/^\/api\/ncaa\/game\/(\d+)$/);
   if (!m) return null;
   gameFile ??= realFetch("./games.json").then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
-  const game = (await gameFile)[m[1]];
-  return game ? json(game) : json({ error: "This game's stats aren't in the preview (the live app has every game)." }, 404);
+  const { images = {}, games = {} } = (await gameFile) as { images?: Record<string, string>; games?: Record<string, unknown> };
+  const game = games[m[1]];
+  if (!game) return json({ error: "This game isn't in the preview (the live app has every game)." }, 404);
+  // Logos are stored once in games.json (see capture.mjs): put them back.
+  let text = JSON.stringify(game);
+  for (const [url, dataUri] of Object.entries(images)) {
+    const quoted = JSON.stringify(url).slice(1, -1);
+    if (text.includes(quoted)) text = text.split(quoted).join(dataUri);
+  }
+  return json(JSON.parse(text));
 }
 
 async function ncaaTeamRoute(path: string): Promise<Response | null> {
