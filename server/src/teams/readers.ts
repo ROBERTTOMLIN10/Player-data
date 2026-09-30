@@ -96,7 +96,13 @@ export async function siteFetch(url: string): Promise<Response> {
   } catch {
     /* connection refused/reset: try as a browser */
   }
-  return get(BROWSER_UA);
+  // As a browser, with one more try after a pause if the connection drops (some sites reset busy connections).
+  try {
+    return await get(BROWSER_UA);
+  } catch {
+    await new Promise((r) => setTimeout(r, 2000));
+    return get(BROWSER_UA);
+  }
 }
 
 async function fetchHtml(url: string): Promise<string> {
@@ -265,10 +271,68 @@ export async function nuxtBoxscore(url: string): Promise<GameLine[]> {
 
 const text = (el: HTMLElement | null | undefined) => el?.text.replace(/\s+/g, " ").trim() || null;
 
+/** The roster data some classic sites draw their roster with in the browser ("players":[{"rp_id":...}] in the page). */
+function classicRosterJson(host: string, html: string): SquadPlayer[] {
+  const start = html.indexOf('"players":[{"rp_id"');
+  if (start === -1) return [];
+  // Find the matching close bracket of the players array.
+  let depth = 0;
+  let inString = false;
+  let end = -1;
+  for (let i = start + 10; i < html.length; i++) {
+    const c = html[i];
+    if (inString) {
+      if (c === "\\") i++;
+      else if (c === '"') inString = false;
+    } else if (c === '"') inString = true;
+    else if (c === "[" || c === "{") depth++;
+    else if (c === "]" || c === "}") {
+      depth--;
+      if (depth === 0) {
+        end = i + 1;
+        break;
+      }
+    }
+  }
+  if (end === -1) return [];
+  const players = JSON.parse(html.slice(start + 10, end)) as Record<string, any>[];
+  return players
+    .filter((p) => !p.rp_hide)
+    .map((p): SquadPlayer => {
+      const name = [str(p.first_name), str(p.last_name)].filter(Boolean).join(" ");
+      return {
+        ...blankProfile(),
+        key: str(p.rp_id) ?? slug(name),
+        name,
+        jersey_number: str(p.jersey_number),
+        position_short: str(p.position_short),
+        position_long: str(p.position_long),
+        academic_year: str(p.academic_year_short),
+        academic_year_long: str(p.academic_year_long),
+        height_feet: int(p.height_feet),
+        height_inches: int(p.height_inches),
+        weight: int(p.weight),
+        hometown: str(p.hometown),
+        high_school: str(p.highschool),
+        previous_school: str(p.previous_school),
+        major: str(p.major),
+        is_captain: p.is_captain === true ? 1 : 0,
+        photo_url: absolute(host, str(p.image?.fullpath)),
+        profile_url: absolute(host, `/sports/mens-soccer/roster/${slug(name)}/${p.rp_id}`),
+      };
+    })
+    .filter((p) => p.name);
+}
+
 export async function classicRoster(host: string, html?: string): Promise<SquadPlayer[]> {
-  const doc = parse(html ?? (await fetchHtml(`https://${host}/sports/mens-soccer/roster`)));
+  const page = html ?? (await fetchHtml(`https://${host}/sports/mens-soccer/roster`));
+  const doc = parse(page);
   const items = doc.querySelectorAll("li.sidearm-roster-player");
-  if (!items.length) throw new Error(`no roster found on ${host}`);
+  if (!items.length) {
+    const fromJson = classicRosterJson(host, page);
+    if (fromJson.length) return fromJson;
+    throw new Error(`no roster found on ${host}`);
+  }
   return items.map((li) => {
     const nameEl = li.querySelector(".sidearm-roster-player-name a") ?? li.querySelector(".sidearm-roster-player-name h3");
     const jersey = text(li.querySelector(".sidearm-roster-player-jersey-number"));

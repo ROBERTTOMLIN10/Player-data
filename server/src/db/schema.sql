@@ -440,8 +440,10 @@ CREATE TABLE IF NOT EXISTS ncaa_rank_history (
 CREATE TABLE IF NOT EXISTS team_sites (
   team_seo TEXT PRIMARY KEY,
   host TEXT NOT NULL, -- e.g. owlsports.com ('' when not found)
-  platform TEXT NOT NULL, -- 'sidearm' (Nuxt) | 'sidearm-classic' | 'other' (not readable yet)
+  platform TEXT NOT NULL, -- 'sidearm' (Nuxt) | 'sidearm-classic' | 'wmt' | 'other' (not readable yet)
   discovered_at TEXT, -- when the site/platform was looked up (NULL: set by hand in sites.ts)
+  stats_team_id INTEGER, -- 'wmt': the team's WMT stats id (this season)
+  roster_url TEXT, -- 'wmt': the site's roster page, for photos and bios
   roster_synced_at TEXT,
   stats_synced_at TEXT,
   last_error TEXT

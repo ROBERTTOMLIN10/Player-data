@@ -4,6 +4,8 @@ import { teamToday } from "../lib/readiness.js";
 import { classicBoxscore, classicRoster, classicSeasonStats, nuxtBoxscore, nuxtRoster, nuxtSeasonStats, type SquadPlayer } from "./readers.js";
 import { discoverTeamSites, pool } from "./discover.js";
 import { TEAM_SITES, type TeamPlatform } from "./sites.js";
+import { isWmtBoxscore, wmtBoxscore, wmtIdByName, wmtRoster, wmtSeasonStats } from "./wmt.js";
+import { teamsByName } from "../ncaa/store.js";
 
 /**
  * Keeps every readable D1 team's squad current from its athletics website:
@@ -56,26 +58,58 @@ function dedupe<T extends { key: string; gp: number | null }>(rows: T[]): T[] {
   return [...byKey.values()];
 }
 
-type Site = { host: string; platform: TeamPlatform };
+type Site = { host: string; platform: TeamPlatform; stats_team_id?: number | null; roster_url?: string | null };
 
 function siteOf(seo: string): Site {
-  const row = getDb().prepare("SELECT host, platform FROM team_sites WHERE team_seo = ?").get(seo) as Site | undefined;
-  const site = TEAM_SITES[seo] ?? row;
+  const row = getDb().prepare("SELECT host, platform, stats_team_id, roster_url FROM team_sites WHERE team_seo = ?").get(seo) as Site | undefined;
+  const site: Site | undefined = TEAM_SITES[seo] ?? row;
+  if (site?.platform === "wmt" && site.stats_team_id) return site;
   if (!site || !site.host || !["sidearm", "sidearm-classic"].includes(site.platform)) throw new Error(`${seo}: no readable site`);
   return site;
 }
 
+const readRoster = (site: Site) =>
+  site.platform === "wmt" ? wmtRoster(site.stats_team_id!, site.roster_url ?? null) : site.platform === "sidearm" ? nuxtRoster(site.host) : classicRoster(site.host);
+const readStats = (site: Site, year: number) =>
+  site.platform === "wmt" ? wmtSeasonStats(site.stats_team_id!) : site.platform === "sidearm" ? nuxtSeasonStats(site.host, year) : classicSeasonStats(site.host, year);
+const readBoxscore = (site: Site, url: string) =>
+  isWmtBoxscore(url) ? wmtBoxscore(url) : site.platform === "sidearm" ? nuxtBoxscore(url) : classicBoxscore(url);
+
+/** When a team's own site can't be read this time, its WMT stats (no photos) instead. */
+function wmtFallback(seo: string): Site | null {
+  const year = Number(teamToday().slice(0, 4));
+  const name = [...teamsByName(year).values()].find((t) => t.seo === seo)?.name;
+  const id = name ? wmtIdByName(name, year) : null;
+  return id ? { host: "", platform: "wmt", stats_team_id: id, roster_url: null } : null;
+}
+
 export async function syncTeamRoster(seo: string) {
   const site = siteOf(seo);
-  const players = site.platform === "sidearm" ? await nuxtRoster(site.host) : await classicRoster(site.host);
+  let players: SquadPlayer[];
+  try {
+    players = await readRoster(site);
+  } catch (err) {
+    const fallback = site.platform !== "wmt" ? wmtFallback(seo) : null;
+    if (!fallback) throw err;
+    players = await readRoster(fallback);
+  }
   saveRoster(seo, players);
   return players.length;
 }
 
 export async function syncTeamStats(seo: string, year = Number(teamToday().slice(0, 4))) {
-  const site = siteOf(seo);
+  let site = siteOf(seo);
   const db = getDb();
-  const stats = site.platform === "sidearm" ? await nuxtSeasonStats(site.host, year) : await classicSeasonStats(site.host, year);
+  let stats: Awaited<ReturnType<typeof readStats>>;
+  try {
+    stats = await readStats(site, year);
+  } catch (err) {
+    const fallback = site.platform !== "wmt" ? wmtFallback(seo) : null;
+    if (!fallback) throw err;
+    console.log(`[teams] ${seo}: site unreadable (${(err as Error).message}), using WMT stats`);
+    site = fallback;
+    stats = await readStats(site, year);
+  }
 
   const fieldCols = ["gp", "gs", "minutes", "goals", "assists", "points", "shots", "shots_on_goal", "yellow_cards", "red_cards", "game_winners", "pk_goals", "pk_attempts"] as const;
   const gkCols = ["gk_minutes", "goals_allowed", "gaa", "saves", "save_pct", "wins", "losses", "ties", "shutouts"] as const;
@@ -109,7 +143,7 @@ export async function syncTeamStats(seo: string, year = Number(teamToday().slice
     if (read.has(g.boxscoreUrl) || !g.result) continue;
     await pause();
     try {
-      const lines = (site.platform === "sidearm" ? await nuxtBoxscore(g.boxscoreUrl) : await classicBoxscore(g.boxscoreUrl)).map((l) => ({
+      const lines = (await readBoxscore(site, g.boxscoreUrl)).map((l) => ({
         ...l,
         key: known.resolve(l.key, l.name),
       }));
@@ -188,7 +222,10 @@ export async function syncAllTeams({ rosters }: { rosters: boolean }) {
 
 function readableTeams() {
   return getDb()
-    .prepare("SELECT team_seo, roster_synced_at, stats_synced_at FROM team_sites WHERE host != '' AND platform IN ('sidearm', 'sidearm-classic')")
+    .prepare(
+      `SELECT team_seo, roster_synced_at, stats_synced_at FROM team_sites
+       WHERE (host != '' AND platform IN ('sidearm', 'sidearm-classic')) OR (platform = 'wmt' AND stats_team_id IS NOT NULL)`,
+    )
     .all() as { team_seo: string; roster_synced_at: string | null; stats_synced_at: string | null }[];
 }
 
