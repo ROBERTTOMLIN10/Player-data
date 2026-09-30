@@ -1,13 +1,22 @@
+import type { ConferenceSource } from "./conference.js";
+
 /**
  * Athletics websites checked by hand (NCAA.com team id → host). Every other
  * D1 team's site is found automatically (see discover.ts); entries here win.
  * 'sidearm' = the current Sidearm (Nuxt) sites like fausports.com;
  * 'sidearm-classic' = Sidearm's older server-rendered pages;
- * 'wmt' = WMT sites, read through WMT's stats feed (set by discovery only).
+ * 'wmt' = WMT sites, read through WMT's stats feed (set by discovery only);
+ * 'conference' = the team's own site can't be read, so its conference site's stats service is.
  */
-export type TeamPlatform = "sidearm" | "sidearm-classic" | "wmt";
+export type TeamPlatform = "sidearm" | "sidearm-classic" | "wmt" | "conference";
 
-export const TEAM_SITES: Record<string, { host: string; platform: TeamPlatform }> = {
+export interface TeamSite {
+  host: string; // the team's own site (the "Team website" link)
+  platform: TeamPlatform;
+  conference?: ConferenceSource; // 'conference': read from the conference's stats service instead
+}
+
+export const TEAM_SITES: Record<string, TeamSite> = {
   "fla-atlantic": { host: "fausports.com", platform: "sidearm" },
   charlotte: { host: "charlotte49ers.com", platform: "sidearm" },
   fiu: { host: "fiusports.com", platform: "sidearm-classic" },
@@ -35,4 +44,8 @@ export const TEAM_SITES: Record<string, { host: string; platform: TeamPlatform }
   "stony-brook": { host: "stonybrookathletics.com", platform: "sidearm-classic" },
   bradley: { host: "bradleybraves.com", platform: "sidearm-classic" },
   "george-mason": { host: "gomason.com", platform: "sidearm-classic" },
+  // Their own sites block automated reads (or publish no roster), so their conference sites are read instead.
+  "central-conn-st": { host: "ccsubluedevils.com", platform: "conference", conference: { host: "necsports.com", teamId: "127" } },
+  colgate: { host: "gocolgateraiders.com", platform: "conference", conference: { host: "patriotleague.org", teamId: "153" } },
+  "st-thomas-mn": { host: "tommiesports.com", platform: "conference", conference: { host: "thesummitleague.org", teamId: "620", rosterApi: "https://tommiesports.com/api/v2/Rosters/bySport/msoc" } },
 };

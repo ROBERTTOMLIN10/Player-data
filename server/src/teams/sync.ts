@@ -4,6 +4,7 @@ import { teamToday } from "../lib/readiness.js";
 import { classicBoxscore, classicRoster, classicSeasonStats, nuxtBoxscore, nuxtRoster, nuxtSeasonStats, type SquadPlayer } from "./readers.js";
 import { discoverTeamSites, pool } from "./discover.js";
 import { TEAM_SITES, type TeamPlatform } from "./sites.js";
+import { conferenceBoxscore, conferenceRoster, conferenceSeasonStats, isConferenceBoxscore, type ConferenceSource } from "./conference.js";
 import { isWmtBoxscore, wmtBoxscore, wmtIdByName, wmtRoster, wmtSeasonStats } from "./wmt.js";
 import { teamsByName } from "../ncaa/store.js";
 
@@ -58,22 +59,28 @@ function dedupe<T extends { key: string; gp: number | null }>(rows: T[]): T[] {
   return [...byKey.values()];
 }
 
-type Site = { host: string; platform: TeamPlatform; stats_team_id?: number | null; roster_url?: string | null };
+type Site = { host: string; platform: TeamPlatform; stats_team_id?: number | null; roster_url?: string | null; conference?: ConferenceSource };
 
 function siteOf(seo: string): Site {
   const row = getDb().prepare("SELECT host, platform, stats_team_id, roster_url FROM team_sites WHERE team_seo = ?").get(seo) as Site | undefined;
   const site: Site | undefined = TEAM_SITES[seo] ?? row;
   if (site?.platform === "wmt" && site.stats_team_id) return site;
+  if (site?.platform === "conference" && site.conference) return site;
   if (!site || !site.host || !["sidearm", "sidearm-classic"].includes(site.platform)) throw new Error(`${seo}: no readable site`);
   return site;
 }
 
+const year = () => Number(teamToday().slice(0, 4));
 const readRoster = (site: Site) =>
-  site.platform === "wmt" ? wmtRoster(site.stats_team_id!, site.roster_url ?? null) : site.platform === "sidearm" ? nuxtRoster(site.host) : classicRoster(site.host);
+  site.platform === "conference"
+    ? conferenceRoster(site.conference!, year())
+    : site.platform === "wmt" ? wmtRoster(site.stats_team_id!, site.roster_url ?? null) : site.platform === "sidearm" ? nuxtRoster(site.host) : classicRoster(site.host);
 const readStats = (site: Site, year: number) =>
-  site.platform === "wmt" ? wmtSeasonStats(site.stats_team_id!) : site.platform === "sidearm" ? nuxtSeasonStats(site.host, year) : classicSeasonStats(site.host, year);
+  site.platform === "conference"
+    ? conferenceSeasonStats(site.conference!, year)
+    : site.platform === "wmt" ? wmtSeasonStats(site.stats_team_id!) : site.platform === "sidearm" ? nuxtSeasonStats(site.host, year) : classicSeasonStats(site.host, year);
 const readBoxscore = (site: Site, url: string) =>
-  isWmtBoxscore(url) ? wmtBoxscore(url) : site.platform === "sidearm" ? nuxtBoxscore(url) : classicBoxscore(url);
+  isWmtBoxscore(url) ? wmtBoxscore(url) : isConferenceBoxscore(url) ? conferenceBoxscore(url) : site.platform === "sidearm" ? nuxtBoxscore(url) : classicBoxscore(url);
 
 /** When a team's own site can't be read this time, its WMT stats (no photos) instead. */
 function wmtFallback(seo: string): Site | null {
@@ -153,6 +160,8 @@ export async function syncTeamStats(seo: string, year = Number(teamToday().slice
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       db.transaction(() => {
+        // One game per team per day and opponent: replace any lines saved for it from another source.
+        db.prepare("DELETE FROM team_player_games WHERE team_seo = ? AND game_date = ? AND opponent = ?").run(seo, g.date, g.opponent);
         for (const l of lines.filter(isPlayer))
           insert.run(seo, l.key, g.date, g.opponent, g.home ? "home" : "away", g.result, l.started ? 1 : 0, l.minutes, l.goals, l.assists,
             l.shots, l.shots_on_goal, l.yellow_cards, l.red_cards, l.saves, l.goals_allowed, g.boxscoreUrl);
@@ -224,7 +233,7 @@ function readableTeams() {
   return getDb()
     .prepare(
       `SELECT team_seo, roster_synced_at, stats_synced_at FROM team_sites
-       WHERE (host != '' AND platform IN ('sidearm', 'sidearm-classic')) OR (platform = 'wmt' AND stats_team_id IS NOT NULL)`,
+       WHERE (host != '' AND platform IN ('sidearm', 'sidearm-classic', 'conference')) OR (platform = 'wmt' AND stats_team_id IS NOT NULL)`,
     )
     .all() as { team_seo: string; roster_synced_at: string | null; stats_synced_at: string | null }[];
 }
