@@ -47,5 +47,5 @@ export const TEAM_SITES: Record<string, TeamSite> = {
   // Their own sites block automated reads (or publish no roster), so their conference sites are read instead.
   "central-conn-st": { host: "ccsubluedevils.com", platform: "conference", conference: { host: "necsports.com", teamId: "127" } },
   colgate: { host: "gocolgateraiders.com", platform: "conference", conference: { host: "patriotleague.org", teamId: "153" } },
-  "st-thomas-mn": { host: "tommiesports.com", platform: "conference", conference: { host: "thesummitleague.org", teamId: "620" } },
+  "st-thomas-mn": { host: "tommiesports.com", platform: "conference", conference: { host: "thesummitleague.org", teamId: "620", rosterApi: "https://tommiesports.com/api/v2/Rosters/bySport/msoc" } },
 };

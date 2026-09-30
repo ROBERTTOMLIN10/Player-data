@@ -5,12 +5,30 @@ import { firstLast, siteFetch, type GameLine, type KeeperLine, type SeasonStats,
  * Conference websites (Sidearm): for teams whose own site can't be read
  * (Central Conn. St., Colgate, St. Thomas), their conference's stats service
  * has the whole squad with season stats and every game, and each game links
- * the official stats file (StatCrew XML) with the player lines. No photos.
+ * the official stats file (StatCrew XML) with the player lines. Photos and
+ * bios come from the team's own roster data service where it answers.
  */
 
 export interface ConferenceSource {
   host: string; // e.g. patriotleague.org
   teamId: string; // the conference's team id (from its teamstats.aspx page)
+  /** The team site's own roster data (Sidearm /api/v2/Rosters/bySport/<sport>), for photos and bios, when it answers. */
+  rosterApi?: string;
+}
+
+/** Photos and bios from a Sidearm roster data service, by player name. */
+async function siteRoster(url: string): Promise<Map<string, Rec>> {
+  const out = new Map<string, Rec>();
+  try {
+    const res = await siteFetch(url);
+    if (!res.ok) return out;
+    const text = await res.text();
+    const players = text.trim() ? ((JSON.parse(text) as Rec).players ?? []) : [];
+    for (const p of players as Rec[]) if (!p.hide) out.set(slug(`${p.firstName ?? ""} ${p.lastName ?? ""}`), p);
+  } catch {
+    /* no photos this time */
+  }
+  return out;
 }
 
 type Rec = Record<string, any>;
@@ -40,16 +58,39 @@ const people = (data: Rec) => ((data.players ?? []) as Rec[]).filter((p) => p?.n
 
 export async function conferenceRoster(src: ConferenceSource, year: number): Promise<SquadPlayer[]> {
   const data = await teamStats(src, year);
-  return people(data).map((p) => ({
-    key: keyOf(p.name),
-    name: firstLast(p.name),
-    jersey_number: p.uniform && p.uniform !== "0" ? String(p.uniform) : null,
-    position_short: p.position ?? null,
-    academic_year: null,
-    position_long: null, academic_year_long: null, height_feet: null, height_inches: null, weight: null, hometown: null,
-    high_school: null, previous_school: null, major: null, birth_date: null, is_captain: 0, instagram: null, photo_url: null,
-    profile_url: null,
-  }));
+  const site = src.rosterApi ? await siteRoster(src.rosterApi) : new Map<string, Rec>();
+  const siteHost = src.rosterApi ? new URL(src.rosterApi).host : "";
+  const byNumber = new Map([...site.values()].filter((x) => x.jerseyNumber).map((x) => [String(x.jerseyNumber), x]));
+  return people(data).map((p) => {
+    const name = firstLast(p.name);
+    const jersey = p.uniform && p.uniform !== "0" ? String(p.uniform) : null;
+    // Same name, else the same shirt number with the same surname.
+    const last = slug(name).split("-").pop();
+    const numbered = jersey ? byNumber.get(jersey) : undefined;
+    const b = site.get(slug(name)) ?? (numbered && slug(String(numbered.lastName ?? "")).split("-").pop() === last ? numbered : undefined);
+    const image = b?.image?.absoluteUrl ?? (b?.image?.url ? `https://${siteHost}${b.image.url}` : null);
+    return {
+      key: keyOf(p.name),
+      name,
+      jersey_number: jersey ?? (b?.jerseyNumber ? String(b.jerseyNumber) : null),
+      position_short: b?.positionShort ?? p.position ?? null,
+      academic_year: b?.academicYearShort ?? null,
+      position_long: b?.positionLong?.trim() || null,
+      academic_year_long: b?.academicYearLong ?? null,
+      height_feet: whole(b?.heightFeet),
+      height_inches: b?.heightFeet ? whole(b?.heightInches) ?? 0 : null,
+      weight: whole(b?.weight),
+      hometown: b?.hometown ?? null,
+      high_school: b?.highSchool ?? null,
+      previous_school: b?.previousSchool ?? null,
+      major: b?.major ?? null,
+      birth_date: null,
+      is_captain: b?.isCaptain ? 1 : 0,
+      instagram: null,
+      photo_url: image,
+      profile_url: b ? `https://${siteHost}/sports/mens-soccer/roster/${slug(name)}/${b.rosterPlayerId}` : null,
+    };
+  });
 }
 
 export async function conferenceSeasonStats(src: ConferenceSource, year: number): Promise<SeasonStats> {
