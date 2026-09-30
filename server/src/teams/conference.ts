@@ -90,23 +90,36 @@ export async function conferenceSeasonStats(src: ConferenceSource, year: number)
         opponent: String(g.opp_name ?? ""),
         home: g.home_or_away === "H",
         result,
-        // The game file has both teams: remember which one is ours.
-        boxscoreUrl: `${String(g.game_file_location).replace(/^http:/, "https:")}#${g.own_id ?? data.id}`,
+        // The game file has both teams: remember which one is ours (its id, and its name for files written by the other team).
+        boxscoreUrl: `${secureFileUrl(String(g.game_file_location))}#${encodeURIComponent(String(g.own_id ?? data.id ?? ""))}|${encodeURIComponent(String(g.own_name ?? data.name ?? ""))}`,
       };
     })
     .filter((g): g is TeamGame => g !== null);
   return { players, keepers, games };
 }
 
+/**
+ * Game files live on an S3 bucket with dots in its name, whose https address
+ * doesn't match S3's certificate; the path-style address does.
+ */
+function secureFileUrl(url: string): string {
+  const m = url.match(/^https?:\/\/([^/]+)\.s3\.([a-z0-9-]+)\.amazonaws\.com\/(.+)$/i);
+  return m ? `https://s3.${m[2]}.amazonaws.com/${m[1]}/${m[3]}` : url.replace(/^http:/, "https:");
+}
+
 export const isConferenceBoxscore = (url: string) => /\.xml(#|$)/i.test(url);
 
 /** Our team's player lines from an official game file (StatCrew XML). */
 export async function conferenceBoxscore(url: string): Promise<GameLine[]> {
-  const [file, teamId] = url.split("#");
+  const [file, ours = ""] = url.split("#");
+  const [teamId, teamName] = ours.split("|").map((x) => decodeURIComponent(x ?? ""));
   const res = await siteFetch(file);
   if (!res.ok) throw new Error(`${file} → HTTP ${res.status}`);
   const doc = parse(await res.text(), { lowerCaseTagName: true });
-  const team = doc.querySelectorAll("team").find((t) => t.getAttribute("id") === teamId);
+  const teams = doc.querySelectorAll("team");
+  const team =
+    teams.find((t) => t.getAttribute("id") === teamId) ??
+    teams.find((t) => slug(t.getAttribute("name") ?? "") === slug(teamName ?? "") && slug(teamName ?? "") !== "");
   if (!team) throw new Error(`team ${teamId} not in ${file}`);
   return team
     .querySelectorAll("player")
