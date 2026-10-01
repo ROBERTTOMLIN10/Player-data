@@ -406,6 +406,19 @@ const CARD_REASONS: Record<string, string> = {
 };
 
 /**
+ * The sentence-style feed writes "Goal by UNC Schelb, Joschi Assist by Nikolai,
+ * Luca." Names become "Joschi Schelb", the team code goes, and "Assist by"
+ * reads ", assisted by".
+ */
+function firstLast(text: string): string {
+  const name = "(?:(?:van|von|de|da|del|der|den|di|la|le) )*[A-Z][\\p{L}'’-]*(?: (?:van|von|de|da|del|der|den|di|la|le|[A-Z][\\p{L}'’-]*))*";
+  const flipped = text
+    .replace(/ Assist by /g, ", assisted by ")
+    .replace(new RegExp(`\\b(?:[A-Z]{2,6} )?(${name}), (${name})(?=[.,]|, assisted| [a-z]|$)`, "gu"), "$2 $1");
+  return flipped.replace(/\.$/, "");
+}
+
+/**
  * Many games' play-by-play comes in a raw feed format ("Cardred(straight) by AJ
  * Acree", "Shot (goalmouth:outhigh;) by …", "Throwin(taken) by Team"). This
  * turns those into readable plays and drops the routine ones (throw-ins, goal
@@ -419,7 +432,9 @@ export function readablePlay(raw: string): { kind: PlayKind; text: string } | nu
   // Sentence-form plays ("Shot by MAN Marsilii, Cristiano.", "Foul on …", "Corner kick [25:35].") keep their text.
   const sentence = /^(Shot|Goal) by [A-Z]{2,6} |^Foul on |^Offside against |^Corner kick|^Yellow card|^Red card|^Substitution|^Goal by|^Save by|^Shot by|^Foul by|^Handball by|^Offside by|^VAR review|^Penalty kick awarded|^Stoppage/;
   if (!m || !/^[A-Z][a-z]+$/.test(m[1]) || sentence.test(text)) {
-    return { kind: playKind(text), text };
+    if (/^(End|Start) of .*period/i.test(text) || /^FOR [A-Z]{2,6}:/.test(text)) return null; // period markers, line-up lists
+    const readable = firstLast(text).replace(/^[A-Z]{2,6} substitution: (.+) for (.+)$/, "Substitution: $1 on for $2");
+    return { kind: playKind(readable), text: readable };
   }
   const [, word, a = "", b = "", byRaw = ""] = m;
   const who = byRaw.trim() === "Team" ? "" : byRaw.trim();
