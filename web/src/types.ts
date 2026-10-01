@@ -766,7 +766,7 @@ export interface NcaaGameTeamStats {
   redCards: number | null;
 }
 
-export type NcaaPlayKind = "goal" | "shot" | "save" | "corner" | "foul" | "offside" | "sub" | "yellow" | "red" | "other";
+export type NcaaPlayKind = "goal" | "shot" | "save" | "corner" | "foul" | "offside" | "sub" | "yellow" | "red" | "var" | "other";
 
 export interface NcaaFormPlayer {
   key: string;

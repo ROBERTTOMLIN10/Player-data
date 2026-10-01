@@ -288,7 +288,7 @@ export interface GameTeamStats {
   yellowCards: number | null;
   redCards: number | null;
 }
-export type PlayKind = "goal" | "shot" | "save" | "corner" | "foul" | "offside" | "sub" | "yellow" | "red" | "other";
+export type PlayKind = "goal" | "shot" | "save" | "corner" | "foul" | "offside" | "sub" | "yellow" | "red" | "var" | "other";
 export interface GamePlay {
   period: string;
   clock: string;
@@ -464,7 +464,7 @@ export function readablePlay(raw: string): { kind: PlayKind; text: string } | nu
     case "varreview": {
       const type = detail.match(/type:([a-z]+)/)?.[1];
       const outcome = detail.match(/outcome:([a-z]+)/)?.[1];
-      return { kind: "other", text: `VAR review${type ? ` (${type})` : ""}${outcome ? `: ${outcome === "noaction" ? "no action" : outcome}` : ""}` };
+      return { kind: "var", text: `VAR review${type ? ` (${type})` : ""}${outcome ? `: ${outcome === "noaction" ? "no action" : outcome}` : ""}` };
     }
     case "injury":
       return { kind: "other", text: "Stoppage for an injury" };
@@ -511,6 +511,7 @@ function playKind(text: string): PlayKind {
   if (/red card|second yellow/.test(t)) return "red";
   if (/yellow card/.test(t)) return "yellow";
   if (/substitution/.test(t)) return "sub";
+  if (/\bvar\b|video review/.test(t)) return "var";
   if (/saved by/.test(t)) return "save";
   if (/^shot by/.test(t)) return "shot";
   if (/^save by/.test(t)) return "save";

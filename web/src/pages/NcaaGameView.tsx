@@ -337,8 +337,9 @@ function Leaders({ form }: { form: NcaaTeamForm }) {
   );
 }
 
-const PLAY_ICON: Record<string, string> = { goal: "⚽", shot: "◎", save: "🧤", corner: "⚑", foul: "✕", offside: "⚐", sub: "⇄", yellow: "", red: "", other: "·" };
-const KEY_PLAYS = new Set(["goal", "yellow", "red", "sub"]);
+const PLAY_ICON: Record<string, string> = { goal: "⚽", shot: "◎", save: "🧤", corner: "⚑", foul: "✕", offside: "⚐", sub: "⇄", yellow: "", red: "", var: "📺", other: "·" };
+// Key events: goals, cards (yellow and red), video reviews and substitutions.
+const KEY_PLAYS = new Set(["goal", "yellow", "red", "var", "sub"]);
 
 function PlayByPlay({ plays, home, away, live }: { plays: NcaaGameDetail["plays"]; home: { seo: string; name: string }; away: { seo: string; name: string }; live: boolean }) {
   const [filter, setFilter] = useState<"key" | "all">("all");
