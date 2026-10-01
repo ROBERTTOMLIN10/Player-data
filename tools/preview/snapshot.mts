@@ -24,6 +24,7 @@ import { pool } from "../../server/src/teams/discover.js";
 const TEAM_TABLES = ["team_sites", "team_players", "team_player_stats", "team_player_games", "team_boxscores"] as const;
 import { fetchGameBoxscore, ncaaLogoUrl } from "../../server/src/ncaa/client.js";
 import { recordRanks, setCache } from "../../server/src/ncaa/store.js";
+import { backfillPastSeasons } from "../../server/src/ncaa/history.js";
 import { fillMinutesFromBoxScores } from "../../server/src/import/importMinutes.js";
 import { shiftDate, teamToday } from "../../server/src/lib/readiness.js";
 
@@ -41,6 +42,7 @@ interface Snapshot {
   logosLarge?: Record<string, string>; // school logo URL -> full-quality data: URI (the SVG itself), for the big logo on team pages
   ncaaGames?: Row[]; // NCAA D1 scoreboard rows (all of this season)
   ncaaCache?: Row[]; // NCAA stat / rankings tables
+  ncaaPastGames?: Row[]; // earlier seasons' results (head-to-head)
   ncaaRankHistory?: Row[]; // last few days of ranks, for daily movement arrows
   teams?: Record<string, Row[]>; // other teams' squads (team_* tables)
 }
@@ -120,6 +122,7 @@ if (mode === "export") {
   // NCAA D1 (NCAA.com): season results, stat leaders, rankings.
   await syncStatsAndRankings();
   await syncSeason();
+  await backfillPastSeasons(); // quick once the previous snapshot has brought the seasons already read
   snap.ncaaGames = db.prepare("SELECT * FROM ncaa_games WHERE game_date LIKE ?").all(`${teamToday().slice(0, 4)}-%`) as Row[];
   // Box scores for the preview's game pages: the last week's finished games and all of FAU's (the server keeps them in ncaa_cache).
   {
@@ -143,6 +146,7 @@ if (mode === "export") {
     console.log(`game box scores: ${saved} of ${wanted.length}`);
   }
   snap.ncaaCache = db.prepare("SELECT * FROM ncaa_cache").all() as Row[];
+  snap.ncaaPastGames = db.prepare("SELECT * FROM ncaa_past_games").all() as Row[];
   snap.ncaaRankHistory = db
     .prepare("SELECT * FROM ncaa_rank_history WHERE day >= ?")
     .all(shiftDate(teamToday(), -14)) as Row[]; // two weeks: enough for weekly polls
@@ -255,6 +259,7 @@ if (mode === "export") {
       insert("roster_players", { ...row, player_id: _player ? playerId(_player) : null }, "player_name");
     for (const row of snap.ncaaGames ?? []) insert("ncaa_games", row, "contest_id");
     for (const row of snap.ncaaCache ?? []) insert("ncaa_cache", row, "key");
+    for (const row of snap.ncaaPastGames ?? []) insert("ncaa_past_games", row, "contest_id");
     for (const row of snap.ncaaRankHistory ?? []) insert("ncaa_rank_history", row, "key, day, entity");
     const conflicts: Record<string, string> = {
       team_sites: "team_seo",

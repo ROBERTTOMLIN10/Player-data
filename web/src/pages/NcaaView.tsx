@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { useNcaaRankings, useNcaaScoreboard, useNcaaStandings, useNcaaStat, useNcaaStatsIndex } from "../api/client";
+import { useFollows, useNcaaRankings, useNcaaScoreboard, useNcaaStandings, useNcaaStat, useNcaaStatsIndex } from "../api/client";
+import { FavoritesButton, FavoritesPanel } from "../components/Favorites";
 import { Card, SectionHeading } from "../components/Card";
 import { GameCard, NcaaStatTable, StandingsTable, updatedLabel } from "../components/ncaa";
 import { formatDateLong } from "../lib/format";
@@ -26,10 +27,19 @@ const selectClass =
 
 export default function NcaaView() {
   const [tab, setTab] = useState<Tab>("scores");
+  const [favoritesOpen, setFavoritesOpen] = useState(false);
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <SectionHeading title="NCAA Division I" subtitle="Men's soccer across the country, from NCAA.com" />
+        <div className="flex items-start justify-between gap-3">
+          <SectionHeading title="NCAA Division I" subtitle="Men's soccer across the country, from NCAA.com" />
+          <FavoritesButton open={favoritesOpen} onClick={() => setFavoritesOpen((o) => !o)} />
+        </div>
+        {favoritesOpen && (
+          <div className="mb-3">
+            <FavoritesPanel />
+          </div>
+        )}
         <div className="flex gap-1 overflow-x-auto rounded-lg border border-border bg-surface p-1" role="tablist">
           {TABS.map((t) => (
             <button
@@ -61,6 +71,8 @@ const STATE_ORDER: Record<string, number> = { I: 0, P: 1, F: 2 };
 function ScoresTab() {
   const [date, setDate] = useState<string | null>(null);
   const [filter, setFilter] = useState("all");
+  const { data: follows } = useFollows();
+  const favorites = useMemo(() => new Set(follows?.follows.map((f) => f.seo)), [follows]);
   const { data, isLoading } = useNcaaScoreboard(date, true);
   const isToday = data ? data.date === data.today : true;
 
@@ -76,12 +88,13 @@ function ScoresTab() {
       filter === "all" ||
       (filter === "top25" && (g.home.rank || g.away.rank)) ||
       (filter === "live" && g.state === "I") ||
+      (filter === "favorites" && (favorites.has(g.home.seo) || favorites.has(g.away.seo))) ||
       g.home.conf === filter ||
       g.away.conf === filter;
     return (data?.games ?? [])
       .filter(keep)
       .sort((a, b) => (STATE_ORDER[a.state] ?? 3) - (STATE_ORDER[b.state] ?? 3) || (a.startEpoch ?? 0) - (b.startEpoch ?? 0));
-  }, [data, filter]);
+  }, [data, filter, favorites]);
 
   const liveCount = data?.games.filter((g) => g.state === "I").length ?? 0;
 
@@ -110,6 +123,7 @@ function ScoresTab() {
         <select value={filter} onChange={(e) => setFilter(e.target.value)} className={selectClass} aria-label="Filter games">
           <option value="all">All games</option>
           {liveCount > 0 && <option value="live">Live now ({liveCount})</option>}
+          {favorites.size > 0 && <option value="favorites">★ Favorites</option>}
           <option value="top25">Top 25</option>
           {conferences.map(([seo, name]) => (
             <option key={seo} value={seo}>

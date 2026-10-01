@@ -142,6 +142,18 @@ function nowSql() {
   return new Date().toISOString().replace("T", " ").slice(0, 19);
 }
 
+type Favorite = { seo: string; name: string; logo: string; alerts: Record<string, boolean> };
+/** A team's name and logo from the captured standings (for favorites added in the preview). */
+function standingsRow(seo: string): { name: string; logo: string } | undefined {
+  for (const c of (data["/api/ncaa/standings"]?.conferences ?? []) as any[]) for (const r of c.rows) if (r.seo === seo) return r;
+  return undefined;
+}
+const teamName = (seo: string) => standingsRow(seo)?.name ?? seo;
+const teamLogo = (seo: string) => standingsRow(seo)?.logo ?? "";
+let favorites: Favorite[] = [
+  { seo: "fla-atlantic", name: "Fla. Atlantic", logo: "", alerts: { kickoff: false, goals: true, halftime: false, final: true, red_cards: false } },
+];
+
 function route(method: string, path: string, q: URLSearchParams, body: any): Response {
   const role = demo.role;
   const key = path + (q.toString() ? `?${q.toString()}` : "");
@@ -190,6 +202,18 @@ function route(method: string, path: string, q: URLSearchParams, body: any): Res
   }
   if (path === "/api/me/readiness/history") return json(withMyEntry(data[key] ?? data["/api/me/readiness/history?days=30"]));
   if (path === "/api/me/push/subscribe" || path === "/api/me/push/unsubscribe") return json({ ok: true });
+  // Favorite teams and their alerts: kept in memory for this visit (FAU starred to start, like the real app).
+  if (path === "/api/follows/push/subscribe" || path === "/api/follows/push/unsubscribe") return json({ ok: true });
+  if (path === "/api/follows" && method === "GET") return json({ ourTeam: "fla-atlantic", signedIn: true, publicKey: "preview", follows: favorites.map((f) => ({ ...f, logo: f.logo || teamLogo(f.seo) })) });
+  const followMatch = path.match(/^\/api\/follows\/([a-z0-9-]+)$/);
+  if (followMatch && method === "PUT") {
+    const seo = followMatch[1];
+    const existing = favorites.find((f) => f.seo === seo);
+    if (body?.starred === false) favorites = favorites.filter((f) => f.seo !== seo);
+    else if (existing) existing.alerts = { ...existing.alerts, ...(body?.alerts ?? {}) };
+    else favorites.push({ seo, name: teamName(seo), logo: teamLogo(seo), alerts: { kickoff: false, goals: true, halftime: false, final: true, red_cards: false, ...(body?.alerts ?? {}) } });
+    return json({ ok: true });
+  }
 
   // ---- coach ----
   if (path === "/api/readiness/squad") return json(squadFor(q.get("date")));

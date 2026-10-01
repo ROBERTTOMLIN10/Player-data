@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Card } from "./Card";
-import { gamePath, TeamLink } from "./ncaa";
+import { gamePath, Rpi, TeamLink } from "./ncaa";
 import { TeamLogo } from "./TeamLogo";
 import { formatDateLong } from "../lib/format";
 import type { ScheduleGame } from "../types";
@@ -150,6 +150,7 @@ export function ScheduleCalendar({ games }: { games: ScheduleGame[] }) {
             <div className="truncate font-medium">
               {g.home_away === "A" ? "at " : "vs "}
               <TeamLink seo={g.opponent_seo}>{g.opponent}</TeamLink>
+              <Rpi seo={g.opponent_seo} />
             </div>
             <div className="truncate text-xs text-text-dim">
               {formatDateLong(g.game_date)}

@@ -53,6 +53,7 @@ await get(coach, "/api/ncaa/standings");
 const statsIndex = await get(coach, "/api/ncaa/stats");
 for (const c of statsIndex.categories) await get(coach, `/api/ncaa/stats/${c.key}`).catch(() => undefined);
 await get(coach, "/api/ncaa/rankings");
+await get(coach, "/api/ncaa/rpi");
 await get(coach, "/api/ncaa/conference/american");
 // NCAA team and player pages: every D1 team, and every player linked from the leader tables or in a squad we read.
 // They go in one file per team (loaded when a team or player is opened), since all of them won't fit in the page.

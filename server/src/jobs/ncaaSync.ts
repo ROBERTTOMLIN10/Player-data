@@ -2,6 +2,7 @@ import { fetchConferences, fetchRankingTable, fetchTopDrawerTop25, fetchScoreboa
 import { syncTeams, teamSyncDue } from "../teams/sync.js";
 import { gamesOn, hasGamesOn, recordRanks, setCache, upsertGames } from "../ncaa/store.js";
 import { shiftDate, teamToday } from "../lib/readiness.js";
+import { backfillPastSeasons } from "../ncaa/history.js";
 
 /**
  * Keeps NCAA D1 men's soccer data fresh from NCAA.com:
@@ -189,6 +190,11 @@ async function tick() {
     if (due("stats", STATS_REFRESH_MS) || followUp) {
       lastRun.stats = Date.now();
       await syncStatsAndRankings();
+    }
+    // Earlier seasons' results for head-to-head (each season read once), in the background.
+    if (due("history", 24 * 60 * 60_000)) {
+      lastRun.history = Date.now();
+      void backfillPastSeasons().catch((err) => console.error(`[ncaa] past seasons failed: ${(err as Error).message}`));
     }
     // Other teams' squads from their athletics sites, in the background so the scoreboard keeps ticking.
     if (!teamsRunning && due("teams", TEAMS_CHECK_MS)) {

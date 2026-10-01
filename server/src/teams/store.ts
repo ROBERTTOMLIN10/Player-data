@@ -177,23 +177,32 @@ export function teamForm(seo: string) {
   return { team, lastFive, scorers, keeper };
 }
 
-/** Earlier meetings between two teams this season (finished games). */
+/** Earlier meetings between two teams: this season and the last five (finished games), newest first. */
 export function headToHead(a: string, b: string, exceptId: number) {
+  const pair = "((home_seo = @a AND away_seo = @b) OR (home_seo = @b AND away_seo = @a)) AND contest_id != @id";
   const rows = getDb()
     .prepare(
-      `SELECT * FROM ncaa_games WHERE ((home_seo = @a AND away_seo = @b) OR (home_seo = @b AND away_seo = @a)) AND contest_id != @id AND state = 'F'
-       ORDER BY game_date DESC`,
+      `SELECT contest_id, game_date, home_seo, home_name, home_score, away_seo, away_name, away_score, final_message, 1 AS current
+       FROM ncaa_games WHERE ${pair} AND state = 'F'
+       UNION ALL
+       SELECT contest_id, game_date, home_seo, home_name, home_score, away_seo, away_name, away_score, final_message, 0
+       FROM ncaa_past_games WHERE ${pair} AND contest_id NOT IN (SELECT contest_id FROM ncaa_games)
+       ORDER BY game_date DESC LIMIT 12`,
     )
-    .all({ a, b, id: exceptId }) as GameRow[];
+    .all({ a, b, id: exceptId }) as (Pick<GameRow, "contest_id" | "game_date" | "home_seo" | "home_name" | "home_score" | "away_seo" | "away_name" | "away_score" | "final_message"> & { current: number })[];
   return rows.map((g) => ({
     id: g.contest_id,
     date: g.game_date,
+    season: Number(g.game_date.slice(0, 4)),
+    // Only this season's games have a game page here.
+    linkable: g.current === 1,
     homeSeo: g.home_seo,
     homeName: g.home_name,
     homeScore: g.home_score,
     awaySeo: g.away_seo,
     awayName: g.away_name,
     awayScore: g.away_score,
+    note: /OT|PK/i.test(g.final_message ?? "") ? g.final_message!.replace(/^FINAL\s*/i, "").replace(/[()]/g, "").trim() : null,
   }));
 }
 

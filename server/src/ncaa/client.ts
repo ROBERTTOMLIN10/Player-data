@@ -288,7 +288,7 @@ export interface GameTeamStats {
   yellowCards: number | null;
   redCards: number | null;
 }
-export type PlayKind = "goal" | "shot" | "save" | "corner" | "foul" | "offside" | "sub" | "yellow" | "red" | "other";
+export type PlayKind = "goal" | "shot" | "save" | "corner" | "foul" | "offside" | "sub" | "yellow" | "red" | "var" | "other";
 export interface GamePlay {
   period: string;
   clock: string;
@@ -394,14 +394,128 @@ export async function fetchGameBoxscore(contestId: number): Promise<GameBoxscore
   };
 }
 
+const CARD_REASONS: Record<string, string> = {
+  unsporting: "unsporting behaviour",
+  dissent: "dissent",
+  timewasting: "time-wasting",
+  persistentinfringement: "persistent infringement",
+  violentconduct: "violent conduct",
+  seriousfoulplay: "serious foul play",
+  secondyellow: "second yellow",
+  dogso: "denying a goal-scoring chance",
+};
+
+/**
+ * Many games' play-by-play comes in a raw feed format ("Cardred(straight) by AJ
+ * Acree", "Shot (goalmouth:outhigh;) by …", "Throwin(taken) by Team"). This
+ * turns those into readable plays and drops the routine ones (throw-ins, goal
+ * kicks, free kicks taken); plays already in sentence form pass through.
+ * Returns null for a play not worth showing.
+ */
+export function readablePlay(raw: string): { kind: PlayKind; text: string } | null {
+  const text = raw.replace(/\s+/g, " ").replace(/ by Team$/, "").trim();
+  if (/^(Match|Period) (started|ended)$/i.test(text)) return null; // the period headers already show this
+  const m = text.match(/^([A-Za-z]+)\s*(?:\(([^)]*)\))?\s*(?:\(([^)]*)\))?\s*(?:by (.+))?$/);
+  // Sentence-form plays ("Shot by MAN Marsilii, Cristiano.", "Foul on …", "Corner kick [25:35].") keep their text.
+  const sentence = /^(Shot|Goal) by [A-Z]{2,6} |^Foul on |^Offside against |^Corner kick|^Yellow card|^Red card|^Substitution|^Goal by|^Save by|^Shot by|^Foul by|^Handball by|^Offside by|^VAR review|^Penalty kick awarded|^Stoppage/;
+  if (!m || !/^[A-Z][a-z]+$/.test(m[1]) || sentence.test(text)) {
+    return { kind: playKind(text), text };
+  }
+  const [, word, a = "", b = "", byRaw = ""] = m;
+  const who = byRaw.trim() === "Team" ? "" : byRaw.trim();
+  const detail = `${a};${b}`.toLowerCase();
+  const by = who ? ` by ${who}` : "";
+  switch (word.toLowerCase()) {
+    case "goal": {
+      const how = /penaltykick/.test(detail) ? " (penalty)" : /from:head/.test(detail) ? " (header)" : /from:leftfoot/.test(detail) ? " (left foot)" : /from:rightfoot/.test(detail) ? " (right foot)" : "";
+      return { kind: "goal", text: `Goal${by}${how}` };
+    }
+    case "shot": {
+      const where = /blocked/.test(detail)
+        ? "blocked"
+        : /woodwork/.test(detail)
+          ? "hit the woodwork"
+          : /outhigh/.test(detail)
+            ? "over the bar"
+            : /out(left|right)/.test(detail)
+              ? "wide"
+              : /goalmouth:(low|high)/.test(detail)
+                ? "on target"
+                : "";
+      return { kind: "shot", text: `Shot${by}${where ? `, ${where}` : ""}` };
+    }
+    case "save":
+      return { kind: "save", text: `Save${by}` };
+    case "corner":
+      return /taken/.test(detail) ? { kind: "corner", text: "Corner kick" } : null;
+    case "foul":
+      return { kind: "foul", text: /handball/.test(detail) ? `Handball${by}` : `Foul${by}` };
+    case "offside":
+      return { kind: "offside", text: `Offside${by}` };
+    case "cardyellow":
+    case "cardred": {
+      const reason = CARD_REASONS[a.toLowerCase()] ?? (a && a.toLowerCase() !== "straight" ? a.toLowerCase() : "");
+      const red = word.toLowerCase() === "cardred";
+      return { kind: red ? "red" : "yellow", text: `${red ? "Red" : "Yellow"} card${who ? `: ${who}` : ""}${reason ? ` (${reason})` : ""}` };
+    }
+    case "penaltykick":
+      if (/awarded/.test(detail)) return { kind: "other", text: `Penalty kick awarded${who ? ` (${who})` : ""}` };
+      return null; // the goal or save that follows tells the story
+    case "varreview": {
+      const type = detail.match(/type:([a-z]+)/)?.[1];
+      const outcome = detail.match(/outcome:([a-z]+)/)?.[1];
+      return { kind: "var", text: `VAR review${type ? ` (${type})` : ""}${outcome ? `: ${outcome === "noaction" ? "no action" : outcome}` : ""}` };
+    }
+    case "injury":
+      return { kind: "other", text: "Stoppage for an injury" };
+    default:
+      return null; // throw-ins, goal/free kicks, kick-offs, period markers, "foul won", keeper changes
+  }
+}
+
+/** "01:09:00" (minutes:seconds:hundredths, in the raw feed) → "01:09". */
+const shortClock = (clock: string) => (/^\d+:\d\d:\d\d$/.test(clock) ? clock.split(":").slice(0, 2).join(":") : clock);
+
+/** Readable plays: raw-format rows translated, assists folded into their goal, subs paired "on for off". */
+export function tidyPlays(plays: GamePlay[]): GamePlay[] {
+  const out: GamePlay[] = [];
+  for (const p of plays) {
+    const assist = p.text.match(/^Assist\s+by\s+(.+)$/i);
+    if (assist) {
+      const goal = [...out].reverse().find((x) => x.kind === "goal" && x.period === p.period && x.clock === shortClock(p.clock));
+      if (goal && !/assist/i.test(goal.text)) goal.text += `, assisted by ${assist[1].trim()}`;
+      continue;
+    }
+    const sub = p.text.match(/^Sub (in|out) (.+)$/i);
+    if (sub) {
+      const partner = [...out].reverse().find((x) => x.kind === "sub" && x.period === p.period && x.clock === shortClock(p.clock) && x.seo === p.seo && /^Substitution: (.+) (on|off)$/.test(x.text));
+      if (partner) {
+        const other = partner.text.match(/^Substitution: (.+) (on|off)$/)!;
+        const on = sub[1].toLowerCase() === "in" ? sub[2] : other[1];
+        const off = sub[1].toLowerCase() === "in" ? other[1] : sub[2];
+        partner.text = `Substitution: ${on} on for ${off}`;
+      } else out.push({ ...p, clock: shortClock(p.clock), kind: "sub", text: `Substitution: ${sub[2]} ${sub[1].toLowerCase() === "in" ? "on" : "off"}` });
+      continue;
+    }
+    const r = readablePlay(p.text);
+    if (r) out.push({ ...p, clock: shortClock(p.clock), kind: r.kind, text: r.text });
+  }
+  return out;
+}
+
 function playKind(text: string): PlayKind {
   const t = text.toLowerCase();
   if (/^goal by|\bgoal by\b/.test(t)) return "goal";
+  if (/^red card/.test(t)) return "red";
+  if (/^yellow card/.test(t)) return "yellow";
   if (/red card|second yellow/.test(t)) return "red";
   if (/yellow card/.test(t)) return "yellow";
   if (/substitution/.test(t)) return "sub";
+  if (/\bvar\b|video review/.test(t)) return "var";
   if (/saved by/.test(t)) return "save";
   if (/^shot by/.test(t)) return "shot";
+  if (/^save by/.test(t)) return "save";
+  if (/^(foul|handball) by/.test(t)) return "foul";
   if (/corner kick/.test(t)) return "corner";
   if (/offside/.test(t)) return "offside";
   if (/^foul on/.test(t)) return "foul";
@@ -430,12 +544,12 @@ function parsePlays(pbp: Rec | undefined, teams: Rec[]): GamePlay[] {
     if (byName.length === 1) return byName[0].seo;
     return sides.find((s) => s.id === tagged)?.seo ?? null;
   };
-  return ((pbp.periods ?? []) as Rec[]).flatMap((p) =>
+  return tidyPlays(((pbp.periods ?? []) as Rec[]).flatMap((p) =>
     ((p.playbyplayStats ?? []) as Rec[]).flatMap((e) =>
       ((e.plays ?? []) as Rec[])
         .map((pl) => fixEncoding(String(pl.playText ?? "").trim()))
         .filter((text) => text && !/ at goalie for /i.test(text))
         .map((text) => ({ period: String(p.periodDisplay ?? ""), clock: String(e.clock ?? ""), seo: teamOf(text, String(e.teamId ?? "")), kind: playKind(text), text })),
     ),
-  );
+  ));
 }

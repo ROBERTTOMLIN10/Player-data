@@ -1,9 +1,10 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useNcaaTeam } from "../api/client";
 import { Card, SectionHeading } from "../components/Card";
-import { gamePath, NationalRank, playerPath, TeamLink, updatedLabel } from "../components/ncaa";
+import { gamePath, NationalRank, playerPath, Rpi, TeamLink, updatedLabel } from "../components/ncaa";
 import { PlayerPhoto } from "../components/PlayerPhoto";
 import { TeamLogo } from "../components/TeamLogo";
+import { StarButton } from "../components/Favorites";
 import { formatDate, kickoffTime } from "../lib/format";
 import type { NcaaSquadPlayer } from "../types";
 
@@ -35,6 +36,7 @@ export default function NcaaTeamView() {
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <h2 className="font-display text-2xl font-bold">{team.name}</h2>
             <NationalRank rpi={team.rpi} pollRank={team.pollRank} />
+            <StarButton seo={team.seo} name={team.name} logo={team.logo} />
           </div>
           <p className="text-sm text-text-dim">
             {[team.conference, team.record && `${team.record} overall`, team.conferenceRecord && `${team.conferenceRecord} conference`, team.conferencePosition && `${ordinal(team.conferencePosition)} of ${team.conferenceTeams}`]
@@ -181,17 +183,18 @@ function GameList({ title, games, ourTeam }: { title: string; games: import("../
             {games.map((g) => (
               <li
                 key={`${g.date}-${g.opponentSeo}`}
-                onClick={g.result ? () => navigate(gamePath(g.id)) : undefined}
-                className={`flex items-center gap-3 px-4 py-2.5 text-sm ${g.opponentSeo === ourTeam ? "bg-owl-red/10" : ""} ${
-                  g.result ? "cursor-pointer hover:bg-surface-raised" : ""
-                }`}
+                onClick={() => navigate(gamePath(g.id))}
+                className={`flex cursor-pointer items-center gap-3 px-4 py-2.5 text-sm hover:bg-surface-raised ${g.opponentSeo === ourTeam ? "bg-owl-red/10" : ""}`}
               >
                 <span className="w-14 shrink-0 text-text-dim">{formatDate(g.date)}</span>
                 <span className="w-5 shrink-0 text-center text-xs text-text-dim">{g.home ? "vs" : "@"}</span>
                 <TeamLogo name={g.opponent} url={g.opponentLogo} size="sm" />
-                <TeamLink seo={g.opponentSeo} className="min-w-0 flex-1 truncate font-medium">
-                  {g.opponent}
-                </TeamLink>
+                <span className="min-w-0 flex-1 truncate">
+                  <TeamLink seo={g.opponentSeo} className="font-medium">
+                    {g.opponent}
+                  </TeamLink>
+                  <Rpi seo={g.opponentSeo} />
+                </span>
                 {g.isConference && <span className="text-[10px] uppercase tracking-wide text-text-dim">Conf</span>}
                 <span
                   className={`shrink-0 whitespace-nowrap text-right font-semibold ${g.result ? "w-16" : ""} ${

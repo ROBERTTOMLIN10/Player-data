@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type {
+  AlertSettings,
+  FollowsResponse,
   CompareResult,
   GameDetail,
   GameSummary,
@@ -431,6 +433,15 @@ export function useNcaaPlayer(seo: string | undefined, key: string | undefined) 
   });
 }
 
+/** Every team's RPI rank by team (for the "RPI n" next to team names). */
+export function useRpiRanks() {
+  return useQuery({
+    queryKey: ["ncaaRpi"],
+    queryFn: () => fetchJson<{ updatedAt: string | null; ranks: Record<string, number> }>("/api/ncaa/rpi"),
+    staleTime: 10 * 60_000,
+  });
+}
+
 export function useNcaaRankings() {
   return useQuery({
     queryKey: ["ncaaRankings"],
@@ -444,4 +455,15 @@ export function useNcaaConference(seo: string) {
     queryFn: () => fetchJson<NcaaConference>(`/api/ncaa/conference/${seo}`),
     refetchInterval: 5 * 60_000,
   });
+}
+
+// --- Favorite teams + game alerts ---------------------------------------------
+
+export function useFollows() {
+  return useQuery({ queryKey: ["follows"], queryFn: () => fetchJson<FollowsResponse>("/api/follows"), staleTime: 60_000 });
+}
+
+/** Star/unstar a team or change which alerts it sends. */
+export function saveFollow(seo: string, change: { starred?: boolean; alerts?: Partial<AlertSettings> }) {
+  return sendJson<{ ok: true }>(`/api/follows/${encodeURIComponent(seo)}`, "PUT", change);
 }
