@@ -3,7 +3,7 @@ import { getDb } from "../db/connection.js";
 import { getSetting, setSetting } from "./settings.js";
 
 /**
- * Web push (phone notifications) for the morning check-in reminder.
+ * Web push (phone notifications): the morning check-in reminder and game alerts.
  *
  * Push needs a VAPID key pair identifying this server to Apple/Google's push
  * services. Set VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY to pin them; otherwise a
@@ -62,10 +62,15 @@ export interface PushMessage {
   title: string;
   body: string;
   url: string;
+  tag?: string; // a newer notification with the same tag replaces the older one
 }
 
 /** Sends to every subscription for the given users. Returns how many deliveries succeeded. */
-export async function sendToUsers(userIds: number[], message: PushMessage): Promise<{ sent: number; failed: number }> {
+export async function sendToUsers(
+  userIds: number[],
+  message: PushMessage,
+  ttlSeconds = 60 * 60 * 3, // a reminder is useless after the morning
+): Promise<{ sent: number; failed: number }> {
   if (userIds.length === 0) return { sent: 0, failed: 0 };
   ensureConfigured();
   const db = getDb();
@@ -80,7 +85,7 @@ export async function sendToUsers(userIds: number[], message: PushMessage): Prom
     subs.map(async (s) => {
       try {
         await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, {
-          TTL: 60 * 60 * 3, // a reminder is useless after the morning
+          TTL: ttlSeconds,
         });
         db.prepare("UPDATE push_subscriptions SET last_success_at = datetime('now') WHERE id = ?").run(s.id);
         sent += 1;

@@ -3,7 +3,7 @@ import { getDb } from "../db/connection.js";
 import { headToHead, matchSquadPlayer, nationalStanding, playerLinks, playerPage, squadIndex, teamForm, teamPage } from "../teams/store.js";
 import { ensureDate, POLLS, RANKINGS, STAT_CATEGORIES } from "../jobs/ncaaSync.js";
 import { isIsoDate, teamToday } from "../lib/readiness.js";
-import { fetchGameBoxscore, ncaaLogoUrl, type GameBoxscore, type HtmlTable } from "../ncaa/client.js";
+import { fetchGameBoxscore, ncaaLogoUrl, tidyPlays, type GameBoxscore, type HtmlTable } from "../ncaa/client.js";
 import {
   conferenceLabel,
   rankMoves,
@@ -222,7 +222,7 @@ ncaaRouter.get("/game/:id", async (req, res) => {
     clock: box?.clock ?? null,
     teams,
     goals: box?.goals ?? [],
-    plays: box?.plays ?? [],
+    plays: tidyPlays(box?.plays ?? []), // (games saved before the raw feed format was translated)
     venue: homeSeo && awaySeo ? ourVenue(row?.game_date, homeSeo, awaySeo) : null,
     ranks: Object.fromEntries([homeSeo, awaySeo].filter((s): s is string => Boolean(s)).map((s) => [s, nationalStanding(s)])),
     preview:
@@ -240,6 +240,21 @@ function ourVenue(date: string | undefined, home: string, away: string) {
     | undefined;
   return g ? { time: g.game_time, location: g.location } : null;
 }
+
+// Every team's RPI rank (seo -> rank), for the small "RPI n" next to team names across the app.
+ncaaRouter.get("/rpi", (_req, res) => {
+  const cached = getCache<HtmlTable>("rankings-rpi");
+  if (!cached) return res.json({ updatedAt: null, ranks: {} });
+  const table = enrichTable(cached.value);
+  const rankCol = table.columns.findIndex((c) => c.toLowerCase() === "rank");
+  const ranks: Record<string, number> = {};
+  table.rows.forEach((r, i) => {
+    const seo = table.teams[i]?.seo;
+    const n = parseInt(rankCol === -1 ? String(i + 1) : r[rankCol], 10);
+    if (seo && Number.isFinite(n) && !(seo in ranks)) ranks[seo] = n;
+  });
+  res.json({ updatedAt: cached.updatedAt, ranks });
+});
 
 ncaaRouter.get("/rankings", (_req, res) => {
   res.json({

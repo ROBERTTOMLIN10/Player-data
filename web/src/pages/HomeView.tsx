@@ -5,7 +5,7 @@ import { Card, SectionHeading } from "../components/Card";
 import { ScheduleCalendar } from "../components/ScheduleCalendar";
 import { Segmented } from "../components/SeasonStats";
 import { TeamLogo } from "../components/TeamLogo";
-import { gamePath, NcaaStatTable, StandingsTable, TeamLink, updatedLabel } from "../components/ncaa";
+import { gamePath, NcaaStatTable, Rpi, StandingsTable, TeamLink, updatedLabel } from "../components/ncaa";
 import { formatDateLong } from "../lib/format";
 import type { ScheduleGame } from "../types";
 
@@ -85,6 +85,7 @@ export default function HomeView() {
                 <div className="font-display text-lg font-semibold">
                   {nextGame.home_away === "A" ? "at " : "vs "}
                   <TeamLink seo={nextGame.opponent_seo}>{nextGame.opponent}</TeamLink>
+                  <Rpi seo={nextGame.opponent_seo} className="text-xs" />
                 </div>
                 <div className="text-sm text-text-dim">
                   {formatDateLong(nextGame.game_date)}
@@ -139,6 +140,7 @@ export default function HomeView() {
                   <div className="truncate font-medium">
                     {g.home_away === "A" ? "at " : "vs "}
                     <TeamLink seo={g.opponent_seo}>{g.opponent}</TeamLink>
+                    <Rpi seo={g.opponent_seo} />
                   </div>
                   <div className="truncate text-xs text-text-dim">
                     {formatDateLong(g.game_date)}

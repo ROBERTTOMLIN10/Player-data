@@ -1,5 +1,5 @@
-// Service worker: makes the app installable to the home screen and shows the
-// morning check-in reminder notifications. Deliberately does no caching, so
+// Service worker: makes the app installable to the home screen and shows
+// notifications (the morning check-in reminder and game alerts). Deliberately does no caching, so
 // the installed app always loads the latest version from the server.
 
 self.addEventListener("install", () => self.skipWaiting());
@@ -31,7 +31,7 @@ self.addEventListener("push", (event) => {
       body: data.body,
       icon: "/icons/icon-192.png",
       badge: "/icons/icon-192.png",
-      tag: "morning-checkin", // a newer reminder replaces an older one
+      tag: data.tag || "morning-checkin", // a newer notification with the same tag replaces an older one
       data: { url: data.url },
     }),
   );

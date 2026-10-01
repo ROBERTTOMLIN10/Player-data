@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { useSchedule } from "../api/client";
+import { useRpiRanks, useSchedule } from "../api/client";
 import { PlayerPhoto } from "./PlayerPhoto";
 import { TeamLogo } from "./TeamLogo";
 import type { NcaaGame, NcaaSide, NcaaStandingRow, NcaaTable } from "../types";
@@ -15,6 +15,18 @@ export function TeamLink({ seo, children, className = "" }: { seo: string | null
     <Link to={teamPath(seo)} className={`hover:text-owl-red-light hover:underline ${className}`} onClick={(e) => e.stopPropagation()}>
       {children}
     </Link>
+  );
+}
+
+/** A team's RPI rank, small and muted, to sit right after its name. Nothing when the team has none. */
+export function Rpi({ seo, className = "" }: { seo: string | null | undefined; className?: string }) {
+  const { data } = useRpiRanks();
+  const rank = seo ? data?.ranks[seo] : undefined;
+  if (!rank) return null;
+  return (
+    <span className={`ml-1.5 whitespace-nowrap text-[10px] font-medium tabular-nums text-text-dim ${className}`} title="NCAA RPI">
+      RPI {rank}
+    </span>
   );
 }
 
@@ -98,6 +110,7 @@ function TeamLine({ side, other, final, showScore }: { side: NcaaSide; other: Nc
       <span className={`min-w-0 flex-1 truncate text-sm ${lost ? "text-text-dim" : "font-medium"}`}>
         {side.rank && <span className="mr-1 text-[11px] text-text-dim">{side.rank}</span>}
         <TeamLink seo={side.seo}>{side.name}</TeamLink>
+        <Rpi seo={side.seo} />
       </span>
       {showScore && (
         <span className={`font-display text-base font-semibold tabular-nums ${won ? "text-text" : "text-text-dim"}`}>

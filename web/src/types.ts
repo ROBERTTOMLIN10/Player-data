@@ -805,6 +805,35 @@ export interface NcaaGameDetail {
   preview: {
     home: NcaaTeamForm;
     away: NcaaTeamForm;
-    headToHead: { id: number; date: string; homeSeo: string; homeName: string; homeScore: number | null; awaySeo: string; awayName: string; awayScore: number | null }[];
+    headToHead: {
+      id: number;
+      date: string;
+      season: number;
+      linkable: boolean; // this season's games have a game page
+      homeSeo: string;
+      homeName: string;
+      homeScore: number | null;
+      awaySeo: string;
+      awayName: string;
+      awayScore: number | null;
+      note: string | null; // "OT", "2OT"
+    }[];
   } | null;
+}
+
+export type AlertKind = "kickoff" | "goals" | "halftime" | "final" | "red_cards";
+export type AlertSettings = Record<AlertKind, boolean>;
+
+export interface FollowedTeam {
+  seo: string;
+  name: string;
+  logo: string;
+  alerts: AlertSettings;
+}
+
+export interface FollowsResponse {
+  ourTeam: string;
+  signedIn: boolean; // false for the local no-login mode (nowhere to save)
+  publicKey: string;
+  follows: FollowedTeam[];
 }

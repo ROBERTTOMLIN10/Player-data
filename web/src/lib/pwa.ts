@@ -83,14 +83,14 @@ async function postJson(url: string, body: unknown) {
 }
 
 /** Must be called from a tap (browsers only allow permission prompts on user gestures). */
-export async function enablePush(publicKey: string): Promise<PushState> {
+export async function enablePush(publicKey: string, subscribeUrl = "/api/me/push/subscribe"): Promise<PushState> {
   const permission = await Notification.requestPermission();
   if (permission !== "granted") return permission === "denied" ? "denied" : "off";
   const reg = await navigator.serviceWorker.ready;
   const sub =
     (await reg.pushManager.getSubscription()) ??
     (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToBuffer(publicKey) }));
-  await postJson("/api/me/push/subscribe", sub.toJSON());
+  await postJson(subscribeUrl, sub.toJSON());
   return "on";
 }
 

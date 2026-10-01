@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useNcaaGame } from "../api/client";
 import { Card, SectionHeading } from "../components/Card";
 import { Segmented } from "../components/SeasonStats";
-import { gamePath, NationalRank, playerPath, TeamLink } from "../components/ncaa";
+import { gamePath, NationalRank, playerPath, Rpi, TeamLink } from "../components/ncaa";
 import { PlayerPhoto } from "../components/PlayerPhoto";
 import { TeamLogo } from "../components/TeamLogo";
 import { formatDate, formatDateLong, kickoffTime } from "../lib/format";
@@ -172,28 +172,77 @@ function Preview({ data, kickoff }: { data: NcaaGameDetail; kickoff: string | nu
       </section>
 
       <section>
-        <SectionHeading title="Head-to-Head" subtitle="Earlier meetings this season" />
+        <SectionHeading title="Head-to-Head" subtitle="Earlier meetings, this season and the last five" />
         {p.headToHead.length === 0 ? (
-          <Card className="text-sm text-text-dim">These teams haven't met yet this season.</Card>
+          <Card className="text-sm text-text-dim">No meetings between these teams in the last five seasons.</Card>
         ) : (
           <Card className="p-0">
-            <ul className="divide-y divide-border/60">
-              {p.headToHead.map((m) => (
-                <li key={m.id}>
-                  <Link to={gamePath(m.id)} className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-surface-raised">
-                    <span className="w-20 shrink-0 text-xs text-text-dim">{formatDate(m.date)}</span>
-                    <span className="min-w-0 flex-1 truncate">
-                      {m.awayName} <span className="font-semibold tabular-nums">{m.awayScore}-{m.homeScore}</span> {m.homeName}
+            <HeadToHeadSummary meetings={p.headToHead} a={p.away.team} h={p.home.team} />
+            <ul className="divide-y divide-border/60 border-t border-border/60">
+              {p.headToHead.map((m) => {
+                const row = (
+                  <>
+                    <span className="w-24 shrink-0 text-xs text-text-dim">
+                      {m.linkable ? formatDate(m.date) : `${formatDate(m.date)}, ${m.season}`}
                     </span>
-                    <span className="text-xs text-text-dim">Match stats ›</span>
-                  </Link>
-                </li>
-              ))}
+                    <span className="min-w-0 flex-1 truncate">
+                      {m.awayName}{" "}
+                      <span className="font-semibold tabular-nums">
+                        {m.awayScore}-{m.homeScore}
+                      </span>{" "}
+                      {m.homeName}
+                      {m.note && <span className="ml-1.5 text-[10px] uppercase text-text-dim">{m.note}</span>}
+                    </span>
+                    {m.linkable && <span className="text-xs text-text-dim">Match stats ›</span>}
+                  </>
+                );
+                return (
+                  <li key={m.id}>
+                    {m.linkable ? (
+                      <Link to={gamePath(m.id)} className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-surface-raised">
+                        {row}
+                      </Link>
+                    ) : (
+                      <div className="flex items-center gap-3 px-4 py-2.5 text-sm">{row}</div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           </Card>
         )}
       </section>
     </>
+  );
+}
+
+/** Wins for each side and draws across the meetings listed. */
+function HeadToHeadSummary({ meetings, a, h }: { meetings: NonNullable<NcaaGameDetail["preview"]>["headToHead"]; a: NcaaTeamForm["team"]; h: NcaaTeamForm["team"] }) {
+  let aw = 0;
+  let hw = 0;
+  let d = 0;
+  for (const m of meetings) {
+    if (m.homeScore === null || m.awayScore === null) continue;
+    const winner = m.homeScore > m.awayScore ? m.homeSeo : m.awayScore > m.homeScore ? m.awaySeo : null;
+    if (winner === a.seo) aw++;
+    else if (winner === h.seo) hw++;
+    else d++;
+  }
+  return (
+    <div className="grid grid-cols-3 px-4 py-3 text-center">
+      <div>
+        <div className="font-display text-2xl font-bold tabular-nums">{aw}</div>
+        <div className="truncate text-xs text-text-dim">{a.name} wins</div>
+      </div>
+      <div>
+        <div className="font-display text-2xl font-bold tabular-nums text-text-dim">{d}</div>
+        <div className="text-xs text-text-dim">Draws</div>
+      </div>
+      <div>
+        <div className="font-display text-2xl font-bold tabular-nums">{hw}</div>
+        <div className="truncate text-xs text-text-dim">{h.name} wins</div>
+      </div>
+    </div>
   );
 }
 
@@ -238,6 +287,7 @@ function FormCard({ form, label }: { form: NcaaTeamForm; label: string }) {
                 <span className="min-w-0 flex-1 truncate">
                   {r.home ? "vs " : "at "}
                   {r.opponent}
+                  <Rpi seo={r.opponentSeo} />
                 </span>
                 <span className="shrink-0 text-xs text-text-dim">{formatDate(r.date)}</span>
               </Link>

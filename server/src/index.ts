@@ -6,6 +6,7 @@ import { migrate } from "./db/migrate.js";
 import { attachUser, requireAuth, requireCoach, requirePlayer } from "./middleware/auth.js";
 import { authRouter } from "./routes/auth.js";
 import { meRouter } from "./routes/me.js";
+import { followsRouter } from "./routes/follows.js";
 import { readinessRouter } from "./routes/readiness.js";
 import { accountsRouter } from "./routes/accounts.js";
 import { gamesRouter } from "./routes/games.js";
@@ -19,6 +20,7 @@ import { adminRouter } from "./routes/admin.js";
 import { startAutoSync } from "./jobs/autoSync.js";
 import { startMorningReminder } from "./jobs/morningReminder.js";
 import { startNcaaSync } from "./jobs/ncaaSync.js";
+import { startGameAlerts } from "./jobs/gameAlerts.js";
 import { ncaaRouter } from "./routes/ncaa.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -52,6 +54,7 @@ app.use("/api/players", requireCoach, playersRouter);
 // (each router keeps its other endpoints coach-only).
 app.use("/api/team", requireAuth, teamRouter);
 app.use("/api/schedule", requireAuth, scheduleRouter);
+app.use("/api/follows", requireAuth, followsRouter); // favorite teams + game alerts: players too
 app.use("/api/ncaa", requireAuth, ncaaRouter); // NCAA D1 scores/standings/stats: players too
 app.use("/api/compare", requireCoach, compareRouter);
 app.use("/api/readiness", requireCoach, readinessRouter);
@@ -83,4 +86,5 @@ app.listen(PORT, () => {
   startAutoSync();
   startMorningReminder();
   startNcaaSync();
+  startGameAlerts();
 });
