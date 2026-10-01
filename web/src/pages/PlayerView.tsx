@@ -11,6 +11,7 @@ import { PlayerProfileHeader } from "../components/PlayerProfileHeader";
 import { PlayerPhoto } from "../components/PlayerPhoto";
 import { formatDate } from "../lib/format";
 import { positionGroup, ROSTER_SECTIONS } from "../lib/positions";
+import { OpponentLink } from "../components/ncaa";
 
 export default function PlayerView() {
   const { playerId } = useParams();
@@ -202,7 +203,7 @@ export default function PlayerView() {
                     <td className="px-4 py-3 font-medium">
                       <span className="flex items-center gap-2">
                         <TeamLogo name={g.opponent} url={g.opponent_logo_url} size="sm" />
-                        {g.opponent}
+                        <OpponentLink date={g.game_date}>{g.opponent}</OpponentLink>
                       </span>
                     </td>
                     <td className="px-4 py-3 text-text-dim">

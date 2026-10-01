@@ -10,6 +10,7 @@ import { formatDate, formatDateLong } from "../lib/format";
 import { STATUS_STYLE } from "../lib/readiness";
 import { formatRpe, rpeBand, rpeLabel, RPE_SCALE, RPE_STYLE } from "../lib/rpe";
 import type { MetricDef, ReadinessStatus, RpeSession, RpeSessionKeeper, RpeSessionPlayer } from "../types";
+import { OpponentLink } from "../components/ncaa";
 
 /** Who a score is for: an outfield player, or a roster goalkeeper (logged and averaged separately). */
 type Target = { player_id: number } | { keeper_name: string };
@@ -149,7 +150,18 @@ function LogSession({ date, session, set }: { date: string | null; session: numb
       <div className="flex flex-wrap items-end justify-between gap-3">
         <SectionHeading
           title="Session RPE"
-          subtitle={`${formatDateLong(data.date)}${data.game ? ` · Game day vs ${data.game.opponent}` : ""} · ask each player how hard training felt, then tap 1–10`}
+          subtitle={
+            <>
+              {formatDateLong(data.date)}
+              {data.game && (
+                <>
+                  {" · Game day vs "}
+                  <OpponentLink date={data.date}>{data.game.opponent}</OpponentLink>
+                </>
+              )}
+              {" · ask each player how hard training felt, then tap 1–10"}
+            </>
+          }
         />
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1">
@@ -507,7 +519,17 @@ function SessionDetail({ date, session, onBack }: { date: string; session: numbe
       <div className="flex flex-wrap items-end justify-between gap-2">
         <SectionHeading
           title={sessionLabel({ session_date: date, session }, true)}
-          subtitle={`${data.submitted ? "Submitted" : "Not submitted yet"}${data.game ? ` · Game day vs ${data.game.opponent}` : ""}`}
+          subtitle={
+            <>
+              {data.submitted ? "Submitted" : "Not submitted yet"}
+              {data.game && (
+                <>
+                  {" · Game day vs "}
+                  <OpponentLink date={date}>{data.game.opponent}</OpponentLink>
+                </>
+              )}
+            </>
+          }
         />
         <button onClick={onBack} className="mb-3 text-sm text-text-dim hover:text-owl-red">
           ← All sessions

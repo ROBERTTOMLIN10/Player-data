@@ -9,6 +9,7 @@ import { Card, SectionHeading } from "../../components/Card";
 import { GameByGameSection, MINUTES_METRIC, SeasonStatsSection, SessionTable, type SeasonView } from "../../components/SeasonStats";
 import { formatDate, formatMetricValue } from "../../lib/format";
 import type { MetricDef, MyProfile } from "../../types";
+import { OpponentLink } from "../../components/ncaa";
 
 export default function MyGpsView() {
   const { data: profile, isLoading } = useMyProfile();
@@ -162,7 +163,7 @@ export default function MyGpsView() {
                     <td className="px-4 py-3 font-medium">
                       <span className="flex items-center gap-2">
                         <TeamLogo name={g.opponent} url={g.opponent_logo_url} size="sm" />
-                        {g.opponent}
+                        <OpponentLink date={g.game_date}>{g.opponent}</OpponentLink>
                       </span>
                     </td>
                     <td className="px-4 py-3 text-text-dim">{g.status ? `${g.status} ${g.team_score}-${g.opponent_score}` : "—"}</td>

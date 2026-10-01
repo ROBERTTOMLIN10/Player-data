@@ -9,6 +9,7 @@ import { regionLabel, SEVERITY_ORDER, SEVERITY_STYLE } from "../../lib/bodyRegio
 import { formatDateLong } from "../../lib/format";
 import { readinessScore, scoreBand, WELLNESS_QUESTIONS, type WellnessKey } from "../../lib/readiness";
 import type { Me, ReadinessEntry, Severity, SorenessEntry } from "../../types";
+import { OpponentLink } from "../../components/ncaa";
 
 type Answers = Partial<Record<WellnessKey, number>>;
 
@@ -33,7 +34,7 @@ export default function CheckInView({ me }: { me: Me }) {
           {data.game ? (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-owl-red-light/40 bg-owl-red/15 px-2.5 py-1 text-xs font-medium text-owl-red-light">
               <span className="h-1.5 w-1.5 rounded-full bg-owl-red-light" />
-              Game day vs {data.game.opponent}
+              Game day vs <OpponentLink date={data.date}>{data.game.opponent}</OpponentLink>
               {data.game.game_time ? ` · ${data.game.game_time}` : ""}
             </span>
           ) : (

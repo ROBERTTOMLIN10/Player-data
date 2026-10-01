@@ -27,3 +27,8 @@ export function formatDateLong(iso: string): string {
   const d = new Date(year, month - 1, day);
   return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
 }
+
+/** A kick-off time in Eastern time (where FAU plays), e.g. "7:00 PM ET", so it reads the same on any device. */
+export function kickoffTime(epochSeconds: number): string {
+  return `${new Date(epochSeconds * 1000).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" })} ET`;
+}

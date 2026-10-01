@@ -92,15 +92,15 @@ const teamFiles = {};
   await Promise.all(Array.from({ length: 6 }, work));
   console.log(Object.keys(teamFiles).length, "team files,", pages, "player pages");
 }
-// Game pages: finished/live games on the captured scoreboard days and all of FAU's. Kept in games.json, loaded on demand.
+// Game pages: every game on the captured scoreboard days and all of FAU's. Kept in games.json, loaded on demand.
 const gameFiles = {};
 {
   const ids = new Set();
   for (const [path, board] of Object.entries(out)) {
     if (!path.startsWith("/api/ncaa/scoreboard")) continue;
-    for (const g of board.games ?? []) if (g.state === "F" || g.state === "I") ids.add(g.id);
+    for (const g of board.games ?? []) ids.add(g.id); // upcoming games have preview pages
   }
-  for (const g of teamFiles["fla-atlantic"]?.team?.games ?? []) if (g.result) ids.add(g.id);
+  for (const g of teamFiles["fla-atlantic"]?.team?.games ?? []) ids.add(g.id);
   for (const id of ids) {
     const r = await fetch(`${B}/api/ncaa/game/${id}`, { headers: { cookie: coach } });
     if (r.ok) gameFiles[id] = await r.json();
@@ -162,13 +162,21 @@ for (const [seo, file] of Object.entries(teamFiles)) {
 }
 console.log(Object.keys(teamFiles).length, "team files,", (total / 1024 / 1024).toFixed(1), "MB");
 {
-  let text = JSON.stringify(gameFiles);
-  // Big logos on game pages too: the original SVGs first, then the small copies for anything else.
-  for (const [url, dataUri] of Object.entries(logosLarge)) {
-    const quoted = JSON.stringify(url).slice(1, -1);
-    if (text.includes(quoted)) text = text.split(quoted).join(dataUri);
+  // Each logo is stored once (mock.ts swaps them in when a game opens): pre-game pages show the same teams many times.
+  // The big logos at the top of a game page use the original SVGs so they're sharp.
+  const images = {};
+  for (const page of Object.values(gameFiles)) {
+    for (const which of ["home", "away"]) {
+      const side = page.game?.[which];
+      if (side?.logo && logosLarge[side.logo]) {
+        images[`${side.logo}#lg`] = logosLarge[side.logo];
+        side.logo = `${side.logo}#lg`;
+      }
+    }
   }
-  for (const [quoted, dataUri] of quotedLogos) if (text.includes(quoted)) text = text.split(quoted).join(dataUri);
+  const plain = JSON.stringify(gameFiles);
+  for (const [url, dataUri] of Object.entries(logos)) if (plain.includes(JSON.stringify(url).slice(1, -1))) images[url] = dataUri;
+  const text = JSON.stringify({ images, games: gameFiles });
   fs.writeFileSync(`${teamDir}/../games.json`, text);
-  console.log("games.json", (text.length / 1024 / 1024).toFixed(1), "MB");
+  console.log("games.json", (text.length / 1024 / 1024).toFixed(1), "MB,", Object.keys(images).length, "logos");
 }

@@ -4,6 +4,7 @@ import { Card, SectionHeading } from "../components/Card";
 import { PlayerPhoto } from "../components/PlayerPhoto";
 import { TeamLogo } from "../components/TeamLogo";
 import { formatDate } from "../lib/format";
+import { OpponentLink } from "../components/ncaa";
 
 export default function TeamStatsView() {
   const { data, isLoading } = useTeamStats();
@@ -179,7 +180,7 @@ export default function TeamStatsView() {
                   <td className="px-4 py-3 font-medium">
                       <span className="flex items-center gap-2">
                         <TeamLogo name={g.opponent} url={g.opponent_logo_url} size="sm" />
-                        {g.opponent}
+                        <OpponentLink date={g.game_date}>{g.opponent}</OpponentLink>
                       </span>
                     </td>
                   <td className="px-4 py-3 text-text-dim">

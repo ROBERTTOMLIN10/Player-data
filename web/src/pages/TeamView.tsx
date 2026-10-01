@@ -12,6 +12,7 @@ import { formatDate, formatDateLong, formatMetricValue } from "../lib/format";
 import { GameRosterTable } from "../components/GameRosterTable";
 import { GameSquadChart } from "../components/GameSquadChart";
 import { Segmented } from "../components/SeasonStats";
+import { OpponentLink } from "../components/ncaa";
 
 export default function TeamView() {
   const { data: games, isLoading: gamesLoading } = useGames();
@@ -115,7 +116,7 @@ export default function TeamView() {
                   <div className="mt-1 text-xs text-teal">{h.best!.player_name}</div>
                   <div className="mt-0.5 flex items-center gap-1.5 text-xs text-text-dim">
                     <TeamLogo name={h.best!.opponent ?? "Game"} url={logoFor(h.best!.game_date)} size="sm" />
-                    vs {h.best!.opponent ?? "—"} · {formatDate(h.best!.game_date)}
+                    vs <OpponentLink date={h.best!.game_date}>{h.best!.opponent ?? "—"}</OpponentLink> · {formatDate(h.best!.game_date)}
                   </div>
                 </button>
               ))}
@@ -168,7 +169,7 @@ export default function TeamView() {
                   <td className="px-4 py-3 font-medium">
                     <span className="flex items-center gap-2">
                       <TeamLogo name={g.opponent ?? "Game"} url={logoFor(g.game_date)} size="sm" />
-                      {g.opponent ?? "—"}
+                      <OpponentLink date={g.game_date}>{g.opponent ?? "—"}</OpponentLink>
                     </span>
                   </td>
                   <td className="px-4 py-3">{g.player_count}</td>

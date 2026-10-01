@@ -1,7 +1,7 @@
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useNcaaPlayer } from "../api/client";
 import { Card, SectionHeading } from "../components/Card";
-import { TeamLink } from "../components/ncaa";
+import { gamePath, TeamLink } from "../components/ncaa";
 import { PlayerProfileHeader } from "../components/PlayerProfileHeader";
 import { TeamLogo } from "../components/TeamLogo";
 import { formatDate } from "../lib/format";
@@ -142,11 +142,17 @@ export default function NcaaPlayerView() {
                       <td className="whitespace-nowrap px-3 py-2 text-text-dim">{formatDate(g.game_date)}</td>
                       <td className="whitespace-nowrap px-2 py-2 font-medium">
                         <span className="mr-1 text-xs font-normal text-text-dim">{g.home_away === "home" ? "vs" : "@"}</span>
-                        {g.opponent}
+                        <TeamLink seo={g.opponent_seo}>{g.opponent}</TeamLink>
                         {g.started === 1 && <span className="ml-1.5 text-[10px] uppercase tracking-wide text-teal">GS</span>}
                       </td>
-                      <td className={`px-2 py-2 font-semibold ${g.result?.startsWith("W") ? "text-teal" : g.result?.startsWith("L") ? "text-owl-red-light" : "text-text-dim"}`}>
-                        {g.result ?? "—"}
+                      <td className={`whitespace-nowrap px-2 py-2 font-semibold ${g.result?.startsWith("W") ? "text-teal" : g.result?.startsWith("L") ? "text-owl-red-light" : "text-text-dim"}`}>
+                        {g.game_id ? (
+                          <Link to={gamePath(g.game_id)} className="hover:underline" title="Match stats">
+                            {g.result ?? "—"}
+                          </Link>
+                        ) : (
+                          (g.result ?? "—")
+                        )}
                       </td>
                       <td className="px-2 py-2 text-center">{val(g.minutes)}</td>
                       {keeper ? (

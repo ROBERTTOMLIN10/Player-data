@@ -6,7 +6,7 @@ export function Card({ children, className = "" }: { children: ReactNode; classN
   );
 }
 
-export function SectionHeading({ title, subtitle }: { title: string; subtitle?: string }) {
+export function SectionHeading({ title, subtitle }: { title: string; subtitle?: ReactNode }) {
   return (
     <div className="mb-3">
       <h2 className="font-display text-lg font-semibold text-text sm:text-xl">{title}</h2>
