@@ -473,6 +473,34 @@ export function readablePlay(raw: string): { kind: PlayKind; text: string } | nu
   }
 }
 
+/**
+ * Some games' play-by-play (the sentence-style feed) never lists cards, and
+ * others miss the odd one, though the box score counts them. Any card a player
+ * got that no play mentions is added from the box score, grouped under a
+ * "time not given" heading because NCAA doesn't say when it happened.
+ */
+export function addBoxScoreCards(plays: GamePlay[], teams: GameBoxscore["teams"]): GamePlay[] {
+  const norm = (x: string) => x.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const mentions = (text: string, name: string) => {
+    const t = norm(text);
+    const parts = norm(name).split(/[\s,.'-]+/).filter((w) => w.length > 1);
+    return parts.length > 0 && parts.every((w) => t.includes(w));
+  };
+  const extra: GamePlay[] = [];
+  for (const team of teams) {
+    for (const p of team.players) {
+      for (const [kind, count, label] of [["yellow", p.yellowCards, "Yellow"], ["red", p.redCards, "Red"]] as const) {
+        const shown = plays.filter((x) => x.kind === kind && mentions(x.text, p.name)).length;
+        for (let i = shown; i < (count ?? 0); i++) {
+          extra.push({ period: CARDS_WITHOUT_TIME, clock: "", seo: team.seo, kind, text: `${label} card: ${p.name}` });
+        }
+      }
+    }
+  }
+  return [...plays, ...extra];
+}
+export const CARDS_WITHOUT_TIME = "Cards (time not given)";
+
 /** "01:09:00" (minutes:seconds:hundredths, in the raw feed) → "01:09". */
 const shortClock = (clock: string) => (/^\d+:\d\d:\d\d$/.test(clock) ? clock.split(":").slice(0, 2).join(":") : clock);
 

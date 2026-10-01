@@ -3,7 +3,7 @@ import { getDb } from "../db/connection.js";
 import { headToHead, matchSquadPlayer, nationalStanding, playerLinks, playerPage, squadIndex, teamForm, teamPage } from "../teams/store.js";
 import { ensureDate, POLLS, RANKINGS, STAT_CATEGORIES } from "../jobs/ncaaSync.js";
 import { isIsoDate, teamToday } from "../lib/readiness.js";
-import { fetchGameBoxscore, ncaaLogoUrl, tidyPlays, type GameBoxscore, type HtmlTable } from "../ncaa/client.js";
+import { addBoxScoreCards, fetchGameBoxscore, ncaaLogoUrl, tidyPlays, type GameBoxscore, type HtmlTable } from "../ncaa/client.js";
 import {
   conferenceLabel,
   rankMoves,
@@ -222,7 +222,8 @@ ncaaRouter.get("/game/:id", async (req, res) => {
     clock: box?.clock ?? null,
     teams,
     goals: box?.goals ?? [],
-    plays: tidyPlays(box?.plays ?? []), // (games saved before the raw feed format was translated)
+    // (Re-tidied for games saved before the raw feed format was translated.)
+    plays: box ? addBoxScoreCards(tidyPlays(box.plays ?? []), box.teams) : [],
     venue: homeSeo && awaySeo ? ourVenue(row?.game_date, homeSeo, awaySeo) : null,
     ranks: Object.fromEntries([homeSeo, awaySeo].filter((s): s is string => Boolean(s)).map((s) => [s, nationalStanding(s)])),
     preview:
