@@ -515,3 +515,40 @@ CREATE TABLE IF NOT EXISTS team_boxscores (
   read_at TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (team_seo, boxscore_url)
 );
+
+-- ---------------------------------------------------------------------------
+-- Results from earlier seasons (NCAA.com scoreboards), for head-to-head on game
+-- pages. Filled once per season by server/src/ncaa/history.ts.
+CREATE TABLE IF NOT EXISTS ncaa_past_games (
+  contest_id INTEGER PRIMARY KEY,
+  season INTEGER NOT NULL,
+  game_date TEXT NOT NULL,
+  home_seo TEXT NOT NULL, home_name TEXT, home_score INTEGER,
+  away_seo TEXT NOT NULL, away_name TEXT, away_score INTEGER,
+  final_message TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_ncaa_past_games_teams ON ncaa_past_games(home_seo, away_seo);
+
+-- ---------------------------------------------------------------------------
+-- Favorite (starred) teams and which game alerts each person wants for them.
+-- No row for FAU means the default: starred, with goal and final alerts.
+CREATE TABLE IF NOT EXISTS team_follows (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  team_seo TEXT NOT NULL,
+  starred INTEGER NOT NULL DEFAULT 1,
+  kickoff INTEGER NOT NULL DEFAULT 0,
+  goals INTEGER NOT NULL DEFAULT 1,
+  halftime INTEGER NOT NULL DEFAULT 0,
+  final INTEGER NOT NULL DEFAULT 1,
+  red_cards INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, team_seo)
+);
+
+-- Game alerts already sent (one row per game and event), so none goes out twice.
+CREATE TABLE IF NOT EXISTS game_alerts_sent (
+  contest_id INTEGER NOT NULL,
+  alert_key TEXT NOT NULL, -- kickoff | half | final | goal:<n> | red:<seo>:<n>
+  sent_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (contest_id, alert_key)
+);
