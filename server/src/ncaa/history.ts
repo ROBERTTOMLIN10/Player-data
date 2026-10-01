@@ -26,7 +26,8 @@ export async function backfillPastSeasons(): Promise<void> {
     );
     for (let season = year - SEASONS_BACK; season < year; season++) {
       const key = `past-season-${season}`;
-      if (getCache(key)) continue;
+      const have = (getDb().prepare("SELECT COUNT(*) AS n FROM ncaa_past_games WHERE season = ?").get(season) as { n: number }).n;
+      if (getCache(key) && have > 0) continue;
       let failures = 0;
       let saved = 0;
       for (let d = `${season}-${FIRST_DAY}`; d <= `${season}-${LAST_DAY}`; d = shiftDate(d, 1)) {
