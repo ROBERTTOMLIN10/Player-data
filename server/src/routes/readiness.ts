@@ -12,6 +12,7 @@ import {
   type CheckinRow,
 } from "../lib/readiness.js";
 import { POSITION_SUBQUERY } from "./players.js";
+import { careDay, type CareDayPlayer } from "../lib/care.js";
 
 /** Coach views of player readiness check-ins. */
 export const readinessRouter = Router();
@@ -39,6 +40,9 @@ readinessRouter.get("/squad", (req, res) => {
     )
     .all() as Array<{ player_id: number; name: string; position: string | null; user_id: number | null }>;
 
+  // Care from the athletic trainer: play status, treatment bookings, notes and open issues.
+  const care = new Map(careDay(date).players.map((c) => [c.player_id, c]));
+
   const players = roster
     .filter((p) => p.user_id !== null || byPlayer.has(p.player_id))
     .map((p) => {
@@ -53,6 +57,7 @@ readinessRouter.get("/squad", (req, res) => {
         entry,
         baseline: baseline === null ? null : Math.round(baseline),
         ...flagged,
+        care: careSummary(care.get(p.player_id)),
       };
     });
 
@@ -83,6 +88,16 @@ readinessRouter.get("/squad", (req, res) => {
     regionCounts,
   });
 });
+
+function careSummary(c: CareDayPlayer | undefined) {
+  if (!c) return { availability: null, treatments: [], noteCount: 0, issues: [] };
+  return {
+    availability: c.availability,
+    treatments: c.treatments,
+    noteCount: c.notes.length,
+    issues: c.issues.map((i) => ({ id: i.id, category: i.category, description: i.description, side: i.side, stage: i.stage, days: i.days })),
+  };
+}
 
 // One player's check-in history (for the coach Players page).
 readinessRouter.get("/player/:id", (req, res) => {

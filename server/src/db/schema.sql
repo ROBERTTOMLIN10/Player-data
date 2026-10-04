@@ -267,7 +267,7 @@ CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   email TEXT NOT NULL UNIQUE COLLATE NOCASE,
   password_hash TEXT NOT NULL, -- scrypt: "salt:hash" (hex)
-  role TEXT NOT NULL CHECK (role IN ('coach', 'player')),
+  role TEXT NOT NULL CHECK (role IN ('coach', 'player', 'trainer')), -- trainer = athletic trainer (AT view)
   player_id INTEGER UNIQUE REFERENCES players(id) ON DELETE CASCADE, -- required for role = 'player'
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   last_login_at TEXT
@@ -551,4 +551,92 @@ CREATE TABLE IF NOT EXISTS game_alerts_sent (
   alert_key TEXT NOT NULL, -- kickoff | half | final | goal:<n> | red:<seo>:<n>
   sent_at TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (contest_id, alert_key)
+);
+
+-- ---------------------------------------------------------------------------
+-- Athletic trainer (AT) care: each player's training level for the day, treatment
+-- bookings, coach/AT follow-up notes, and injuries with their return-to-play stage
+-- and daily rehab log. Dates are the team's local date (YYYY-MM-DD).
+
+-- A player's training level, set by the AT. It carries forward: the level on a
+-- day is the most recent one set on or before it (an injured player stays Out
+-- until the AT changes it).
+CREATE TABLE IF NOT EXISTS player_availability (
+  player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  status_date TEXT NOT NULL,
+  -- Play status, as on the AT's injury report: Full, As tolerated, Limited, Rehab only, Out.
+  level TEXT NOT NULL CHECK (level IN ('full', 'as_tolerated', 'limited', 'rehab', 'out')),
+  practice_note TEXT, -- e.g. "Non-contact", "As tolerated w/ tape"
+  bike TEXT, -- conditioning limits, e.g. "Max 80% intensity"
+  jogging TEXT,
+  running TEXT,
+  set_by TEXT, -- who set it (email)
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (player_id, status_date)
+);
+
+-- "Come in at 2:00 PM": a treatment booking the player sees (and gets a push for).
+CREATE TABLE IF NOT EXISTS treatments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  treat_date TEXT NOT NULL,
+  treat_time TEXT, -- HH:MM, team local
+  instructions TEXT,
+  status TEXT NOT NULL DEFAULT 'booked' CHECK (status IN ('booked', 'attended', 'missed')),
+  attended_marked_by TEXT, -- 'player' or the AT's email
+  created_by TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_treatments_day ON treatments(treat_date, player_id);
+
+-- Short follow-up notes between coaches and the AT about a player's day.
+CREATE TABLE IF NOT EXISTS care_notes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  note_date TEXT NOT NULL,
+  author_email TEXT,
+  author_role TEXT NOT NULL,
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_care_notes_day ON care_notes(note_date, player_id);
+
+-- An injury and where the player is on the way back (return-to-play stage).
+CREATE TABLE IF NOT EXISTS injuries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  -- As on the AT's report: an injury, a general medical issue (e.g. flu) or a physical-exam (PPE) follow-up.
+  category TEXT NOT NULL DEFAULT 'injury' CHECK (category IN ('injury', 'gen_med', 'ppe')),
+  description TEXT NOT NULL, -- body part/injury, e.g. "Hamstring strain", "Flu", "Heart"
+  region TEXT, -- body map region key (e.g. "l_hamstring"), for the pain trend
+  side TEXT CHECK (side IN ('left', 'right', 'both') OR side IS NULL),
+  injury_date TEXT, -- NULL for issues without one (some PPE / gen med)
+  expected_return TEXT, -- YYYY-MM-DD, the AT's estimate
+  stage TEXT NOT NULL DEFAULT 'rehab' CHECK (stage IN ('rehab', 'running', 'modified', 'full', 'match_ready')),
+  closed_at TEXT, -- set when resolved (back fully / recovered)
+  created_by TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS injury_stage_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  injury_id INTEGER NOT NULL REFERENCES injuries(id) ON DELETE CASCADE,
+  stage TEXT NOT NULL,
+  stage_date TEXT NOT NULL,
+  set_by TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- What the player did for the issue each day, and how it went ("Additional notes" on the AT's report).
+CREATE TABLE IF NOT EXISTS rehab_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  injury_id INTEGER NOT NULL REFERENCES injuries(id) ON DELETE CASCADE,
+  log_date TEXT NOT NULL,
+  activities TEXT NOT NULL, -- treatment and rehab done
+  minutes INTEGER,
+  notes TEXT,
+  created_by TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

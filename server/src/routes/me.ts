@@ -217,3 +217,28 @@ meRouter.post("/push/unsubscribe", (req, res) => {
   removeSubscription(req.user!.userId!, endpoint);
   res.json({ ok: true });
 });
+
+// --- Treatment bookings from the athletic trainer ------------------------------
+
+// Today's and upcoming bookings ("Come in at 2:00 PM").
+meRouter.get("/care", (req, res) => {
+  const today = teamToday();
+  const treatments = getDb()
+    .prepare("SELECT id, treat_date, treat_time, instructions, status FROM treatments WHERE player_id = ? AND treat_date >= ? ORDER BY treat_date, treat_time LIMIT 5")
+    .all(req.user!.playerId!, today);
+  res.json({ today, treatments });
+});
+
+// "I came in": the player confirms they attended (the AT can also mark it).
+meRouter.post("/care/treatments/:id/attended", (req, res) => {
+  const result = getDb()
+    .prepare(
+      `UPDATE treatments SET status = 'attended', attended_marked_by = 'player', updated_at = datetime('now')
+       WHERE id = ? AND player_id = ? AND status <> 'attended'`,
+    )
+    .run(Number(req.params.id), req.user!.playerId!);
+  if (!result.changes && !getDb().prepare("SELECT 1 FROM treatments WHERE id = ? AND player_id = ?").get(Number(req.params.id), req.user!.playerId!)) {
+    return res.status(404).json({ error: "Booking not found." });
+  }
+  res.json({ ok: true });
+});

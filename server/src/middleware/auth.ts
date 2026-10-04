@@ -47,6 +47,28 @@ export function requireCoach(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+/** Coaches and athletic trainers (the AT view): readiness, RPE trends and player care. */
+export function requireStaff(req: Request, res: Response, next: NextFunction) {
+  if (!req.user) {
+    res.status(401).json({ error: "Sign in required." });
+    return;
+  }
+  if (req.user.role !== "coach" && req.user.role !== "trainer") {
+    res.status(403).json({ error: "Coaches and athletic trainers only." });
+    return;
+  }
+  next();
+}
+
+/** Staff may read; only coaches may change anything (e.g. RPE: trainers see the trends). */
+export function staffReadCoachWrite(req: Request, res: Response, next: NextFunction) {
+  if (req.method !== "GET" && req.user?.role !== "coach") {
+    res.status(403).json({ error: "Coaches only." });
+    return;
+  }
+  next();
+}
+
 export function requirePlayer(req: Request, res: Response, next: NextFunction) {
   if (!req.user) {
     res.status(401).json({ error: "Sign in required." });
