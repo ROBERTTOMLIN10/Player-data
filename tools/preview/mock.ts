@@ -2,7 +2,8 @@
 // data captured off a test server, and keeps check-ins/settings in memory.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import raw from "./data.json";
-import { handlePreviewUpload } from "./uploads";
+import { handlePreviewUpload, listUploads } from "./uploads";
+import { applyPendingUploads, applyUpload, rowsFromWorkbook } from "./liveUploads";
 
 const data: Record<string, any> = raw as any;
 export type DemoRole = "player" | "coach" | null;
@@ -342,10 +343,19 @@ async function ncaaTeamRoute(path: string): Promise<Response | null> {
   return json({ ...page, team: file.team?.team, profile });
 }
 
+// GPS files uploaded in the preview but not built in yet show straight away (see liveUploads.ts).
+// The GPS pages wait for them briefly on load, never more than a few seconds.
+const uploadsReady = Promise.race([
+  applyPendingUploads(data, listUploads).catch(() => undefined),
+  new Promise((r) => setTimeout(r, 4000)),
+]);
+const GPS_PATH = /^\/api\/(games|team|players|me\/profile|me\/gps|me\/fitness)/;
+
 window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const str = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
   if (!str.startsWith("/api/")) return realFetch(input, init);
   const url = new URL(str, "http://preview.local");
+  if (GPS_PATH.test(url.pathname)) await uploadsReady;
   const method = (init?.method ?? "GET").toUpperCase();
   const ncaa = method === "GET" ? (await ncaaTeamRoute(url.pathname)) ?? (await ncaaGameRoute(url.pathname)) : null;
   if (ncaa) return ncaa;
@@ -355,6 +365,14 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const existing = (data["/api/games"] ?? []).map((g: any) => g.source_file);
     const replace = init.body.get("replace") === "true";
     const { status, body } = await handlePreviewUpload(file, existing, data["/api/schedule"] ?? [], replace);
+    // Saved: put it on the GPS pages now (the Data page refreshes every page's data after an upload).
+    if (status === 200 && body.status === "imported") {
+      try {
+        applyUpload(data, { filename: file.name, gameDate: (body as any).gameDate, opponent: (body as any).opponent, replace }, rowsFromWorkbook(new Uint8Array(await file.arrayBuffer())));
+      } catch {
+        // Still saved; it shows after the next build.
+      }
+    }
     return json(body, status);
   }
   const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;

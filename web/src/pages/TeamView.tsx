@@ -27,7 +27,13 @@ export default function TeamView() {
   const [searchParams] = useSearchParams();
   const [selectedGameId, setSelectedGameId] = useState<number | null>(Number(searchParams.get("game")) || null);
 
-  const { data: gameDetail } = useGameDetail(selectedGameId);
+  // Until a game is picked (trend point or Games row), show the most recent one so the breakdown is always there.
+  const latestGameId = useMemo(
+    () => (games?.length ? [...games].sort((a, b) => b.game_date.localeCompare(a.game_date))[0].id : null),
+    [games],
+  );
+  const activeGameId = selectedGameId ?? latestGameId;
+  const { data: gameDetail } = useGameDetail(activeGameId);
   const [gameView, setGameView] = useState<"table" | "chart">("chart");
   const [seasonView, setSeasonView] = useState<"avg" | "high" | "low">("avg");
   const openedFromLink = searchParams.has("game");
@@ -127,7 +133,7 @@ export default function TeamView() {
       <section>
         <SectionHeading
           title={`${selectedMetric?.label ?? ""} Trend`}
-          subtitle="Click a point to see that game's full roster breakdown"
+          subtitle="Click a point to see that game's full roster breakdown below"
         />
         <Card>
           <TrendChart
@@ -143,48 +149,7 @@ export default function TeamView() {
         </Card>
       </section>
 
-      <section>
-        <SectionHeading title="Games" subtitle="Click a row to view that game's roster" />
-        <Card className="overflow-x-auto p-0">
-          <table className="w-full min-w-[560px] text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-dim">
-                <th className="px-4 py-3 font-medium">Date</th>
-                <th className="px-4 py-3 font-medium">Opponent</th>
-                <th className="px-4 py-3 font-medium">Players</th>
-                <th className="px-4 py-3 font-medium">Avg Load</th>
-                <th className="px-4 py-3 font-medium">Avg Distance</th>
-              </tr>
-            </thead>
-            <tbody>
-              {games.map((g) => (
-                <tr
-                  key={g.id}
-                  onClick={() => setSelectedGameId(g.id)}
-                  className={`cursor-pointer border-b border-border/60 transition-colors last:border-0 hover:bg-surface-raised ${
-                    selectedGameId === g.id ? "bg-owl-red/10" : ""
-                  }`}
-                >
-                  <td className="px-4 py-3 text-text-dim">{formatDate(g.game_date)}</td>
-                  <td className="px-4 py-3 font-medium">
-                    <span className="flex items-center gap-2">
-                      <TeamLogo name={g.opponent ?? "Game"} url={logoFor(g.game_date)} size="sm" />
-                      <OpponentLink date={g.game_date}>{g.opponent ?? "—"}</OpponentLink>
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">{g.player_count}</td>
-                  <td className="px-4 py-3">{formatMetricValue(g.avg_load as number, { key: "load", label: "Load", unit: "", decimals: 0 })}</td>
-                  <td className="px-4 py-3">
-                    {formatMetricValue(g.avg_distance_mi as number, { key: "distance_mi", label: "Distance", unit: "mi", decimals: 2 })}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      </section>
-
-      {selectedGameId && gameDetail && (
+      {activeGameId && gameDetail && (
         <section id="game-detail" className="scroll-mt-20">
           <div className="mb-3 flex flex-wrap items-center gap-3">
             <TeamLogo name={gameDetail.game.opponent ?? "Game"} url={logoFor(gameDetail.game.game_date)} size="md" />
@@ -224,6 +189,51 @@ export default function TeamView() {
           )}
         </section>
       )}
+
+      <section>
+        <SectionHeading title="Games" subtitle="Click a row to view that game's roster above" />
+        <Card className="overflow-x-auto p-0">
+          <table className="w-full min-w-[560px] text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-dim">
+                <th className="px-4 py-3 font-medium">Date</th>
+                <th className="px-4 py-3 font-medium">Opponent</th>
+                <th className="px-4 py-3 font-medium">Players</th>
+                <th className="px-4 py-3 font-medium">Avg Load</th>
+                <th className="px-4 py-3 font-medium">Avg Distance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {games.map((g) => (
+                <tr
+                  key={g.id}
+                  onClick={() => {
+                    setSelectedGameId(g.id);
+                    // The game's breakdown sits above this list: bring it into view.
+                    setTimeout(() => document.getElementById("game-detail")?.scrollIntoView({ behavior: "smooth", block: "start" }), 300);
+                  }}
+                  className={`cursor-pointer border-b border-border/60 transition-colors last:border-0 hover:bg-surface-raised ${
+                    activeGameId === g.id ? "bg-owl-red/10" : ""
+                  }`}
+                >
+                  <td className="px-4 py-3 text-text-dim">{formatDate(g.game_date)}</td>
+                  <td className="px-4 py-3 font-medium">
+                    <span className="flex items-center gap-2">
+                      <TeamLogo name={g.opponent ?? "Game"} url={logoFor(g.game_date)} size="sm" />
+                      <OpponentLink date={g.game_date}>{g.opponent ?? "—"}</OpponentLink>
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">{g.player_count}</td>
+                  <td className="px-4 py-3">{formatMetricValue(g.avg_load as number, { key: "load", label: "Load", unit: "", decimals: 0 })}</td>
+                  <td className="px-4 py-3">
+                    {formatMetricValue(g.avg_distance_mi as number, { key: "distance_mi", label: "Distance", unit: "mi", decimals: 2 })}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      </section>
 
       {fitness && <SquadFitnessTable data={fitness} />}
 

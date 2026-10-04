@@ -11,7 +11,7 @@ export function DemoBar() {
   const [, force] = useState(0);
   const [pending, setPending] = useState(0);
 
-  // GPS files uploaded in the preview that the next preview update will add.
+  // GPS files uploaded in the preview: already on the GPS pages, built in properly at the next hourly update.
   useEffect(() => {
     const refresh = () => void listUploads().then((u) => setPending(u.filter((x) => x.status === "pending").length));
     refresh();
@@ -50,7 +50,7 @@ export function DemoBar() {
       </div>
       {pending > 0 && (
         <span className="rounded-md bg-black/25 px-2 py-1 font-medium">
-          {pending} GPS file{pending === 1 ? "" : "s"} uploaded · added at the next preview update
+          {pending} new GPS file{pending === 1 ? "" : "s"} showing · fully added within the hour
         </span>
       )}
     </div>

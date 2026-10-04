@@ -1,8 +1,9 @@
 // Preview-only GPS uploads. The preview has no server, so an uploaded Titan
 // export is checked in the browser, then kept in the artifact's own storage:
 // the file itself (base64 text) as an asset, plus a record in the artifact's
-// db under gpsUploads/. The next preview update pulls pending files into
-// data/titan, imports them for real, and marks them imported (see
+// db under gpsUploads/. The game shows on the GPS pages straight away
+// (liveUploads.ts); the next preview build (hourly) pulls pending files into
+// data/titan, imports them for real, opens a PR and marks them imported (see
 // .claude/skills/update-preview/SKILL.md).
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as XLSX from "xlsx";
@@ -154,7 +155,7 @@ export async function handlePreviewUpload(
         gameDate: record.gameDate,
         opponent: record.opponent,
         playerCount: players,
-        message: `${replace ? "Replacement saved" : "Saved"}: ${players} players vs ${record.opponent} (${gameDate}). It ${replace ? "replaces the old file" : "joins the GPS pages"} at the next preview update ("update the preview").`,
+        message: `${replace ? "Replacement saved" : "Saved"}: ${players} players vs ${record.opponent} (${gameDate}). It's on the GPS pages now; season highs and fitness comparisons update within the hour.`,
         warnings,
       },
     };
