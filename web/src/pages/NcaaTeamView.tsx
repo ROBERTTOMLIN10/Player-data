@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useNcaaTeam } from "../api/client";
 import { Card, SectionHeading } from "../components/Card";
@@ -11,16 +12,49 @@ import type { NcaaSquadPlayer } from "../types";
 const dash = (v: number | null | undefined, digits = 0) => (v === null || v === undefined ? "—" : digits ? v.toFixed(digits) : String(v));
 const height = (p: NcaaSquadPlayer) => (p.height_feet ? `${p.height_feet}'${p.height_inches ?? 0}"` : "");
 
+type SortKey = "gp" | "gs" | "minutes" | "goals" | "assists" | "points" | "shots" | "shots_on_goal" | "yellow_cards" | "red_cards";
+type Sort = { key: SortKey; dir: "desc" | "asc" } | null;
+
+/** The squad table's stat columns: header, what it means, and the field it sorts by. */
+const STAT_COLUMNS: { key: SortKey; label: string; title: string }[] = [
+  { key: "gp", label: "GP", title: "Games played" },
+  { key: "gs", label: "GS", title: "Games started" },
+  { key: "minutes", label: "Min", title: "Minutes played" },
+  { key: "goals", label: "G", title: "Goals" },
+  { key: "assists", label: "A", title: "Assists" },
+  { key: "points", label: "Pts", title: "Points (2 per goal, 1 per assist)" },
+  { key: "shots", label: "Sh", title: "Shots" },
+  { key: "shots_on_goal", label: "SOG", title: "Shots on goal" },
+  { key: "yellow_cards", label: "YC", title: "Yellow cards" },
+  { key: "red_cards", label: "RC", title: "Red cards" },
+];
+
+/** Highest first, then lowest first, then back to shirt numbers. Players with no figure always go last. */
+function sortSquad(squad: NcaaSquadPlayer[], sort: Sort): NcaaSquadPlayer[] {
+  if (!sort) return squad;
+  return [...squad].sort((a, b) => {
+    const x = a[sort.key];
+    const y = b[sort.key];
+    if (x === null || x === undefined) return y === null || y === undefined ? 0 : 1;
+    if (y === null || y === undefined) return -1;
+    return sort.dir === "desc" ? y - x : x - y;
+  });
+}
+
+// The pinned name column: an edge line so the columns sliding under it are cut off cleanly.
+const PINNED = "sticky left-0 z-10 bg-surface shadow-[inset_-1px_0_0_var(--color-border)]";
+
 /** A D1 team's page: header, the whole squad (photos, numbers, stats) and the season's games. */
 export default function NcaaTeamView() {
   const { seo } = useParams();
   const navigate = useNavigate();
   const { data, isLoading, error } = useNcaaTeam(seo);
+  const [sort, setSort] = useState<Sort>(null);
+  const field = useMemo(() => sortSquad(data?.squad ?? [], sort), [data, sort]); // everyone, keepers included
   if (isLoading) return <div className="py-20 text-center text-text-dim">Loading team…</div>;
   if (error || !data) return <Card className="text-sm text-text-dim">Team not found.</Card>;
 
   const { team, squad, games } = data;
-  const field = squad; // everyone, keepers included
   const keepers = squad.filter((p) => p.is_goalkeeper || /^g/i.test(p.position_short ?? ""));
   const played = games.filter((g) => g.result);
   const upcoming = games.filter((g) => !g.result);
@@ -65,26 +99,19 @@ export default function NcaaTeamView() {
             <table className="w-full min-w-[760px] text-sm tabular-nums">
               <thead>
                 <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-text-dim">
-                  <th className="sticky left-0 z-10 bg-surface px-3 py-2.5 font-medium">Player</th>
-                  <th className="px-2 py-2.5 font-medium">Pos</th>
-                  <th className="px-2 py-2.5 font-medium">Yr</th>
-                  <th className="px-2 py-2.5 font-medium">Ht</th>
-                  <th className="px-2 py-2.5 text-center font-medium">GP</th>
-                  <th className="px-2 py-2.5 text-center font-medium">GS</th>
-                  <th className="px-2 py-2.5 text-center font-medium">Min</th>
-                  <th className="px-2 py-2.5 text-center font-medium">G</th>
-                  <th className="px-2 py-2.5 text-center font-medium">A</th>
-                  <th className="px-2 py-2.5 text-center font-medium">Pts</th>
-                  <th className="px-2 py-2.5 text-center font-medium">Sh</th>
-                  <th className="px-2 py-2.5 text-center font-medium">SOG</th>
-                  <th className="px-2 py-2.5 text-center font-medium">YC</th>
-                  <th className="px-2 py-2.5 text-center font-medium">RC</th>
+                  <th className={`${PINNED} px-3 py-2.5 font-medium`}>Player</th>
+                  <th className="px-2 py-2.5 font-medium" title="Position">Pos</th>
+                  <th className="px-2 py-2.5 font-medium" title="Year">Yr</th>
+                  <th className="px-2 py-2.5 font-medium" title="Height">Ht</th>
+                  {STAT_COLUMNS.map((c) => (
+                    <SortHeader key={c.key} column={c} sort={sort} onSort={setSort} />
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {field.map((p) => (
                   <tr key={p.key} className="group border-b border-border/60 last:border-0 hover:bg-surface-raised">
-                    <td className="sticky left-0 z-10 bg-surface px-3 py-2 group-hover:bg-surface-raised">
+                    <td className={`${PINNED} px-3 py-2 group-hover:bg-surface-raised`}>
                       <Link to={playerPath(team.seo, p.key)} className="flex items-center gap-2 font-medium hover:text-owl-red-light">
                         <PlayerPhoto name={p.name} url={p.photo_url} size={30} />
                         <span className="whitespace-nowrap">
@@ -110,6 +137,10 @@ export default function NcaaTeamView() {
                 ))}
               </tbody>
             </table>
+            <p className="border-t border-border px-3 py-2.5 text-[11px] leading-relaxed text-text-dim">
+              Tap a stat to sort (highest first, tap again for lowest, again to reset). Pos position · Yr year · Ht height ·{" "}
+              {STAT_COLUMNS.map((c) => `${c.label} ${c.title.toLowerCase().replace(/ \(.*\)$/, "")}`).join(" · ")}
+            </p>
           </Card>
         )}
       </section>
@@ -210,5 +241,25 @@ function GameList({ title, games, ourTeam }: { title: string; games: import("../
         )}
       </Card>
     </div>
+  );
+}
+
+/** A stat column header that sorts the squad: highest first, then lowest first, then off. */
+function SortHeader({ column, sort, onSort }: { column: (typeof STAT_COLUMNS)[number]; sort: Sort; onSort: (s: Sort) => void }) {
+  const active = sort?.key === column.key;
+  const next: Sort = !active ? { key: column.key, dir: "desc" } : sort!.dir === "desc" ? { key: column.key, dir: "asc" } : null;
+  return (
+    <th className="px-1 py-1.5 text-center font-medium" aria-sort={active ? (sort!.dir === "desc" ? "descending" : "ascending") : "none"}>
+      <button
+        onClick={() => onSort(next)}
+        title={`${column.title}: sort ${!active ? "highest first" : sort!.dir === "desc" ? "lowest first" : "by shirt number"}`}
+        className={`inline-flex items-center gap-0.5 rounded px-1 py-1 uppercase tracking-wide hover:text-text ${active ? "text-owl-red-light" : ""}`}
+      >
+        {column.label}
+        <span className="w-2 text-[9px]" aria-hidden>
+          {active ? (sort!.dir === "desc" ? "▼" : "▲") : ""}
+        </span>
+      </button>
+    </th>
   );
 }
