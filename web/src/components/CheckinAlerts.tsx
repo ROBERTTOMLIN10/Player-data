@@ -46,7 +46,7 @@ export function CheckinAlerts() {
         {anyOn ? "🔔 Check-in alerts on" : "🔕 Check-in alerts"}
       </button>
       {open && (
-        <div className="absolute right-0 z-30 mt-2 w-[min(20rem,calc(100vw-2rem))] rounded-xl border border-border bg-surface p-4 shadow-xl">
+        <div className="fixed left-4 right-4 z-30 mt-2 rounded-xl sm:absolute sm:left-auto sm:right-0 sm:w-80 border border-border bg-surface p-4 shadow-xl">
           <div className="font-display text-sm font-semibold">Check-in alerts</div>
           <p className="mt-1 text-xs text-text-dim">
             Get a phone notification when a player&rsquo;s morning check-in flags something. Tap it to open their care panel and book them in.
