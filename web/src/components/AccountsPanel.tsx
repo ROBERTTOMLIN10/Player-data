@@ -6,6 +6,7 @@ import { Card, SectionHeading } from "./Card";
 type Editing =
   | { kind: "create-player"; playerId: number; name: string }
   | { kind: "create-coach" }
+  | { kind: "create-trainer" }
   | { kind: "reset"; userId: number; label: string; email: string };
 
 /** Easy-to-read temporary password (no look-alike characters). */
@@ -20,7 +21,7 @@ function formatLastLogin(iso: string | null) {
   return `Last in ${new Date(`${iso.replace(" ", "T")}Z`).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
 }
 
-/** Coach-only: create/reset/remove player and coach logins (Data page). */
+/** Coach-only: create/reset/remove player, coach and athletic trainer logins (Data page). */
 export function AccountsPanel() {
   const queryClient = useQueryClient();
   const { data, isLoading } = useAccounts();
@@ -170,6 +171,39 @@ export function AccountsPanel() {
             )}
           </ul>
         </Card>
+
+        <Card className="flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-display font-semibold">Athletic trainers</h3>
+              <p className="text-xs text-text-dim">They see Readiness (with the injury report and care panels), Injuries and RPE trends.</p>
+            </div>
+            <button onClick={() => setEditing({ kind: "create-trainer" })} className="shrink-0 text-xs text-owl-red-light hover:underline">
+              + Add AT login
+            </button>
+          </div>
+          <ul className="flex flex-col gap-2 text-sm">
+            {data?.trainers?.map((c) => (
+              <li key={c.user_id} className="flex items-center justify-between gap-2">
+                <span>
+                  {c.email} <span className="text-xs text-text-dim">· {formatLastLogin(c.last_login_at)}</span>
+                </span>
+                <span className="whitespace-nowrap">
+                  <button
+                    onClick={() => setEditing({ kind: "reset", userId: c.user_id, label: c.email, email: c.email })}
+                    className="text-xs text-text-dim hover:text-text"
+                  >
+                    Reset password
+                  </button>
+                  <button onClick={() => handleRemove(c.user_id, c.email)} className="ml-3 text-xs text-owl-red-light hover:underline">
+                    Remove
+                  </button>
+                </span>
+              </li>
+            ))}
+            {!data?.trainers?.length && <li className="text-text-dim">No AT login yet.</li>}
+          </ul>
+        </Card>
       </div>
     </section>
   );
@@ -194,7 +228,9 @@ function AccountForm({
       ? `Create login for ${editing.name}`
       : editing.kind === "create-coach"
         ? "Add coach login"
-        : `Reset password for ${editing.label}`;
+        : editing.kind === "create-trainer"
+          ? "Add athletic trainer login"
+          : `Reset password for ${editing.label}`;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -204,8 +240,8 @@ function AccountForm({
       if (editing.kind === "create-player") {
         await createAccount({ role: "player", email, password, playerId: editing.playerId });
         onDone({ label: editing.name, email: email.trim().toLowerCase(), password });
-      } else if (editing.kind === "create-coach") {
-        await createAccount({ role: "coach", email, password });
+      } else if (editing.kind === "create-coach" || editing.kind === "create-trainer") {
+        await createAccount({ role: editing.kind === "create-coach" ? "coach" : "trainer", email, password });
         onDone({ label: email, email: email.trim().toLowerCase(), password });
       } else {
         await updateAccount(editing.userId, { password });

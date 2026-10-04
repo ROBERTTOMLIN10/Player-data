@@ -1,5 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import type {
+  CareDay,
+  IssueDetail,
+  Issue,
+  MyCare,
+  PlayerCare,
   AlertSettings,
   FollowsResponse,
   CompareResult,
@@ -222,7 +227,7 @@ export function useAccounts() {
   return useQuery({ queryKey: ["accounts"], queryFn: () => fetchJson<AccountsList>("/api/admin/accounts") });
 }
 
-export function createAccount(input: { role: "player" | "coach"; email: string; password: string; playerId?: number }) {
+export function createAccount(input: { role: "player" | "coach" | "trainer"; email: string; password: string; playerId?: number }) {
   return sendJson<{ user_id: number }>("/api/admin/accounts", "POST", input);
 }
 
@@ -467,3 +472,58 @@ export function useFollows() {
 export function saveFollow(seo: string, change: { starred?: boolean; alerts?: Partial<AlertSettings> }) {
   return sendJson<{ ok: true }>(`/api/follows/${encodeURIComponent(seo)}`, "PUT", change);
 }
+
+// --- Player care (AT view) ------------------------------------------------------
+
+export function useCareDay(date: string | null) {
+  return useQuery({
+    queryKey: ["careDay", date],
+    queryFn: () => fetchJson<CareDay>(`/api/care/day${date ? `?date=${date}` : ""}`),
+    refetchInterval: 60_000,
+  });
+}
+
+export function usePlayerCare(playerId: number | null, date: string | null) {
+  return useQuery({
+    queryKey: ["playerCare", playerId, date],
+    queryFn: () => fetchJson<PlayerCare>(`/api/care/player/${playerId}${date ? `?date=${date}` : ""}`),
+    enabled: playerId !== null,
+  });
+}
+
+export function useIssues(includeClosed: boolean) {
+  return useQuery({
+    queryKey: ["issues", includeClosed],
+    queryFn: () => fetchJson<{ today: string; issues: Issue[] }>(`/api/care/issues${includeClosed ? "?include=closed" : ""}`),
+  });
+}
+
+export function useIssue(id: number | null) {
+  return useQuery({
+    queryKey: ["issue", id],
+    queryFn: () => fetchJson<IssueDetail>(`/api/care/issues/${id}`),
+    enabled: id !== null,
+  });
+}
+
+/** Care writes: every one refreshes the board, the report, the player's panel and the issue lists. */
+export const careApi = {
+  setAvailability: (playerId: number, body: Record<string, unknown>) => sendJson(`/api/care/availability/${playerId}`, "PUT", body),
+  bookTreatment: (body: Record<string, unknown>) => sendJson(`/api/care/treatments`, "POST", body),
+  updateTreatment: (id: number, body: Record<string, unknown>) => sendJson(`/api/care/treatments/${id}`, "PATCH", body),
+  deleteTreatment: (id: number) => sendJson(`/api/care/treatments/${id}`, "DELETE"),
+  addNote: (body: Record<string, unknown>) => sendJson(`/api/care/notes`, "POST", body),
+  deleteNote: (id: number) => sendJson(`/api/care/notes/${id}`, "DELETE"),
+  addIssue: (body: Record<string, unknown>) => sendJson<{ id: number }>(`/api/care/issues`, "POST", body),
+  updateIssue: (id: number, body: Record<string, unknown>) => sendJson(`/api/care/issues/${id}`, "PATCH", body),
+  deleteIssue: (id: number) => sendJson(`/api/care/issues/${id}`, "DELETE"),
+  addLog: (issueId: number, body: Record<string, unknown>) => sendJson(`/api/care/issues/${issueId}/logs`, "POST", body),
+  deleteLog: (issueId: number, logId: number) => sendJson(`/api/care/issues/${issueId}/logs/${logId}`, "DELETE"),
+};
+export const CARE_QUERY_KEYS = ["careDay", "playerCare", "issues", "issue", "squadReadiness"];
+
+export function useMyCare() {
+  return useQuery({ queryKey: ["myCare"], queryFn: () => fetchJson<MyCare>("/api/me/care"), refetchInterval: 5 * 60_000 });
+}
+
+export const markTreatmentAttended = (id: number) => sendJson(`/api/me/care/treatments/${id}/attended`, "POST");

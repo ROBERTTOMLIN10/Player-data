@@ -269,7 +269,7 @@ export interface CompareResult {
   teamAverages: Record<string, number>;
 }
 
-export type Role = "coach" | "player";
+export type Role = "coach" | "player" | "trainer"; // trainer = athletic trainer (AT view)
 
 export interface Me {
   role: Role;
@@ -341,6 +341,7 @@ export interface SquadReadinessPlayer {
   baseline: number | null;
   status: ReadinessStatus;
   flags: string[];
+  care: CareSummary;
 }
 
 export type RegionCounts = Record<string, { light: number; moderate: number; severe: number }>;
@@ -393,6 +394,7 @@ export interface AccountsList {
     last_login_at: string | null;
   }>;
   coaches: Array<{ user_id: number; email: string; last_login_at: string | null }>;
+  trainers?: Array<{ user_id: number; email: string; last_login_at: string | null }>;
   envCoach: string | null;
 }
 
@@ -836,4 +838,125 @@ export interface FollowsResponse {
   signedIn: boolean; // false for the local no-login mode (nowhere to save)
   publicKey: string;
   follows: FollowedTeam[];
+}
+
+// ---- Player care (AT view) ----------------------------------------------------
+
+export type PlayLevel = "full" | "as_tolerated" | "limited" | "rehab" | "out";
+export type RtpStage = "rehab" | "running" | "modified" | "full" | "match_ready";
+export type IssueCategory = "injury" | "gen_med" | "ppe";
+export type Side = "left" | "right" | "both";
+
+export interface Availability {
+  player_id: number;
+  status_date: string; // when it was set (it carries forward)
+  level: PlayLevel;
+  practice_note: string | null;
+  bike: string | null;
+  jogging: string | null;
+  running: string | null;
+  set_by: string | null;
+  updated_at: string;
+}
+
+export interface Treatment {
+  id: number;
+  player_id: number;
+  treat_date: string;
+  treat_time: string | null; // HH:MM
+  instructions: string | null;
+  status: "booked" | "attended" | "missed";
+  attended_marked_by: string | null;
+  created_by?: string | null;
+  updated_at?: string;
+}
+
+export interface CareNote {
+  id: number;
+  player_id: number;
+  note_date: string;
+  author_email: string | null;
+  author_role: Role;
+  body: string;
+  created_at: string;
+}
+
+export interface Issue {
+  id: number;
+  player_id: number;
+  category: IssueCategory;
+  description: string;
+  region: string | null;
+  side: Side | null;
+  injury_date: string | null;
+  expected_return: string | null;
+  stage: RtpStage;
+  closed_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  player_name?: string;
+  last_log_date?: string | null;
+}
+
+export interface RehabLog {
+  id: number;
+  injury_id: number;
+  log_date: string;
+  activities: string;
+  minutes: number | null;
+  notes: string | null;
+  created_by: string | null;
+}
+
+export interface OpenIssue extends Issue {
+  days: number | null;
+  latestLog: { log_date: string; activities: string; notes: string | null } | null;
+}
+
+export interface CareSummary {
+  availability: Availability | null;
+  treatments: Treatment[];
+  noteCount: number;
+  issues: { id: number; category: IssueCategory; description: string; side: Side | null; stage: RtpStage; days: number | null }[];
+}
+
+export interface CareDayPlayer {
+  player_id: number;
+  name: string;
+  position: string | null;
+  availability: Availability | null;
+  treatments: Treatment[];
+  notes: CareNote[];
+  issues: OpenIssue[];
+}
+
+export interface CareDay {
+  today: string;
+  date: string;
+  players: CareDayPlayer[];
+}
+
+export interface PlayerCare {
+  date: string;
+  day: CareDayPlayer | null;
+  history: Availability[];
+  pastIssues: Issue[];
+  recentNotes: CareNote[];
+  treatments: Treatment[];
+}
+
+export interface IssueDetail {
+  today: string;
+  issue: Issue;
+  player: { id: number; name: string };
+  stages: { id: number; stage: RtpStage; stage_date: string; set_by: string | null }[];
+  logs: RehabLog[];
+  painTrend: { date: string; readiness: number; muscle_soreness: number; pain: number | null }[];
+  availability: Availability[];
+}
+
+export interface MyCare {
+  today: string;
+  treatments: Pick<Treatment, "id" | "treat_date" | "treat_time" | "instructions" | "status">[];
 }

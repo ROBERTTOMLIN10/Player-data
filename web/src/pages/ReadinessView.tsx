@@ -9,6 +9,9 @@ import { positionGroup } from "../lib/positions";
 import { STATUS_STYLE, WELLNESS_QUESTIONS, wellnessTextClass } from "../lib/readiness";
 import type { ReadinessStatus, Severity, SquadReadinessPlayer } from "../types";
 import { OpponentLink } from "../components/ncaa";
+import { CareChips, CarePanel } from "../components/CarePanel";
+import { InjuryReport } from "../components/InjuryReport";
+import { Segmented } from "../components/SeasonStats";
 
 type Filter = "all" | "flagged" | "missing";
 
@@ -20,13 +23,28 @@ function shiftIso(iso: string, days: number) {
   return d.toISOString().slice(0, 10);
 }
 
+type View = "board" | "report";
+
+/**
+ * Readiness for coaches and the athletic trainer: the morning board (with each
+ * player's care: play status, treatment, notes) and the live injury report.
+ * Tapping a player opens their care panel.
+ */
 export default function ReadinessView() {
   const [params, setParams] = useSearchParams();
   const dateParam = params.get("date");
+  const view: View = params.get("view") === "report" ? "report" : "board";
   const { data, isLoading } = useSquadReadiness(dateParam);
   const [filter, setFilter] = useState<Filter>("all");
+  const [careFor, setCareFor] = useState<{ id: number; name: string } | null>(null);
 
-  const setDate = (date: string | null) => setParams(date ? { date } : {}, { replace: true });
+  const setParam = (key: string, value: string | null) => {
+    const next = Object.fromEntries(params.entries());
+    if (value === null) delete next[key];
+    else next[key] = value;
+    setParams(next, { replace: true });
+  };
+  const setDate = (date: string | null) => setParam("date", date);
 
   const players = useMemo(() => {
     const list = [...(data?.players ?? [])].sort(
@@ -58,8 +76,42 @@ export default function ReadinessView() {
     .sort((a, b) => b.total - a.total)
     .slice(0, 6);
 
+  const carePanel = careFor && (
+    <CarePanel
+      playerId={careFor.id}
+      name={careFor.name}
+      date={data.date}
+      entry={data.players.find((p) => p.player_id === careFor.id)?.entry ?? null}
+      onClose={() => setCareFor(null)}
+    />
+  );
+  const toggle = (
+    <div className="flex justify-center">
+      <Segmented
+        value={view}
+        options={[
+          { key: "board", label: "Board" },
+          { key: "report", label: "Injury report" },
+        ]}
+        onChange={(v) => setParam("view", v === "report" ? "report" : null)}
+        label="Readiness view"
+      />
+    </div>
+  );
+
+  if (view === "report") {
+    return (
+      <div className="flex flex-col gap-5">
+        {toggle}
+        <InjuryReport date={dateParam} onOpenPlayer={(p) => setCareFor({ id: p.player_id, name: p.name })} />
+        {carePanel}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6">
+      {toggle}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <SectionHeading
@@ -158,7 +210,7 @@ export default function ReadinessView() {
               </thead>
               <tbody>
                 {players.map((p) => (
-                  <PlayerRow key={p.player_id} p={p} />
+                  <PlayerRow key={p.player_id} p={p} onOpen={() => setCareFor({ id: p.player_id, name: p.name })} />
                 ))}
                 {players.length === 0 && (
                   <tr>
@@ -202,21 +254,22 @@ export default function ReadinessView() {
           </Card>
         </aside>
       </div>
+      {carePanel}
     </div>
   );
 }
 
-function PlayerRow({ p }: { p: SquadReadinessPlayer }) {
+function PlayerRow({ p, onOpen }: { p: SquadReadinessPlayer; onOpen: () => void }) {
   const e = p.entry;
   const style = STATUS_STYLE[p.status];
   const group = positionGroup(p.position);
   return (
     <tr className="border-b border-border/60 align-top last:border-0">
       <td className="px-3 py-3">
-        <Link to={`/players/${p.player_id}`} className="flex items-center gap-2 font-medium hover:text-owl-red-light">
+        <button onClick={onOpen} className="flex items-center gap-2 text-left font-medium hover:text-owl-red-light" title="Open care: play status, treatment, notes">
           <span className={`h-2 w-2 shrink-0 rounded-full ${style.dot}`} title={style.label} />
           {p.name}
-        </Link>
+        </button>
         <div className="pl-4 text-xs text-text-dim">
           {group !== "Unassigned" ? group.replace(/s$/, "") : ""}
           {e && (
@@ -225,6 +278,9 @@ function PlayerRow({ p }: { p: SquadReadinessPlayer }) {
               {new Date(`${e.updated_at.replace(" ", "T")}Z`).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
             </>
           )}
+        </div>
+        <div className="mt-1 pl-4">
+          <CareChips care={p.care} />
         </div>
       </td>
       {e ? (

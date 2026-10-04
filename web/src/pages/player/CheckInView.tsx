@@ -4,6 +4,7 @@ import { saveMyReadiness, useMyReadinessToday } from "../../api/client";
 import { BodyMap, SeverityLegend } from "../../components/BodyMap";
 import { Card } from "../../components/Card";
 import { PhoneSetupCard, ReminderStatus } from "../../components/PhoneSetupCard";
+import { TreatmentCard } from "../../components/TreatmentCard";
 import { ReadinessSummary } from "../../components/ReadinessSummary";
 import { regionLabel, SEVERITY_ORDER, SEVERITY_STYLE } from "../../lib/bodyRegions";
 import { formatDateLong } from "../../lib/format";
@@ -45,6 +46,7 @@ export default function CheckInView({ me }: { me: Me }) {
         </div>
       </div>
 
+      <TreatmentCard />
       <PhoneSetupCard />
 
       {showForm ? (
