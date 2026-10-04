@@ -181,6 +181,8 @@ export default function TeamView() {
               onSelectPlayer={(playerId) => navigate(`/players/${playerId}`)}
             />
           )}
+        </section>
+      )}
 
       <section>
         <SectionHeading title="Games" subtitle="Click a row to view that game's roster above" />
@@ -226,8 +228,6 @@ export default function TeamView() {
           </table>
         </Card>
       </section>
-        </section>
-      )}
 
       {fitness && <SquadFitnessTable data={fitness} />}
 
