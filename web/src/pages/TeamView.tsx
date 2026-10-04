@@ -27,7 +27,13 @@ export default function TeamView() {
   const [searchParams] = useSearchParams();
   const [selectedGameId, setSelectedGameId] = useState<number | null>(Number(searchParams.get("game")) || null);
 
-  const { data: gameDetail } = useGameDetail(selectedGameId);
+  // Until a game is picked (trend point or Games row), show the most recent one so the breakdown is always there.
+  const latestGameId = useMemo(
+    () => (games?.length ? [...games].sort((a, b) => b.game_date.localeCompare(a.game_date))[0].id : null),
+    [games],
+  );
+  const activeGameId = selectedGameId ?? latestGameId;
+  const { data: gameDetail } = useGameDetail(activeGameId);
   const [gameView, setGameView] = useState<"table" | "chart">("chart");
   const [seasonView, setSeasonView] = useState<"avg" | "high" | "low">("avg");
   const openedFromLink = searchParams.has("game");
@@ -127,7 +133,7 @@ export default function TeamView() {
       <section>
         <SectionHeading
           title={`${selectedMetric?.label ?? ""} Trend`}
-          subtitle="Click a point to see that game's full roster breakdown"
+          subtitle="Click a point to see that game's full roster breakdown below"
         />
         <Card>
           <TrendChart
@@ -143,7 +149,7 @@ export default function TeamView() {
         </Card>
       </section>
 
-      {selectedGameId && gameDetail && (
+      {activeGameId && gameDetail && (
         <section id="game-detail" className="scroll-mt-20">
           <div className="mb-3 flex flex-wrap items-center gap-3">
             <TeamLogo name={gameDetail.game.opponent ?? "Game"} url={logoFor(gameDetail.game.game_date)} size="md" />
@@ -207,7 +213,7 @@ export default function TeamView() {
                     setTimeout(() => document.getElementById("game-detail")?.scrollIntoView({ behavior: "smooth", block: "start" }), 300);
                   }}
                   className={`cursor-pointer border-b border-border/60 transition-colors last:border-0 hover:bg-surface-raised ${
-                    selectedGameId === g.id ? "bg-owl-red/10" : ""
+                    activeGameId === g.id ? "bg-owl-red/10" : ""
                   }`}
                 >
                   <td className="px-4 py-3 text-text-dim">{formatDate(g.game_date)}</td>
