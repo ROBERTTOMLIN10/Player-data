@@ -119,6 +119,7 @@ function TrainerApp({ me }: { me: Me }) {
     >
       <Routes>
         <Route path="/" element={<ReadinessView />} />
+        <Route path="/readiness" element={<ReadinessView />} />
         <Route path="/injuries" element={<InjuriesView />} />
         <Route path="/injuries/:id" element={<InjuriesView />} />
         <Route path="/rpe" element={<RpeView trendsOnly />} />

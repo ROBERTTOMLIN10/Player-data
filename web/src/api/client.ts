@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type {
+  CareAlertPrefs,
+  CareAlertsResponse,
   CareDay,
   IssueDetail,
   Issue,
@@ -525,5 +527,10 @@ export const CARE_QUERY_KEYS = ["careDay", "playerCare", "issues", "issue", "squ
 export function useMyCare() {
   return useQuery({ queryKey: ["myCare"], queryFn: () => fetchJson<MyCare>("/api/me/care"), refetchInterval: 5 * 60_000 });
 }
+
+export function useCareAlerts() {
+  return useQuery({ queryKey: ["careAlerts"], queryFn: () => fetchJson<CareAlertsResponse>("/api/care/alerts") });
+}
+export const saveCareAlerts = (change: Partial<CareAlertPrefs>) => sendJson<CareAlertsResponse>("/api/care/alerts", "PUT", change);
 
 export const markTreatmentAttended = (id: number) => sendJson(`/api/me/care/treatments/${id}/attended`, "POST");

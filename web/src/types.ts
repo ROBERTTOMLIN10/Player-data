@@ -960,3 +960,16 @@ export interface MyCare {
   today: string;
   treatments: Pick<Treatment, "id" | "treat_date" | "treat_time" | "instructions" | "status">[];
 }
+
+export interface CareAlertPrefs {
+  severe: boolean;
+  moderate: boolean;
+  low_readiness: boolean;
+  readiness_below: number;
+}
+export interface CareAlertsResponse {
+  signedIn: boolean;
+  prefs: CareAlertPrefs | null;
+  thresholds: number[];
+  publicKey: string;
+}

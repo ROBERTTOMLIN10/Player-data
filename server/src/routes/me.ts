@@ -9,6 +9,7 @@ import { removeSubscription, saveSubscription, vapidPublicKey } from "../lib/pus
 import { gameOnDate, getCheckins, readinessScore, shiftDate, teamToday } from "../lib/readiness.js";
 import { getPlayerDetail } from "./players.js";
 import { playerRpe } from "./rpe.js";
+import { alertStaffForCheckin } from "../lib/careAlerts.js";
 
 /**
  * Everything a signed-in player can see: their own profile/GPS/readiness, plus
@@ -172,6 +173,7 @@ meRouter.put("/readiness/today", (req, res) => {
 
   const [entry] = getCheckins(playerId, date, date);
   res.json({ date, game: gameOnDate(date), entry });
+  void alertStaffForCheckin(playerId, date);
 });
 
 meRouter.get("/readiness/history", (req, res) => {

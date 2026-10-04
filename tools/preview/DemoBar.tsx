@@ -1,7 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { demo, type DemoRole } from "./mock";
+import { demo, demoAlerts, type DemoRole } from "./mock";
+import type { DemoAlert } from "./careMock";
 import { listUploads } from "./uploads";
 
 /** Preview-only strip for switching between the player, coach and athletic trainer views. */
@@ -10,6 +11,7 @@ export function DemoBar() {
   const navigate = useNavigate();
   const [, force] = useState(0);
   const [pending, setPending] = useState(0);
+  const [alert, setAlert] = useState<DemoAlert | null>(null);
 
   // GPS files uploaded in the preview: already on the GPS pages, built in properly at the next hourly update.
   useEffect(() => {
@@ -21,6 +23,7 @@ export function DemoBar() {
 
   function switchTo(role: DemoRole) {
     demo.role = role;
+    setAlert(demoAlerts.take(role));
     navigate("/");
     queryClient.resetQueries();
     force((n) => n + 1);
@@ -49,6 +52,28 @@ export function DemoBar() {
         {btn("coach", "Coach view")}
         {btn("trainer", "AT view")}
       </div>
+      {alert && (
+        <div className="fixed right-3 top-3 z-[60] w-[min(22rem,calc(100vw-1.5rem))] text-left text-text">
+          <button
+            onClick={() => {
+              navigate(alert.url);
+              setAlert(null);
+            }}
+            className="block w-full rounded-2xl border border-border bg-surface-raised/95 p-3 shadow-2xl backdrop-blur hover:border-owl-red"
+          >
+            <div className="flex items-center gap-2 text-[11px] text-text-dim">
+              <span className="grid h-4 w-4 place-items-center rounded bg-owl-red text-[7px] font-bold text-white">FAU</span>
+              FAU Soccer · now
+            </div>
+            <div className="mt-1 text-sm font-semibold">{alert.title}</div>
+            <div className="whitespace-pre-line text-xs text-text-dim">{alert.body}</div>
+            <div className="mt-1.5 text-[10px] text-text-dim">Preview: on the real app this arrives as a phone notification. Tap to open their care panel.</div>
+          </button>
+          <button onClick={() => setAlert(null)} className="absolute right-2 top-2 text-text-dim hover:text-text" aria-label="Dismiss">
+            ×
+          </button>
+        </div>
+      )}
       {pending > 0 && (
         <span className="rounded-md bg-black/25 px-2 py-1 font-medium">
           {pending} new GPS file{pending === 1 ? "" : "s"} showing · fully added within the hour

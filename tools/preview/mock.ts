@@ -207,6 +207,7 @@ function route(method: string, path: string, q: URLSearchParams, body: any): Res
       const row = squad.players.find((p: any) => p.player_id === PLAYER_ID);
       if (row) Object.assign(row, { entry: myEntry }, flag(myEntry, row.baseline));
       recomputeSquad();
+      care.onCheckin(PLAYER_ID, myEntry);
     }
     return json({ date: TODAY, game: GAME, entry: myEntry });
   }
@@ -389,6 +390,11 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
   await new Promise((r) => setTimeout(r, 120));
   return route(method, url.pathname, url.searchParams, body);
+};
+
+/** The phone alert this view would have received (check-in alerts to the AT), if any. */
+export const demoAlerts = {
+  take: (role: DemoRole) => (role ? care.takeAlert(role) : null),
 };
 
 export const demoPush = {

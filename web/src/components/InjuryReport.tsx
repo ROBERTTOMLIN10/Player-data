@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useCareDay } from "../api/client";
 import { attendanceMark, levelInfo, sideLabel, stageLabel, timeLabel, TREATMENT_STYLE } from "../lib/care";
+import { downloadFrom } from "../lib/download";
 import { formatDate, formatDateLong } from "../lib/format";
 import type { CareDayPlayer, OpenIssue, PlayLevel } from "../types";
 import { Card } from "./Card";
@@ -56,6 +58,7 @@ export function InjuryReport({ date, onOpenPlayer }: { date: string | null; onOp
             {formatDateLong(data.date)} · live from the athletic trainer&rsquo;s entries
           </p>
         </div>
+        <ExcelButton date={data.date} />
       </div>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -118,6 +121,34 @@ export function InjuryReport({ date, onOpenPlayer }: { date: string | null; onOp
 
       {genMed.length > 0 && <SideSection title="Gen Med" rows={genMed} onOpen={onOpenPlayer} />}
       {ppe.length > 0 && <SideSection title="PPE follow-ups" rows={ppe} onOpen={onOpenPlayer} />}
+    </div>
+  );
+}
+
+function ExcelButton({ date }: { date: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const run = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await downloadFrom(`/api/care/report.xlsx?date=${date}`, "Injury_Report.xlsx");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't build the file.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <button
+        onClick={run}
+        disabled={busy}
+        className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium hover:bg-surface-raised disabled:opacity-60"
+      >
+        {busy ? "Building…" : "Download Excel"}
+      </button>
+      {error && <span className="text-xs text-owl-red-light">{error}</span>}
     </div>
   );
 }

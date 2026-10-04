@@ -82,6 +82,7 @@ rm -rf "$DEMO" && mkdir -p "$DEMO/src/demo"
 cp -r web/index.html web/src web/vite.config.ts web/tsconfig.json web/package.json "$DEMO/"
 cp "$HERE/mock.ts" "$HERE/DemoBar.tsx" "$HERE/uploads.ts" "$HERE/liveUploads.ts" "$HERE/careMock.ts" "$DEMO/src/demo/"
 mkdir -p "$DEMO/server/src/import" && cp server/src/import/columnMapping.ts server/src/import/gpsFilename.ts server/src/import/nameNormalization.ts server/src/import/samePerson.ts "$DEMO/server/src/import/"
+mkdir -p "$DEMO/server/src/lib" && cp server/src/lib/careReport.ts "$DEMO/server/src/lib/"
 cp "$OUT/data.json" "$DEMO/src/demo/data.json"
 ln -s "$ROOT/node_modules" "$DEMO/node_modules"
 python3 - "$DEMO" <<'PY'

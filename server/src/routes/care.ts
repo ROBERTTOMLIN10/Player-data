@@ -1,7 +1,12 @@
 import { Router } from "express";
+import * as XLSX from "xlsx";
 import { z } from "zod";
 import { getDb } from "../db/connection.js";
 import { CATEGORIES, careDay, issueDetail, LEVELS, notifyTreatment, playerCare, STAGES, type Treatment } from "../lib/care.js";
+import { getAlertPrefs, READINESS_THRESHOLDS, saveAlertPrefs } from "../lib/careAlerts.js";
+import { personalUserId } from "../lib/follows.js";
+import { vapidPublicKey } from "../lib/push.js";
+import { injuryReportWorkbook, reportFilename } from "../lib/careReport.js";
 import { isIsoDate, teamToday } from "../lib/readiness.js";
 
 /**
@@ -20,6 +25,39 @@ const bad = (res: { status: (n: number) => { json: (b: unknown) => void } }, err
 
 careRouter.get("/day", (req, res) => {
   res.json({ today: teamToday(), ...careDay(dateOf(req.query.date)) });
+});
+
+// Which check-in alerts reach this staff member's phone.
+careRouter.get("/alerts", (req, res) => {
+  const userId = personalUserId(req.user!);
+  if (userId === null) return res.json({ signedIn: false, prefs: null, thresholds: READINESS_THRESHOLDS, publicKey: vapidPublicKey() });
+  res.json({ signedIn: true, prefs: getAlertPrefs(userId), thresholds: READINESS_THRESHOLDS, publicKey: vapidPublicKey() });
+});
+
+const alertPrefsSchema = z
+  .object({
+    severe: z.boolean(),
+    moderate: z.boolean(),
+    low_readiness: z.boolean(),
+    readiness_below: z.number().int().refine((n) => (READINESS_THRESHOLDS as readonly number[]).includes(n)),
+  })
+  .partial();
+
+careRouter.put("/alerts", (req, res) => {
+  const userId = personalUserId(req.user!);
+  if (userId === null) return res.status(400).json({ error: "Sign in to choose alerts." });
+  const parsed = alertPrefsSchema.safeParse(req.body);
+  if (!parsed.success) return bad(res, parsed.error);
+  res.json({ signedIn: true, prefs: saveAlertPrefs(userId, parsed.data), thresholds: READINESS_THRESHOLDS, publicKey: vapidPublicKey() });
+});
+
+/** The day's injury report as an Excel file in the athletic trainer's layout. */
+careRouter.get("/report.xlsx", (req, res) => {
+  const date = dateOf(req.query.date);
+  const buf = XLSX.write(injuryReportWorkbook(careDay(date)), { type: "buffer", bookType: "xlsx" }) as Buffer;
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename="${reportFilename(date)}"`);
+  res.send(buf);
 });
 
 careRouter.get("/player/:id", (req, res) => {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useSquadReadiness } from "../api/client";
 import { BodyMap, SeverityLegend } from "../components/BodyMap";
@@ -12,6 +12,7 @@ import { OpponentLink } from "../components/ncaa";
 import { CareChips, CarePanel } from "../components/CarePanel";
 import { InjuryReport } from "../components/InjuryReport";
 import { Segmented } from "../components/SeasonStats";
+import { CheckinAlerts } from "../components/CheckinAlerts";
 
 type Filter = "all" | "flagged" | "missing";
 
@@ -45,6 +46,16 @@ export default function ReadinessView() {
     setParams(next, { replace: true });
   };
   const setDate = (date: string | null) => setParam("date", date);
+
+  // A check-in alert links here with ?care=<player id>: open that player's care panel.
+  const careParam = params.get("care");
+  useEffect(() => {
+    if (!careParam || !data) return;
+    const p = data.players.find((x) => x.player_id === Number(careParam));
+    if (p) setCareFor({ id: p.player_id, name: p.name });
+    setParam("care", null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [careParam, data]);
 
   const players = useMemo(() => {
     const list = [...(data?.players ?? [])].sort(
@@ -86,7 +97,8 @@ export default function ReadinessView() {
     />
   );
   const toggle = (
-    <div className="flex justify-center">
+    <div className="flex flex-wrap items-center justify-center gap-3 sm:justify-between">
+      <span className="hidden w-44 sm:block" />
       <Segmented
         value={view}
         options={[
@@ -96,6 +108,9 @@ export default function ReadinessView() {
         onChange={(v) => setParam("view", v === "report" ? "report" : null)}
         label="Readiness view"
       />
+      <div className="flex sm:w-44 sm:justify-end">
+        <CheckinAlerts />
+      </div>
     </div>
   );
 

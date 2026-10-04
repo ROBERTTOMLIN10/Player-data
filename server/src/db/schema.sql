@@ -640,3 +640,24 @@ CREATE TABLE IF NOT EXISTS rehab_logs (
   created_by TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Check-in alerts to staff: when a player's morning check-in flags severe or
+-- moderate soreness, or low readiness. Each staff member picks which ones reach
+-- their phone (no row = the default: on for athletic trainers, off for coaches).
+CREATE TABLE IF NOT EXISTS care_alert_prefs (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  severe INTEGER NOT NULL DEFAULT 1,
+  moderate INTEGER NOT NULL DEFAULT 1,
+  low_readiness INTEGER NOT NULL DEFAULT 1,
+  readiness_below INTEGER NOT NULL DEFAULT 50, -- readiness % at or below this alerts
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Check-in alerts already sent, so editing a check-in only alerts on what's new.
+CREATE TABLE IF NOT EXISTS checkin_alerts_sent (
+  player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  entry_date TEXT NOT NULL,
+  alert_key TEXT NOT NULL, -- severe:<region> | moderate:<region> | low:<threshold>
+  sent_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (player_id, entry_date, alert_key)
+);

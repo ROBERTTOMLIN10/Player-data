@@ -4,6 +4,15 @@
 // and the same rules are applied here: play status carries forward, open issues on
 // a day, the day view, a player's care, an issue's detail. Changes last for the visit.
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import * as XLSX from "xlsx";
+import { injuryReportWorkbook, reportFilename } from "../../server/src/lib/careReport";
+import { regionLabel } from "../lib/bodyRegions";
+
+export interface DemoAlert {
+  title: string;
+  body: string;
+  url: string;
+}
 
 type Row = Record<string, any>;
 interface Raw {
@@ -28,6 +37,34 @@ export function createCareMock(data: Record<string, any>, today: string, myPlaye
   const roster: { player_id: number; name: string; position: string | null }[] = data.careRoster ?? [];
   const pain: Record<string, any[]> = data.carePain ?? {};
   let nextId = 100_000;
+
+  // Check-in alerts (server/src/lib/careAlerts.ts): settings per view, and the
+  // phone alerts each view would have received, shown as a banner in the preview.
+  const THRESHOLDS = [30, 40, 50, 60];
+  const prefs: Record<string, { severe: boolean; moderate: boolean; low_readiness: boolean; readiness_below: number }> = {
+    trainer: { severe: true, moderate: true, low_readiness: true, readiness_below: 50 },
+    coach: { severe: false, moderate: false, low_readiness: false, readiness_below: 50 },
+  };
+  const inbox: Record<string, DemoAlert[]> = { trainer: [], coach: [] };
+  const alertedKeys = new Set<string>();
+
+  function onCheckin(playerId: number, entry: { entry_date: string; readiness_score: number; notes: string | null; soreness: { region: string; severity: string; note: string | null }[] }) {
+    const name = roster.find((p) => p.player_id === playerId)?.name ?? "Player";
+    const sent = new Set<string>();
+    for (const role of ["trainer", "coach"]) {
+      const pr = prefs[role];
+      const sore = entry.soreness.filter((x) => (x.severity === "severe" && pr.severe) || (x.severity === "moderate" && pr.moderate));
+      const keys = [...sore.map((x) => `${x.severity}:${x.region}`), ...(pr.low_readiness && entry.readiness_score <= pr.readiness_below ? [`low:${pr.readiness_below}`] : [])];
+      if (!keys.some((k) => !alertedKeys.has(`${playerId}:${entry.entry_date}:${k}`))) continue;
+      const order = (x: { severity: string }) => (x.severity === "severe" ? 0 : 1);
+      const parts = [...[...sore].sort((a, b) => order(a) - order(b)).map((x) => `${regionLabel(x.region)} ${x.severity}`), `Readiness ${entry.readiness_score}%`];
+      const note = entry.notes?.trim() || entry.soreness.find((x) => x.note)?.note?.trim();
+      inbox[role] = [{ title: `Check-in: ${name}`, body: [parts.join(" · "), note ? `“${note}”` : ""].filter(Boolean).join("\n"), url: `/readiness?care=${playerId}` }];
+      keys.forEach((k) => sent.add(`${playerId}:${entry.entry_date}:${k}`));
+    }
+    sent.forEach((k) => alertedKeys.add(k));
+  }
+  const takeAlert = (role: string) => inbox[role]?.shift() ?? null;
 
   const availabilityOn = (date: string) => {
     const best = new Map<number, Row>();
@@ -106,6 +143,16 @@ export function createCareMock(data: Record<string, any>, today: string, myPlaye
     const who = email(role);
 
     if (path === "/api/care/day") return json(careDay(date));
+    if (path === "/api/care/alerts") {
+      if (method === "PUT") Object.assign(prefs[role], body);
+      return json({ signedIn: true, prefs: prefs[role], thresholds: THRESHOLDS, publicKey: "preview" });
+    }
+    if (path === "/api/care/report.xlsx") {
+      const bytes = XLSX.write(injuryReportWorkbook(careDay(date)), { type: "array", bookType: "xlsx" }) as ArrayBuffer;
+      return new Response(bytes, {
+        headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": `attachment; filename="${reportFilename(date)}"` },
+      });
+    }
     if ((m = path.match(/^\/api\/care\/player\/(\d+)$/))) {
       const id = Number(m[1]);
       return json({
@@ -208,5 +255,5 @@ export function createCareMock(data: Record<string, any>, today: string, myPlaye
     return json({ error: "Not found." }, 404);
   }
 
-  return { route, summaryFor };
+  return { route, summaryFor, onCheckin, takeAlert };
 }
