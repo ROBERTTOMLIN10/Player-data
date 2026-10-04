@@ -155,7 +155,7 @@ export async function handlePreviewUpload(
         gameDate: record.gameDate,
         opponent: record.opponent,
         playerCount: players,
-        message: `${replace ? "Replacement saved" : "Saved"}: ${players} players vs ${record.opponent} (${gameDate}). It's on the GPS pages now; season highs, fitness and minutes fill in within the hour.`,
+        message: `${replace ? "Replacement saved" : "Saved"}: ${players} players vs ${record.opponent} (${gameDate}). It's on the GPS pages now; season highs and fitness comparisons update within the hour.`,
         warnings,
       },
     };
