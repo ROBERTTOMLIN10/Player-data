@@ -10,7 +10,9 @@ export function migrate() {
   const schema = fs.readFileSync(schemaPath, "utf-8");
   const db = getDb();
   allowTrainerRole(db);
+  const oldTreatments = setAsideOldTreatments(db);
   db.exec(schema);
+  if (oldTreatments) restoreOldTreatments(db);
   addMissingColumns(db);
   // Instagram handles aren't shown any more (they didn't always match the player): clear any stored ones.
   db.exec("UPDATE roster_players SET instagram = NULL WHERE instagram IS NOT NULL; UPDATE team_players SET instagram = NULL WHERE instagram IS NOT NULL;");
@@ -40,6 +42,23 @@ function allowTrainerRole(db: ReturnType<typeof getDb>) {
   })();
   db.pragma("foreign_keys = ON");
   console.log("users: trainer role allowed");
+}
+
+// The first treatments table (booked / attended / missed only) grew appointment
+// kinds and the accept / ask-for-another-time steps. Its CHECK can't change in
+// place, so it's set aside, recreated from schema.sql, and the rows copied back.
+function setAsideOldTreatments(db: ReturnType<typeof getDb>): boolean {
+  const columns = db.prepare("PRAGMA table_info(treatments)").all() as { name: string }[];
+  if (!columns.length || columns.some((c) => c.name === "kind")) return false;
+  db.exec("ALTER TABLE treatments RENAME TO treatments_v1; DROP INDEX IF EXISTS idx_treatments_day;");
+  return true;
+}
+
+function restoreOldTreatments(db: ReturnType<typeof getDb>) {
+  db.exec(`INSERT INTO treatments (id, player_id, treat_date, treat_time, kind, instructions, status, attended_marked_by, created_by, created_at, updated_at)
+           SELECT id, player_id, treat_date, treat_time, 'treatment', instructions, status, attended_marked_by, created_by, created_at, updated_at FROM treatments_v1;
+           DROP TABLE treatments_v1;`);
+  console.log("treatments: upgraded to appointments");
 }
 
 // CREATE TABLE IF NOT EXISTS won't add columns to a table that already exists,

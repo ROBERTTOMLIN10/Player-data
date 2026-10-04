@@ -22,7 +22,19 @@ interface Raw {
   issues: Row[];
   stages: Row[];
   logs: Row[];
+  messages: Row[];
+  checks: Row[];
 }
+
+/** Today's check-in for each player (from the preview's squad board). */
+export type EntriesOn = (date: string) => { player_id: number; readiness_score: number; notes: string | null; submitted_at: string; soreness: { region: string; severity: string; note: string | null }[] }[];
+
+const PRIORITY_READINESS = 50;
+const LEVEL_LABEL: Record<string, string> = { full: "Full", as_tolerated: "As tolerated", limited: "Limited", rehab: "Rehab only", out: "Out" };
+const REASON_ORDER = ["severe", "injury_area", "low", "restricted", "manual"];
+const base = (r: string) => r.replace(/_(l|r)$/, "");
+const sideOf = (r: string) => r.match(/_(l|r)$/)?.[1] ?? null;
+const sameArea = (sore: string, injury: string | null) => !!injury && (sore === injury || (base(sore) === base(injury) && (!sideOf(sore) || !sideOf(injury))));
 
 const nowSql = () => new Date().toISOString().replace("T", " ").slice(0, 19);
 const daysBetween = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
@@ -33,7 +45,9 @@ const shift = (iso: string, n: number) => {
 };
 
 export function createCareMock(data: Record<string, any>, today: string, myPlayerId: number) {
-  const raw: Raw = JSON.parse(JSON.stringify(data.careRaw ?? { availability: [], treatments: [], notes: [], issues: [], stages: [], logs: [] }));
+  const raw: Raw = JSON.parse(JSON.stringify(data.careRaw ?? {}));
+  for (const k of ["availability", "treatments", "notes", "issues", "stages", "logs", "messages", "checks"] as const) raw[k] ??= [];
+  let entriesOn: EntriesOn = () => [];
   const roster: { player_id: number; name: string; position: string | null }[] = data.careRoster ?? [];
   const pain: Record<string, any[]> = data.carePain ?? {};
   let nextId = 100_000;
@@ -88,8 +102,11 @@ export function createCareMock(data: Record<string, any>, today: string, myPlaye
       players: roster.map((p) => ({
         ...p,
         availability: av.get(p.player_id) ?? null,
-        treatments: raw.treatments.filter((t) => t.player_id === p.player_id && t.treat_date === date).sort((a, b) => String(a.treat_time).localeCompare(String(b.treat_time))),
+        treatments: raw.treatments
+          .filter((t) => t.player_id === p.player_id && t.treat_date === date && t.status !== "cancelled")
+          .sort((a, b) => String(a.treat_time).localeCompare(String(b.treat_time))),
         notes: raw.notes.filter((n) => n.player_id === p.player_id && n.note_date === date),
+        messages: raw.messages.filter((m) => m.player_id === p.player_id && m.msg_date === date),
         issues: issues.filter((i) => i.player_id === p.player_id),
       })),
     };
@@ -122,6 +139,65 @@ export function createCareMock(data: Record<string, any>, today: string, myPlaye
     };
   }
 
+  // ---- Before training (server/src/lib/beforeTraining.ts) ----
+  const getCheck = (playerId: number, date: string) => raw.checks.find((c) => c.player_id === playerId && c.check_date === date) ?? null;
+  function updateCheck(playerId: number, date: string, change: Row) {
+    let c = getCheck(playerId, date);
+    if (!c) {
+      c = { player_id: playerId, check_date: date, flagged: 0, flag_note: null, flagged_by: null, appointment_id: null, cleared_by: null, cleared_at: null, recommendation: null, rec_note: null, recommended_by: null, recommended_at: null, decision: null, decision_note: null, decided_by: null, decided_at: null };
+      raw.checks.push(c);
+    }
+    Object.assign(c, change, { updated_at: nowSql() });
+    return c;
+  }
+  const stageOf = (c: Row | null, a: Row | null) =>
+    c?.decision ? "decided" : c?.recommendation ? "awaiting_coach" : c?.cleared_at ? "cleared" : a && a.status !== "cancelled" ? "called_in" : "flagged";
+
+  function beforeTraining(date: string) {
+    const av = availabilityOn(date);
+    const issues = openIssuesOn(date).filter((i) => i.category === "injury");
+    const entries = entriesOn(date);
+    const ids = new Set<number>([...entries.map((e) => e.player_id), ...av.keys(), ...raw.checks.filter((c) => c.check_date === date).map((c) => c.player_id)]);
+    const items: Row[] = [];
+    for (const playerId of ids) {
+      const player = roster.find((p) => p.player_id === playerId);
+      if (!player) continue;
+      const checkin = entries.find((e) => e.player_id === playerId) ?? null;
+      const mine = issues.filter((i) => i.player_id === playerId);
+      const a = av.get(playerId) ?? null;
+      const check = getCheck(playerId, date);
+      const reasons: { kind: string; label: string }[] = [];
+      for (const sr of checkin?.soreness ?? []) {
+        const injury = mine.find((i) => sameArea(sr.region, i.region));
+        if (injury) reasons.push({ kind: "injury_area", label: `${regionLabel(sr.region)} ${sr.severity} · ${injury.description}` });
+        else if (sr.severity === "severe") reasons.push({ kind: "severe", label: `${regionLabel(sr.region)} severe` });
+      }
+      if (checkin && checkin.readiness_score <= PRIORITY_READINESS) reasons.push({ kind: "low", label: `Readiness ${checkin.readiness_score}%` });
+      if (a && ["as_tolerated", "limited", "rehab"].includes(a.level)) reasons.push({ kind: "restricted", label: `On ${LEVEL_LABEL[a.level]}${a.practice_note ? ` · ${a.practice_note}` : ""}` });
+      if (check?.flagged) reasons.push({ kind: "manual", label: check.flag_note ? `Flagged: ${check.flag_note}` : "Flagged by the AT" });
+      if (!reasons.length && !check?.appointment_id && !check?.recommendation && !check?.decision) continue;
+      reasons.sort((x, y) => REASON_ORDER.indexOf(x.kind) - REASON_ORDER.indexOf(y.kind));
+      const appts = raw.treatments.filter((t) => t.player_id === playerId && t.treat_date === date && t.status !== "cancelled").sort((x, y) => String(x.treat_time).localeCompare(String(y.treat_time)));
+      const appointment = (check?.appointment_id ? appts.find((t) => t.id === check.appointment_id) : null) ?? null;
+      items.push({
+        player_id: playerId,
+        name: player.name,
+        reasons,
+        checkin: checkin ? { readiness_score: checkin.readiness_score, notes: checkin.notes, submitted_at: checkin.submitted_at, soreness: checkin.soreness } : null,
+        availability: a,
+        check,
+        appointment,
+        appointments: appts,
+        messages: raw.messages.filter((m) => m.player_id === playerId && m.msg_date === date),
+        stage: stageOf(check, appointment),
+      });
+    }
+    const rank: Record<string, number> = { awaiting_coach: 0, flagged: 1, called_in: 2, decided: 3, cleared: 4 };
+    const rr = (r: Row[]) => (r.length ? REASON_ORDER.indexOf(r[0].kind) : 9);
+    items.sort((x, y) => rank[x.stage] - rank[y.stage] || rr(x.reasons) - rr(y.reasons) || x.name.localeCompare(y.name));
+    return { today, date, threshold: PRIORITY_READINESS, items };
+  }
+
   const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
   const email = (role: string) => (role === "trainer" ? "at@fau.edu" : "coach@fau.edu");
 
@@ -129,13 +205,46 @@ export function createCareMock(data: Record<string, any>, today: string, myPlaye
   function route(method: string, path: string, q: URLSearchParams, body: any, role: string): Response | null {
     const date = q.get("date") ?? today;
     if (path === "/api/me/care" && method === "GET") {
-      return json({ today, treatments: raw.treatments.filter((t) => t.player_id === myPlayerId && t.treat_date >= today).sort((a, b) => (a.treat_date + a.treat_time).localeCompare(b.treat_date + b.treat_time)) });
+      const c = getCheck(myPlayerId, today);
+      return json({
+        today,
+        treatments: raw.treatments
+          .filter((t) => t.player_id === myPlayerId && t.treat_date >= today && t.status !== "cancelled")
+          .sort((a, b) => (a.treat_date + a.treat_time).localeCompare(b.treat_date + b.treat_time)),
+        messages: raw.messages.filter((m) => m.player_id === myPlayerId && m.msg_date === today),
+        check: c ? { appointment_id: c.appointment_id, decision: c.decision, decision_note: c.decision_note } : null,
+      });
+    }
+    const r = path.match(/^\/api\/me\/care\/treatments\/(\d+)\/respond$/);
+    if (r && method === "POST") {
+      const t = raw.treatments.find((x) => x.id === Number(r![1]) && x.player_id === myPlayerId);
+      if (!t) return json({ error: "Booking not found." }, 404);
+      if (body.action === "reschedule" && !body.time) return json({ error: "Pick the time that works for you." }, 400);
+      if (body.action === "accept") Object.assign(t, { status: "booked", awaiting: null });
+      else if (body.action === "decline") Object.assign(t, { status: "declined", awaiting: null });
+      else Object.assign(t, { status: "pending", awaiting: "trainer", treat_date: body.date ?? t.treat_date, treat_time: body.time });
+      Object.assign(t, { player_note: body.note || null, updated_at: nowSql() });
+      return json(t);
+    }
+    if (path === "/api/me/care/requests" && method === "POST") {
+      if (!body.time) return json({ error: "Pick a time." }, 400);
+      const row = { id: nextId++, player_id: myPlayerId, treat_date: body.date, treat_time: body.time, kind: body.kind ?? "treatment", reason: body.reason || null, instructions: null, status: "pending", awaiting: "trainer", requested_by: "player", player_note: body.note || null, attended_marked_by: null, created_by: "player", created_at: nowSql(), updated_at: nowSql() };
+      raw.treatments.push(row);
+      return json(row, 201);
+    }
+    if (path === "/api/me/care/messages" && method === "POST") {
+      const quick: Record<string, string> = { on_my_way: "On my way", running_late: "Running 10 minutes late", feeling_better: "Feeling better now", need_time: "Can we do another time?" };
+      const text = [body.quick ? quick[body.quick] : null, body.body || null].filter(Boolean).join(" · ");
+      if (!text) return json({ error: "Write a message." }, 400);
+      const row = { id: nextId++, player_id: myPlayerId, msg_date: today, author_role: "player", author_email: null, body: text, quick: body.quick ?? null, created_at: nowSql() };
+      raw.messages.push(row);
+      return json(row, 201);
     }
     let m = path.match(/^\/api\/me\/care\/treatments\/(\d+)\/attended$/);
     if (m && method === "POST") {
       const t = raw.treatments.find((x) => x.id === Number(m![1]) && x.player_id === myPlayerId);
       if (!t) return json({ error: "Booking not found." }, 404);
-      Object.assign(t, { status: "attended", attended_marked_by: "player", updated_at: nowSql() });
+      Object.assign(t, { status: "attended", awaiting: null, attended_marked_by: "player", updated_at: nowSql() });
       return json({ ok: true });
     }
     if (!path.startsWith("/api/care/")) return null;
@@ -171,8 +280,9 @@ export function createCareMock(data: Record<string, any>, today: string, myPlaye
       return json({ ok: true });
     }
     if (path === "/api/care/treatments" && method === "POST") {
-      const row = { id: nextId++, player_id: body.player_id, treat_date: body.date, treat_time: body.time ?? null, instructions: body.instructions || null, status: "booked", attended_marked_by: null, created_by: who, created_at: nowSql(), updated_at: nowSql() };
+      const row = { id: nextId++, player_id: body.player_id, treat_date: body.date, treat_time: body.time ?? null, kind: body.kind ?? "treatment", reason: body.reason || null, instructions: body.instructions || null, status: "pending", awaiting: "player", requested_by: "trainer", player_note: null, attended_marked_by: null, created_by: who, created_at: nowSql(), updated_at: nowSql() };
       raw.treatments.push(row);
+      if (row.kind === "check" && !getCheck(row.player_id, row.treat_date)?.appointment_id) updateCheck(row.player_id, row.treat_date, { appointment_id: row.id });
       return json(row, 201);
     }
     if ((m = path.match(/^\/api\/care\/treatments\/(\d+)$/))) {
@@ -182,15 +292,72 @@ export function createCareMock(data: Record<string, any>, today: string, myPlaye
         return json({ ok: true });
       }
       if (!t) return json({ error: "Booking not found." }, 404);
-      if (body.status && body.status !== t.status) t.attended_marked_by = who;
+      const moved = (body.date && body.date !== t.treat_date) || (body.time !== undefined && body.time !== t.treat_time);
+      if (body.status) {
+        if (["attended", "missed"].includes(body.status) && body.status !== t.status) t.attended_marked_by = who;
+        Object.assign(t, { status: body.status, awaiting: null });
+      } else if (moved) Object.assign(t, { status: "pending", awaiting: "player" });
       Object.assign(t, {
         treat_date: body.date ?? t.treat_date,
         treat_time: body.time !== undefined ? body.time : t.treat_time,
+        kind: body.kind ?? t.kind,
+        reason: "reason" in body ? body.reason || null : t.reason,
         instructions: "instructions" in body ? body.instructions || null : t.instructions,
-        status: body.status ?? t.status,
         updated_at: nowSql(),
       });
       return json(t);
+    }
+    if (path === "/api/care/messages" && method === "POST") {
+      if (!String(body.body ?? "").trim()) return json({ error: "Write a message." }, 400);
+      const row = { id: nextId++, player_id: body.player_id, msg_date: body.date, author_role: role === "trainer" ? "trainer" : "coach", author_email: who, body: String(body.body).trim(), quick: null, created_at: nowSql() };
+      raw.messages.push(row);
+      return json(row, 201);
+    }
+    if (path === "/api/care/before-training") return json(beforeTraining(date));
+    if ((m = path.match(/^\/api\/care\/checks\/(\d+)\/(flag|call-in|clear|recommend|decide|reopen)$/)) && method === "POST") {
+      const playerId = Number(m[1]);
+      const d = body.date ?? today;
+      switch (m[2]) {
+        case "flag":
+          return json(updateCheck(playerId, d, body.flagged === false ? { flagged: 0, flag_note: null } : { flagged: 1, flag_note: body.note || null, flagged_by: who }));
+        case "call-in": {
+          if (!body.time) return json({ error: "Pick a time." }, 400);
+          const c = getCheck(playerId, d);
+          let appt = c?.appointment_id ? raw.treatments.find((t) => t.id === c.appointment_id && t.status !== "cancelled") : null;
+          const fields = { treat_time: body.time, kind: body.kind ?? "check", reason: body.reason || null, instructions: body.instructions || null, status: "pending", awaiting: "player", updated_at: nowSql() };
+          if (appt) Object.assign(appt, fields);
+          else {
+            appt = { id: nextId++, player_id: playerId, treat_date: d, requested_by: "trainer", player_note: null, attended_marked_by: null, created_by: who, created_at: nowSql(), ...fields };
+            raw.treatments.push(appt);
+          }
+          updateCheck(playerId, d, { appointment_id: appt.id, cleared_at: null, cleared_by: null });
+          if (body.message) raw.messages.push({ id: nextId++, player_id: playerId, msg_date: d, author_role: role === "trainer" ? "trainer" : "coach", author_email: who, body: body.message, quick: null, created_at: nowSql() });
+          return json({ ok: true, appointment: appt });
+        }
+        case "clear":
+          return json(updateCheck(playerId, d, body.cleared === false ? { cleared_at: null, cleared_by: null } : { cleared_at: new Date().toISOString(), cleared_by: who }));
+        case "recommend": {
+          if (role !== "trainer") return json({ error: "Only the athletic trainer can do that." }, 403);
+          const c = updateCheck(playerId, d, { recommendation: body.level, rec_note: body.note || null, recommended_by: who, recommended_at: new Date().toISOString(), cleared_at: null, cleared_by: null, decision: null, decision_note: null, decided_by: null, decided_at: null });
+          const appt = raw.treatments.find((t) => t.id === c.appointment_id && ["pending", "booked"].includes(t.status));
+          if (appt) Object.assign(appt, { status: "attended", awaiting: null, attended_marked_by: appt.attended_marked_by ?? who });
+          return json(c);
+        }
+        case "decide": {
+          if (role !== "coach") return json({ error: "The coach makes the final call." }, 403);
+          const c = updateCheck(playerId, d, { decision: body.level, decision_note: body.note || null, decided_by: who, decided_at: new Date().toISOString() });
+          const current = availabilityOn(d).get(playerId);
+          raw.availability = raw.availability.filter((x) => !(x.player_id === playerId && x.status_date === d));
+          raw.availability.push({
+            player_id: playerId, status_date: d, level: body.level,
+            practice_note: body.note || c.rec_note || (current?.level === body.level ? current.practice_note : null),
+            bike: current?.bike ?? null, jogging: current?.jogging ?? null, running: current?.running ?? null, set_by: who, updated_at: nowSql(),
+          });
+          return json(c);
+        }
+        case "reopen":
+          return json(updateCheck(playerId, d, { decision: null, decision_note: null, decided_by: null, decided_at: null }));
+      }
     }
     if (path === "/api/care/notes" && method === "POST") {
       const row = { id: nextId++, player_id: body.player_id, note_date: body.date, author_email: who, author_role: role, body: String(body.body ?? "").trim(), created_at: nowSql() };
@@ -255,5 +422,5 @@ export function createCareMock(data: Record<string, any>, today: string, myPlaye
     return json({ error: "Not found." }, 404);
   }
 
-  return { route, summaryFor, onCheckin, takeAlert };
+  return { route, summaryFor, onCheckin, takeAlert, setEntries: (fn: EntriesOn) => (entriesOn = fn) };
 }

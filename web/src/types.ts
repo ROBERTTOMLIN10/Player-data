@@ -859,14 +859,21 @@ export interface Availability {
   updated_at: string;
 }
 
+export type AppointmentKind = "check" | "proactive" | "treatment" | "rehab" | "other";
+
 export interface Treatment {
   id: number;
   player_id: number;
   treat_date: string;
   treat_time: string | null; // HH:MM
+  kind: AppointmentKind;
+  reason: string | null; // what it's for
   instructions: string | null;
-  status: "booked" | "attended" | "missed";
-  attended_marked_by: string | null;
+  status: "pending" | "booked" | "attended" | "missed" | "declined" | "cancelled";
+  awaiting: "player" | "trainer" | null; // whose answer a pending one needs
+  requested_by: "trainer" | "player";
+  player_note: string | null;
+  attended_marked_by?: string | null;
   created_by?: string | null;
   updated_at?: string;
 }
@@ -928,6 +935,7 @@ export interface CareDayPlayer {
   availability: Availability | null;
   treatments: Treatment[];
   notes: CareNote[];
+  messages: CareMessage[];
   issues: OpenIssue[];
 }
 
@@ -958,7 +966,62 @@ export interface IssueDetail {
 
 export interface MyCare {
   today: string;
-  treatments: Pick<Treatment, "id" | "treat_date" | "treat_time" | "instructions" | "status">[];
+  treatments: Omit<Treatment, "player_id" | "attended_marked_by" | "created_by" | "updated_at">[];
+  messages: CareMessage[];
+  check: { appointment_id: number | null; decision: PlayLevel | null; decision_note: string | null } | null;
+}
+
+export interface CareMessage {
+  id: number;
+  player_id: number;
+  msg_date: string;
+  author_role: "player" | "trainer" | "coach";
+  author_email: string | null;
+  body: string;
+  quick: string | null;
+  created_at: string;
+}
+
+export interface TrainingCheck {
+  player_id: number;
+  check_date: string;
+  flagged: number;
+  flag_note: string | null;
+  flagged_by: string | null;
+  appointment_id: number | null;
+  cleared_by: string | null;
+  cleared_at: string | null;
+  recommendation: PlayLevel | null;
+  rec_note: string | null;
+  recommended_by: string | null;
+  recommended_at: string | null;
+  decision: PlayLevel | null;
+  decision_note: string | null;
+  decided_by: string | null;
+  decided_at: string | null;
+}
+
+export type CheckStage = "flagged" | "called_in" | "awaiting_coach" | "decided" | "cleared";
+export type ReasonKind = "severe" | "injury_area" | "low" | "restricted" | "manual";
+
+export interface BeforeTrainingItem {
+  player_id: number;
+  name: string;
+  reasons: { kind: ReasonKind; label: string }[];
+  checkin: { readiness_score: number; notes: string | null; submitted_at: string; soreness: { region: string; severity: Severity; note: string | null }[] } | null;
+  availability: Availability | null;
+  check: TrainingCheck | null;
+  appointment: Treatment | null;
+  appointments: Treatment[];
+  messages: CareMessage[];
+  stage: CheckStage;
+}
+
+export interface BeforeTrainingResponse {
+  today: string;
+  date: string;
+  threshold: number;
+  items: BeforeTrainingItem[];
 }
 
 export interface CareAlertPrefs {

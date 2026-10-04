@@ -95,8 +95,9 @@ function CoachApp({ me }: { me: Me }) {
 }
 
 /**
- * The athletic trainer's view: the morning Readiness board (with each player's
- * care panel and the live injury report), the recovery tracker, and RPE trends.
+ * The athletic trainer's view: Injuries first (who to see before training, then
+ * the recovery tracker), the morning Readiness board (each player's care panel and
+ * the live injury report), and RPE trends.
  */
 function TrainerApp({ me }: { me: Me }) {
   return (
@@ -105,11 +106,11 @@ function TrainerApp({ me }: { me: Me }) {
       subtitle="Athletic Training"
       nav={
         <>
-          <NavLink to="/" end className={navLinkClass}>
-            Readiness
-          </NavLink>
           <NavLink to="/injuries" className={navLinkClass}>
             Injuries
+          </NavLink>
+          <NavLink to="/readiness" className={navLinkClass}>
+            Readiness
           </NavLink>
           <NavLink to="/rpe" className={navLinkClass}>
             RPE
@@ -118,7 +119,7 @@ function TrainerApp({ me }: { me: Me }) {
       }
     >
       <Routes>
-        <Route path="/" element={<ReadinessView />} />
+        <Route path="/" element={<Navigate to="/injuries" replace />} />
         <Route path="/readiness" element={<ReadinessView />} />
         <Route path="/injuries" element={<InjuriesView />} />
         <Route path="/injuries/:id" element={<InjuriesView />} />

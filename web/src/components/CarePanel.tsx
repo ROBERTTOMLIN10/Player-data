@@ -3,9 +3,10 @@ import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { CARE_QUERY_KEYS, careApi, useMe, usePlayerCare } from "../api/client";
 import { regionLabel, SEVERITY_STYLE } from "../lib/bodyRegions";
-import { CATEGORIES, categoryLabel, LEVELS, levelInfo, sideLabel, stageLabel, timeLabel, TREATMENT_STYLE } from "../lib/care";
+import { appointmentState, CATEGORIES, categoryLabel, KINDS, kindLabel, LEVELS, levelInfo, sideLabel, stageLabel, timeLabel } from "../lib/care";
+import { CareThread } from "./CareThread";
 import { formatDate } from "../lib/format";
-import type { Availability, IssueCategory, PlayLevel, ReadinessEntry, Side } from "../types";
+import type { AppointmentKind, Availability, IssueCategory, PlayLevel, ReadinessEntry, Side } from "../types";
 
 const input = "w-full rounded-md border border-border bg-surface-raised px-2.5 py-1.5 text-sm text-text outline-none focus:border-owl-red";
 const button = "rounded-md bg-owl-red px-3 py-1.5 text-sm font-semibold text-white hover:bg-owl-red-light disabled:opacity-50";
@@ -101,6 +102,7 @@ export function CarePanel({
           <>
             <PlayStatus playerId={playerId} date={date} current={day?.availability ?? null} />
             <Treatments playerId={playerId} date={date} treatments={day?.treatments ?? []} />
+            <Messages playerId={playerId} name={name} date={date} messages={day?.messages ?? []} />
             <Issues playerId={playerId} date={date} issues={day?.issues ?? []} soreRegions={entry?.soreness.map((s) => s.region) ?? []} />
             <Notes playerId={playerId} date={date} notes={day?.notes ?? []} myEmail={me?.email ?? null} />
           </>
@@ -177,6 +179,8 @@ function PlayStatus({ playerId, date, current }: { playerId: number; date: strin
 function Treatments({ playerId, date, treatments }: { playerId: number; date: string; treatments: import("../types").Treatment[] }) {
   const refresh = useRefreshCare();
   const [time, setTime] = useState("");
+  const [kind, setKind] = useState<AppointmentKind>("treatment");
+  const [reason, setReason] = useState("");
   const [instructions, setInstructions] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -195,61 +199,102 @@ function Treatments({ playerId, date, treatments }: { playerId: number; date: st
   }
 
   return (
-    <Section title="Treatment">
+    <Section title="Appointments">
       {treatments.length > 0 && (
         <ul className="flex flex-col gap-2">
-          {treatments.map((t) => (
-            <li key={t.id} className="rounded-lg border border-border p-2.5 text-sm">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-semibold">{timeLabel(t.treat_time) || "Any time"}</span>
-                <span className={`rounded-full border px-1.5 py-px text-[11px] ${TREATMENT_STYLE[t.status].chip}`}>
-                  {TREATMENT_STYLE[t.status].label}
-                  {t.status === "attended" && t.attended_marked_by === "player" ? " (player)" : ""}
-                </span>
-                <span className="ml-auto flex gap-1">
-                  {t.status !== "attended" && (
-                    <button className={ghost} disabled={busy} onClick={() => run(() => careApi.updateTreatment(t.id, { status: "attended" }))}>
-                      Came in
+          {treatments.map((t) => {
+            const state = appointmentState(t);
+            const open = t.status === "pending" || t.status === "booked";
+            return (
+              <li key={t.id} className="rounded-lg border border-border p-2.5 text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold">{timeLabel(t.treat_time) || "Any time"}</span>
+                  <span>
+                    {kindLabel(t.kind)}
+                    {t.reason ? <span className="text-text-dim"> · {t.reason}</span> : null}
+                  </span>
+                  <span className={`rounded-full border px-1.5 py-px text-[11px] ${state.chip}`}>
+                    {state.label}
+                    {t.status === "attended" && t.attended_marked_by === "player" ? " (player)" : ""}
+                  </span>
+                  <span className="ml-auto flex gap-1">
+                    {t.status === "pending" && t.awaiting === "trainer" && (
+                      <button className={ghost} disabled={busy} onClick={() => run(() => careApi.updateTreatment(t.id, { status: "booked" }))}>
+                        Confirm
+                      </button>
+                    )}
+                    {open && (
+                      <button className={ghost} disabled={busy} onClick={() => run(() => careApi.updateTreatment(t.id, { status: "attended" }))}>
+                        Came in
+                      </button>
+                    )}
+                    {open && (
+                      <button className={ghost} disabled={busy} onClick={() => run(() => careApi.updateTreatment(t.id, { status: "missed" }))}>
+                        Missed
+                      </button>
+                    )}
+                    <button className={ghost} disabled={busy} onClick={() => run(() => careApi.deleteTreatment(t.id))} aria-label="Delete appointment">
+                      ✕
                     </button>
-                  )}
-                  {t.status !== "missed" && (
-                    <button className={ghost} disabled={busy} onClick={() => run(() => careApi.updateTreatment(t.id, { status: "missed" }))}>
-                      Missed
-                    </button>
-                  )}
-                  <button className={ghost} disabled={busy} onClick={() => run(() => careApi.deleteTreatment(t.id))} aria-label="Cancel booking">
-                    ✕
-                  </button>
-                </span>
-              </div>
-              {t.instructions && <p className="mt-1 text-text-dim">{t.instructions}</p>}
-            </li>
-          ))}
+                  </span>
+                </div>
+                {t.instructions && <p className="mt-1 text-text-dim">{t.instructions}</p>}
+                {t.player_note && <p className="mt-1 text-xs text-orange-300">Player: &ldquo;{t.player_note}&rdquo;</p>}
+              </li>
+            );
+          })}
         </ul>
       )}
       <div className="flex flex-col gap-2 rounded-lg border border-dashed border-border p-2.5">
-        <div className="flex gap-2">
-          <input type="time" className={`${input} w-32`} value={time} onChange={(e) => setTime(e.target.value)} aria-label="Time" />
-          <input className={input} placeholder="Instructions (e.g. Ice ankle 15 min before training)" value={instructions} onChange={(e) => setInstructions(e.target.value)} />
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-[7.5rem_1fr_1fr]">
+          <input type="time" className={input} value={time} onChange={(e) => setTime(e.target.value)} aria-label="Time" />
+          <select className={input} value={kind} onChange={(e) => setKind(e.target.value as AppointmentKind)} aria-label="What for">
+            {KINDS.map((k) => (
+              <option key={k.key} value={k.key}>
+                {k.label}
+              </option>
+            ))}
+          </select>
+          <input className={`${input} col-span-2 sm:col-span-1`} placeholder="Area / reason (e.g. Calves)" value={reason} onChange={(e) => setReason(e.target.value)} />
         </div>
+        <input className={input} placeholder="Instructions (e.g. Ice ankle 15 min before)" value={instructions} onChange={(e) => setInstructions(e.target.value)} />
         <div className="flex items-center gap-2">
           <button
             className={button}
-            disabled={busy || (!time && !instructions.trim())}
+            disabled={busy || !time}
             onClick={() =>
               run(async () => {
-                await careApi.bookTreatment({ player_id: playerId, date, time: time || null, instructions });
+                await careApi.bookTreatment({ player_id: playerId, date, time, kind, reason, instructions });
                 setTime("");
+                setReason("");
                 setInstructions("");
               })
             }
           >
-            Book treatment
+            Book
           </button>
-          <span className="text-[11px] text-text-dim">The player gets it on their phone.</span>
+          <span className="text-[11px] text-text-dim">The player gets it on their phone and accepts or asks for another time.</span>
         </div>
       </div>
       {error && <p className="text-xs text-owl-red-light">{error}</p>}
+    </Section>
+  );
+}
+
+function Messages({ playerId, name, date, messages }: { playerId: number; name: string; date: string; messages: import("../types").CareMessage[] }) {
+  const refresh = useRefreshCare();
+  return (
+    <Section title="Messages with the player">
+      <CareThread
+        messages={messages}
+        mine="staff"
+        playerName={name.split(" ")[0]}
+        placeholder={`Message ${name.split(" ")[0]}…`}
+        onSend={async (body) => {
+          await careApi.sendMessage({ player_id: playerId, date, body });
+          await refresh();
+        }}
+      />
     </Section>
   );
 }
@@ -460,12 +505,14 @@ export function CareChips({ care }: { care: import("../types").CareSummary }) {
           {level.short}
         </span>
       )}
-      {care.treatments.map((t) => (
-        <span key={t.id} className={`rounded-full border px-1.5 py-px text-[11px] ${TREATMENT_STYLE[t.status].chip}`}>
-          ✚ {timeLabel(t.treat_time) || "Treatment"}
-          {t.status !== "booked" ? ` · ${TREATMENT_STYLE[t.status].label}` : ""}
-        </span>
-      ))}
+      {care.treatments
+        .filter((t) => t.status !== "declined" && t.status !== "cancelled")
+        .map((t) => (
+          <span key={t.id} className={`rounded-full border px-1.5 py-px text-[11px] ${appointmentState(t).chip}`} title={[kindLabel(t.kind), t.reason, appointmentState(t).label].filter(Boolean).join(" · ")}>
+            ✚ {timeLabel(t.treat_time) || "Appt"} {KINDS.find((k) => k.key === t.kind)?.short}
+            {t.status === "attended" ? " · Came in" : t.status === "missed" ? " · Missed" : t.status === "pending" ? " · Pending" : ""}
+          </span>
+        ))}
       {care.noteCount > 0 && <span className="rounded-full border border-border px-1.5 py-px text-[11px] text-text-dim">💬 {care.noteCount}</span>}
     </div>
   );

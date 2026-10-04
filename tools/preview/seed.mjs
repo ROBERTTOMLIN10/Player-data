@@ -73,10 +73,15 @@ for (let back = 30; back >= 0; back--) {
     for (const [back, stage] of stages) await req(`/care/issues/${data.id}`, { method: "PATCH", cookie: at, body: { stage, stage_date: shift(today, -back) } });
     return data.id;
   };
-  const book = (i, time, instructions, statusAfter) =>
-    req("/care/treatments", { method: "POST", cookie: at, body: { player_id: pid(i), date: today, time, instructions } }).then(({ data }) =>
-      statusAfter ? req(`/care/treatments/${data.id}`, { method: "PATCH", cookie: at, body: { status: statusAfter } }) : null,
-    );
+  const playerLogin = async (i) => (await req("/auth/login", { method: "POST", body: { email: `p${pid(i)}@fau.edu`, password: "pw1234" } })).cookie;
+  // The AT books; the player accepts (or it's left for them to answer), then maybe came in.
+  const book = async (i, time, kind, reason, instructions, flow = "accepted") => {
+    const { data } = await req("/care/treatments", { method: "POST", cookie: at, body: { player_id: pid(i), date: today, time, kind, reason, instructions } });
+    if (flow === "pending") return data;
+    await req(`/me/care/treatments/${data.id}/respond`, { method: "POST", cookie: await playerLogin(i), body: { action: "accept" } });
+    if (flow === "attended") await req(`/care/treatments/${data.id}`, { method: "PATCH", cookie: at, body: { status: "attended" } });
+    return data;
+  };
 
   // Severe quad (checked in today): out, rehab only for now.
   await status(2, "out", "No practice", "Easy bike as tolerated", "NA", "NA", shift(today, -3));
@@ -85,20 +90,23 @@ for (let back = 30; back >= 0; back--) {
     [1, "Stim + quad sets, easy bike 10 min", 40, "Walking without a limp"],
     [0, "Bike 15 min, light stretching", 45, "Pain going down, still not 100%"],
   ]);
-  await book(2, "14:30", "Ice + stim. Bring your compression sleeve.");
+  await book(2, "14:30", "treatment", "Left quad", "Ice + stim. Bring your compression sleeve.");
   // Hamstring on the way back: limited, non-contact.
   await status(1, "limited", "Non-contact", "No limitations", "Max 70%, 1 min rest between", "Max 80% with enough rest");
   await issue(1, { category: "injury", description: "Hamstring strain", region: "hamstring_outer_r", side: "right", injury_date: shift(today, -10), expected_return: shift(today, 4) }, [
     [3, "Nordics, bridges, bike 20 min", 45, "Rehab went really well"],
     [0, "Strides at 70%, mobility", 40, "Felt good today"],
   ], [[7, "running"], [2, "modified"]]);
-  await book(1, "13:00", "Rehab before training", "attended");
+  await book(1, "13:00", "rehab", "Right hamstring", "Rehab after lunch", "attended");
   // Ankle: as tolerated with tape.
   await status(6, "as_tolerated", "As tolerated w/ tape");
   await issue(6, { category: "injury", description: "Ankle sprain", region: "ankle_r", side: "right", injury_date: shift(today, -5) }, [[0, "Taped, balance work", 20, "Felt great today"]], [[3, "running"], [1, "modified"], [0, "full"]]);
-  await book(6, "12:30", "Tape before training");
-  // The preview's player: a booking so the player view shows the treatment card.
-  await book(0, "15:00", "Foam roll and stretch calves before practice.");
+  await book(6, "12:30", "treatment", "Right ankle", "Tape before training");
+  // The preview's player: a proactive slot to answer, and an afternoon treatment they accepted.
+  await book(0, "06:45", "proactive", "Calves", "Foam roll calves before you come in.", "pending");
+  await book(0, "15:00", "treatment", "Calves", "Stretch after practice.");
+  // A player asks for a time that fits their classes (the AT confirms it).
+  await req("/me/care/requests", { method: "POST", cookie: await playerLogin(5), body: { date: today, time: "16:00", kind: "treatment", reason: "Lower back", note: "I have class until 3:30" } });
   // General medical and a physical-exam follow-up.
   await status(4, "limited", "Fever: rest today");
   await issue(4, { category: "gen_med", description: "Flu", injury_date: shift(today, -1) }, [[0, "Fluids, rest", null, "Fever down this morning"]]);
@@ -110,6 +118,17 @@ for (let back = 30; back >= 0; back--) {
   await req("/care/notes", { method: "POST", cookie: coach, body: { player_id: pid(1), date: today, body: "Did he come in before training?" } });
   await req("/care/notes", { method: "POST", cookie: at, body: { player_id: pid(1), date: today, body: "Yes, 1:00. Rehab went well, cleared for non-contact." } });
   await req("/care/notes", { method: "POST", cookie: at, body: { player_id: pid(2), date: today, body: "Out at least 2–3 weeks. Will update after imaging." } });
+
+  // Before training. Hamstring: called in at 7:30, came in, the AT recommends Limited (waiting on the coach).
+  const p1 = await playerLogin(1);
+  const { data: call } = await req(`/care/checks/${pid(1)}/call-in`, { method: "POST", cookie: at, body: { date: today, time: "07:30", kind: "check", reason: "Right hamstring", instructions: "Light bike 10 min before you come in", message: "Saw your check-in. Come see me at 7:30 so I can check the hamstring before training." } });
+  await req(`/me/care/treatments/${call.appointment.id}/respond`, { method: "POST", cookie: p1, body: { action: "accept" } });
+  await req("/me/care/messages", { method: "POST", cookie: p1, body: { quick: "on_my_way" } });
+  await req(`/care/checks/${pid(1)}/recommend`, { method: "POST", cookie: at, body: { date: today, level: "limited", note: "Non-contact. Strides up to 80%, no finishing" } });
+  // Quad: seen, AT recommended Out and the coach agreed.
+  await req(`/care/checks/${pid(2)}/call-in`, { method: "POST", cookie: at, body: { date: today, time: "07:15", kind: "check", reason: "Left quad", instructions: "Ice 15 min before" } });
+  await req(`/care/checks/${pid(2)}/recommend`, { method: "POST", cookie: at, body: { date: today, level: "out", note: "Rehab inside, bike as tolerated" } });
+  await req(`/care/checks/${pid(2)}/decide`, { method: "POST", cookie: coach, body: { date: today, level: "out" } });
 }
 
 console.log(`p${players[0].player_id}@fau.edu`); // first seeded player = the preview's player

@@ -13,6 +13,10 @@ export const LEVELS = ["full", "as_tolerated", "limited", "rehab", "out"] as con
 export type Level = (typeof LEVELS)[number];
 export const STAGES = ["rehab", "running", "modified", "full", "match_ready"] as const;
 export const CATEGORIES = ["injury", "gen_med", "ppe"] as const;
+export const KINDS = ["check", "proactive", "treatment", "rehab", "other"] as const;
+export type Kind = (typeof KINDS)[number];
+const KIND_LABEL: Record<Kind, string> = { check: "Pre-training check", proactive: "Proactive treatment", treatment: "Treatment", rehab: "Rehab", other: "Appointment" };
+export const kindLabel = (k: Kind) => KIND_LABEL[k] ?? "Appointment";
 
 export interface Availability {
   player_id: number;
@@ -31,8 +35,13 @@ export interface Treatment {
   player_id: number;
   treat_date: string;
   treat_time: string | null;
+  kind: Kind;
+  reason: string | null;
   instructions: string | null;
-  status: "booked" | "attended" | "missed";
+  status: "pending" | "booked" | "attended" | "missed" | "declined" | "cancelled";
+  awaiting: "player" | "trainer" | null;
+  requested_by: "trainer" | "player";
+  player_note: string | null;
   attended_marked_by: string | null;
   created_by: string | null;
   updated_at: string;
@@ -110,7 +119,8 @@ export function careDay(date: string) {
     )
     .all() as { player_id: number; name: string; position: string | null; user_id: number | null }[];
   const availability = availabilityOn(date);
-  const treatments = byPlayer(db.prepare("SELECT * FROM treatments WHERE treat_date = ? ORDER BY treat_time").all(date) as Treatment[]);
+  const treatments = byPlayer(db.prepare("SELECT * FROM treatments WHERE treat_date = ? AND status <> 'cancelled' ORDER BY treat_time").all(date) as Treatment[]);
+  const messages = byPlayer(db.prepare("SELECT * FROM care_messages WHERE msg_date = ? ORDER BY created_at, id").all(date) as { player_id: number }[]);
   const notes = byPlayer(db.prepare("SELECT * FROM care_notes WHERE note_date = ? ORDER BY created_at").all(date) as CareNote[]);
   const issues = byPlayer(openIssuesOn(date));
   const players = roster
@@ -122,6 +132,7 @@ export function careDay(date: string) {
       availability: availability.get(p.player_id) ?? null,
       treatments: treatments.get(p.player_id) ?? [],
       notes: notes.get(p.player_id) ?? [],
+      messages: messages.get(p.player_id) ?? [],
       issues: issues.get(p.player_id) ?? [],
     }));
   return { date, players };
@@ -187,17 +198,19 @@ export function timeLabel(hhmm: string | null): string | null {
   return `${((h + 11) % 12) + 1}:${m[2]} ${h < 12 ? "AM" : "PM"}`;
 }
 
-/** Tells the player on their phone about a booking (or a change to it). */
+/** Tells the player on their phone about an appointment the AT booked or changed (they can accept or ask for another time). */
 export async function notifyTreatment(t: Treatment, changed: boolean, today: string) {
   const user = getDb().prepare("SELECT id FROM users WHERE player_id = ?").get(t.player_id) as { id: number } | undefined;
   if (!user) return;
   const when = [t.treat_date === today ? "today" : null, timeLabel(t.treat_time)].filter(Boolean).join(" at ");
+  const what = [kindLabel(t.kind), t.reason].filter(Boolean).join(" · ");
+  const ask = t.status === "pending" && t.awaiting === "player" ? " Tap to accept or pick another time." : "";
   try {
     await sendToUsers(
       [user.id],
       {
-        title: changed ? "Treatment updated" : "Treatment booked",
-        body: `${when ? `Come in ${when}.` : "See the athletic trainer."}${t.instructions ? ` ${t.instructions}` : ""}`,
+        title: changed ? `Appointment updated: ${what}` : `Athletic trainer: ${what}`,
+        body: `${when ? `Come in ${when}.` : "See the athletic trainer."}${t.instructions ? ` ${t.instructions}` : ""}${ask}`,
         url: "/",
         tag: `treatment-${t.id}`,
       },

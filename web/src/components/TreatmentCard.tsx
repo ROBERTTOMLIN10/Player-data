@@ -1,57 +1,220 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { markTreatmentAttended, useMyCare } from "../api/client";
-import { timeLabel } from "../lib/care";
+import { markTreatmentAttended, myCareApi, useMyCare } from "../api/client";
+import { appointmentState, KINDS, kindLabel, levelInfo, timeLabel } from "../lib/care";
 import { formatDate } from "../lib/format";
+import type { AppointmentKind, MyCare } from "../types";
+import { CareThread } from "./CareThread";
 
-/** On the player's check-in screen: treatment the athletic trainer booked, with "I came in". */
+const input = "w-full rounded-md border border-border bg-surface-raised px-2.5 py-1.5 text-sm text-text outline-none focus:border-owl-red";
+const primary = "rounded-lg bg-teal px-3 py-1.5 text-sm font-semibold text-ink hover:opacity-90 disabled:opacity-50";
+const ghost = "rounded-lg border border-border px-3 py-1.5 text-sm text-text-dim hover:text-text disabled:opacity-50";
+
+const QUICK = [
+  { key: "on_my_way", label: "On my way" },
+  { key: "running_late", label: "Running 10 min late" },
+  { key: "feeling_better", label: "Feeling better now" },
+  { key: "need_time", label: "Can we do another time?" },
+];
+
+type Appt = MyCare["treatments"][number];
+
+/**
+ * On the player's check-in screen: their appointments with the athletic trainer
+ * (accept, ask for another time, decline, "I came in"), the AT calling them in
+ * before training, messages back and forth, and asking for a time themselves.
+ */
 export function TreatmentCard() {
   const { data } = useMyCare();
   const qc = useQueryClient();
-  const [busy, setBusy] = useState<number | null>(null);
-  const list = data?.treatments ?? [];
-  if (!list.length) return null;
+  const [requesting, setRequesting] = useState(false);
+  if (!data) return null;
+  const refresh = () => qc.invalidateQueries({ queryKey: ["myCare"] });
+  const callIn = data.check?.appointment_id ? data.treatments.find((t) => t.id === data.check!.appointment_id) : undefined;
+  const others = data.treatments.filter((t) => t !== callIn && t.status !== "declined");
+  const showThread = data.messages.length > 0 || Boolean(callIn);
+
   return (
     <div className="flex flex-col gap-2">
-      {list.map((t) => {
-        const today = t.treat_date === data!.today;
-        const when = [today ? "Today" : formatDate(t.treat_date), timeLabel(t.treat_time)].filter(Boolean).join(" · ");
-        return (
-          <div key={t.id} className={`rounded-xl border p-4 ${t.status === "attended" ? "border-teal/40 bg-teal/5" : "border-sky-400/40 bg-sky-400/5"}`}>
-            <div className="flex items-start gap-3">
-              <span className="mt-0.5 text-lg" aria-hidden>
-                ✚
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="text-xs font-semibold uppercase tracking-wide text-sky-300">Treatment · {when}</div>
-                <div className="mt-0.5 font-medium">{t.treat_time ? `Come in at ${timeLabel(t.treat_time)}` : "See the athletic trainer"}</div>
-                {t.instructions && <p className="mt-1 text-sm text-text-dim">{t.instructions}</p>}
-              </div>
-            </div>
-            <div className="mt-3">
-              {t.status === "attended" ? (
-                <span className="text-sm font-medium text-teal">✓ You came in</span>
-              ) : today ? (
-                <button
-                  disabled={busy === t.id}
-                  onClick={async () => {
-                    setBusy(t.id);
-                    try {
-                      await markTreatmentAttended(t.id);
-                      await qc.invalidateQueries({ queryKey: ["myCare"] });
-                    } finally {
-                      setBusy(null);
-                    }
-                  }}
-                  className="rounded-lg bg-teal px-3 py-1.5 text-sm font-semibold text-ink hover:opacity-90 disabled:opacity-50"
-                >
-                  {busy === t.id ? "Saving…" : "I came in"}
-                </button>
-              ) : null}
-            </div>
+      {data.check?.decision && (
+        <div className={`rounded-xl border p-3 text-sm ${levelInfo(data.check.decision).chip}`}>
+          <span className="font-semibold">Today: {levelInfo(data.check.decision).label}</span>
+          {data.check.decision_note ? <span> · {data.check.decision_note}</span> : null}
+        </div>
+      )}
+      {callIn && <AppointmentCard t={callIn} today={data.today} onChange={refresh} highlight />}
+      {others.map((t) => (
+        <AppointmentCard key={t.id} t={t} today={data.today} onChange={refresh} />
+      ))}
+      {showThread && (
+        <div className="rounded-xl border border-border bg-surface p-3">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-dim">Messages with the athletic trainer</div>
+          <CareThread
+            messages={data.messages}
+            mine="player"
+            quick={QUICK}
+            placeholder="Message the AT…"
+            onSend={async (body, quick) => {
+              await myCareApi.message(quick ? { quick } : { body });
+              await refresh();
+            }}
+          />
+        </div>
+      )}
+      {requesting ? (
+        <RequestForm today={data.today} onDone={() => setRequesting(false)} onSaved={refresh} />
+      ) : (
+        <button onClick={() => setRequesting(true)} className="self-start text-sm text-sky-300 hover:underline">
+          ✚ Request a time with the athletic trainer
+        </button>
+      )}
+    </div>
+  );
+}
+
+function AppointmentCard({ t, today, onChange, highlight = false }: { t: Appt; today: string; onChange: () => Promise<unknown>; highlight?: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [reschedule, setReschedule] = useState(false);
+  const [time, setTime] = useState(t.treat_time ?? "");
+  const [note, setNote] = useState("");
+  const isToday = t.treat_date === today;
+  const when = [isToday ? "Today" : formatDate(t.treat_date), timeLabel(t.treat_time)].filter(Boolean).join(" · ");
+  const state = appointmentState(t, "player");
+  const mustAnswer = t.status === "pending" && t.awaiting === "player";
+
+  const run = async (fn: () => Promise<unknown>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await fn();
+      await onChange();
+      setReschedule(false);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const tone =
+    t.status === "attended" ? "border-teal/40 bg-teal/5" : highlight || mustAnswer ? "border-gold/50 bg-gold/5" : "border-sky-400/40 bg-sky-400/5";
+  return (
+    <div className={`rounded-xl border p-4 ${tone}`}>
+      {highlight && t.status !== "attended" && (
+        <div className="mb-2 text-sm font-semibold text-gold">The athletic trainer wants to see you before training</div>
+      )}
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 text-lg" aria-hidden>
+          ✚
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-sky-300">
+              {kindLabel(t.kind)} · {when}
+            </span>
+            <span className={`rounded-full border px-1.5 py-px text-[11px] ${state.chip}`}>{state.label}</span>
           </div>
-        );
-      })}
+          <div className="mt-0.5 font-medium">
+            {t.treat_time ? `Come in at ${timeLabel(t.treat_time)}` : "See the athletic trainer"}
+            {t.reason ? <span className="font-normal text-text-dim"> · {t.reason}</span> : null}
+          </div>
+          {t.instructions && <p className="mt-1 text-sm text-text-dim">Before you come in: {t.instructions}</p>}
+          {t.status === "pending" && t.awaiting === "trainer" && <p className="mt-1 text-xs text-text-dim">You asked for {timeLabel(t.treat_time)}. The AT will confirm.</p>}
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {mustAnswer && !reschedule && (
+          <>
+            <button className={primary} disabled={busy} onClick={() => run(() => myCareApi.respond(t.id, { action: "accept" }))}>
+              Accept
+            </button>
+            <button className={ghost} disabled={busy} onClick={() => setReschedule(true)}>
+              Another time
+            </button>
+            <button className={ghost} disabled={busy} onClick={() => run(() => myCareApi.respond(t.id, { action: "decline" }))}>
+              Decline
+            </button>
+          </>
+        )}
+        {t.status === "booked" && isToday && (
+          <button className={primary} disabled={busy} onClick={() => run(() => markTreatmentAttended(t.id))}>
+            I came in
+          </button>
+        )}
+        {t.status === "attended" && <span className="text-sm font-medium text-teal">✓ You came in</span>}
+      </div>
+      {reschedule && (
+        <div className="mt-3 flex flex-col gap-2">
+          <div className="flex gap-2">
+            <input type="time" className={`${input} w-32`} value={time} onChange={(e) => setTime(e.target.value)} aria-label="Time that works" />
+            <input className={input} placeholder="Why (e.g. class until 10)" value={note} onChange={(e) => setNote(e.target.value)} />
+          </div>
+          <div className="flex gap-2">
+            <button className={primary} disabled={busy || !time} onClick={() => run(() => myCareApi.respond(t.id, { action: "reschedule", time, note: note.trim() || undefined }))}>
+              Send to the AT
+            </button>
+            <button className={ghost} onClick={() => setReschedule(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+      {error && <p className="mt-2 text-xs text-owl-red-light">{error}</p>}
+    </div>
+  );
+}
+
+function RequestForm({ today, onDone, onSaved }: { today: string; onDone: () => void; onSaved: () => Promise<unknown> }) {
+  const [date, setDate] = useState(today);
+  const [time, setTime] = useState("");
+  const [kind, setKind] = useState<AppointmentKind>("treatment");
+  const [reason, setReason] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-3">
+      <div className="text-xs font-semibold uppercase tracking-wide text-text-dim">Request a time</div>
+      <div className="grid grid-cols-2 gap-2">
+        <input type="date" className={input} value={date} min={today} onChange={(e) => setDate(e.target.value)} aria-label="Day" />
+        <input type="time" className={input} value={time} onChange={(e) => setTime(e.target.value)} aria-label="Time" />
+        <select className={input} value={kind} onChange={(e) => setKind(e.target.value as AppointmentKind)} aria-label="What for">
+          {KINDS.filter((k) => k.key !== "check").map((k) => (
+            <option key={k.key} value={k.key}>
+              {k.label}
+            </option>
+          ))}
+        </select>
+        <input className={input} placeholder="Area (e.g. Calves)" value={reason} onChange={(e) => setReason(e.target.value)} />
+      </div>
+      <input className={input} placeholder="Note for the AT (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
+      <div className="flex gap-2">
+        <button
+          className={primary}
+          disabled={busy || !time || !date}
+          onClick={async () => {
+            setBusy(true);
+            setError(null);
+            try {
+              await myCareApi.request({ date, time, kind, reason: reason.trim() || undefined, note: note.trim() || undefined });
+              await onSaved();
+              onDone();
+            } catch (e) {
+              setError((e as Error).message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Send request
+        </button>
+        <button className={ghost} onClick={onDone}>
+          Cancel
+        </button>
+      </div>
+      {error && <p className="text-xs text-owl-red-light">{error}</p>}
     </div>
   );
 }

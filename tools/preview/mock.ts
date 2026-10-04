@@ -80,6 +80,13 @@ function recomputeSquad() {
 }
 
 /** The board with each player's care as it stands now (care changes while clicking around). */
+// Before training is worked out from each player's check-in on the board.
+care.setEntries((date) =>
+  squadOn(date)
+    .players.filter((p: any) => p.entry)
+    .map((p: any) => ({ player_id: p.player_id, readiness_score: p.entry.readiness_score, notes: p.entry.notes, submitted_at: p.entry.updated_at ?? p.entry.submitted_at, soreness: p.entry.soreness ?? [] })),
+);
+
 function squadFor(date: string | null) {
   const board = squadOn(date);
   return { ...board, players: board.players.map((p: any) => ({ ...p, care: care.summaryFor(p.player_id, board.date) })) };

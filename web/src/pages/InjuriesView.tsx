@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Bar, CartesianGrid, Cell, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { CARE_QUERY_KEYS, careApi, useIssue, useIssues } from "../api/client";
+import { BeforeTraining } from "../components/BeforeTraining";
+import { CarePanel } from "../components/CarePanel";
 import { Card, SectionHeading } from "../components/Card";
 import { Segmented } from "../components/SeasonStats";
 import { regionLabel } from "../lib/bodyRegions";
@@ -15,7 +17,11 @@ const button = "rounded-md bg-owl-red px-3 py-1.5 text-sm font-semibold text-whi
 const ghost = "rounded-md border border-border px-2.5 py-1 text-xs text-text-dim hover:text-text";
 const daysSince = (from: string | null, to: string) => (from ? Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) : null);
 
-/** Injuries and other issues: who's recovering, where they are on the way back, and their history. */
+/**
+ * Injuries: first, who needs seeing before today's training (the AT calls them in,
+ * messages them and sends the coach a recommendation); then the recovery tracker —
+ * each injury or issue, where they are on the way back, and their history.
+ */
 export default function InjuriesView() {
   const { id } = useParams();
   return id ? <IssueDetailView id={Number(id)} /> : <IssueList />;
@@ -25,8 +31,13 @@ function IssueList() {
   const [show, setShow] = useState<"open" | "all">("open");
   const { data, isLoading } = useIssues(show === "all");
   const issues = data?.issues ?? [];
+  const [params] = useSearchParams();
+  const focus = params.get("player") ? Number(params.get("player")) : null;
+  const [careFor, setCareFor] = useState<{ id: number; name: string } | null>(null);
   return (
     <div className="flex flex-col gap-5">
+      <BeforeTraining date={null} onOpenPlayer={setCareFor} focusPlayerId={focus} />
+      {careFor && data && <CarePanel playerId={careFor.id} name={careFor.name} date={data.today} entry={null} onClose={() => setCareFor(null)} />}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <SectionHeading title="Injuries" subtitle="Recovery tracker: each player's injury or issue, return-to-play stage and daily rehab" />
         <div className="mb-3">

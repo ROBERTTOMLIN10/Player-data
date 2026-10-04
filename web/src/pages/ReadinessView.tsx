@@ -13,6 +13,7 @@ import { CareChips, CarePanel } from "../components/CarePanel";
 import { InjuryReport } from "../components/InjuryReport";
 import { Segmented } from "../components/SeasonStats";
 import { CheckinAlerts } from "../components/CheckinAlerts";
+import { BeforeTraining } from "../components/BeforeTraining";
 
 type Filter = "all" | "flagged" | "missing";
 
@@ -192,6 +193,8 @@ export default function ReadinessView() {
         <SummaryTile label="Good" value={summary.green} dot={STATUS_STYLE.green.dot} />
         <SummaryTile label="Squad avg" value={summary.averageScore === null ? "—" : `${summary.averageScore}%`} />
       </div>
+
+      <BeforeTraining date={dateParam} compact onOpenPlayer={(p) => setCareFor(p)} />
 
       <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
         <section className="min-w-0">

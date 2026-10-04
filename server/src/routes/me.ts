@@ -10,6 +10,8 @@ import { gameOnDate, getCheckins, readinessScore, shiftDate, teamToday } from ".
 import { getPlayerDetail } from "./players.js";
 import { playerRpe } from "./rpe.js";
 import { alertStaffForCheckin } from "../lib/careAlerts.js";
+import { KINDS, kindLabel, type Treatment } from "../lib/care.js";
+import { getCheck, messagesOn, notify, playerName, whenLabel } from "../lib/beforeTraining.js";
 
 /**
  * Everything a signed-in player can see: their own profile/GPS/readiness, plus
@@ -220,27 +222,131 @@ meRouter.post("/push/unsubscribe", (req, res) => {
   res.json({ ok: true });
 });
 
-// --- Treatment bookings from the athletic trainer ------------------------------
+// --- The athletic trainer: appointments and messages --------------------------
 
-// Today's and upcoming bookings ("Come in at 2:00 PM").
+// Today's and upcoming appointments, today's messages with the AT, and whether the AT has called them in before training.
 meRouter.get("/care", (req, res) => {
+  const playerId = req.user!.playerId!;
   const today = teamToday();
-  const treatments = getDb()
-    .prepare("SELECT id, treat_date, treat_time, instructions, status FROM treatments WHERE player_id = ? AND treat_date >= ? ORDER BY treat_date, treat_time LIMIT 5")
-    .all(req.user!.playerId!, today);
-  res.json({ today, treatments });
+  const db = getDb();
+  const treatments = db
+    .prepare(
+      `SELECT id, treat_date, treat_time, kind, reason, instructions, status, awaiting, requested_by, player_note FROM treatments
+       WHERE player_id = ? AND treat_date >= ? AND status NOT IN ('cancelled') ORDER BY treat_date, treat_time LIMIT 12`,
+    )
+    .all(playerId, today);
+  const check = getCheck(playerId, today);
+  res.json({
+    today,
+    treatments,
+    messages: messagesOn(today, playerId),
+    check: check ? { appointment_id: check.appointment_id, decision: check.decision, decision_note: check.decision_note } : null,
+  });
 });
+
+const myTreatment = (id: number, playerId: number) =>
+  getDb().prepare("SELECT * FROM treatments WHERE id = ? AND player_id = ?").get(id, playerId) as Treatment | undefined;
 
 // "I came in": the player confirms they attended (the AT can also mark it).
 meRouter.post("/care/treatments/:id/attended", (req, res) => {
-  const result = getDb()
-    .prepare(
-      `UPDATE treatments SET status = 'attended', attended_marked_by = 'player', updated_at = datetime('now')
-       WHERE id = ? AND player_id = ? AND status <> 'attended'`,
-    )
-    .run(Number(req.params.id), req.user!.playerId!);
-  if (!result.changes && !getDb().prepare("SELECT 1 FROM treatments WHERE id = ? AND player_id = ?").get(Number(req.params.id), req.user!.playerId!)) {
-    return res.status(404).json({ error: "Booking not found." });
-  }
+  const t = myTreatment(Number(req.params.id), req.user!.playerId!);
+  if (!t) return res.status(404).json({ error: "Booking not found." });
+  getDb()
+    .prepare("UPDATE treatments SET status = 'attended', awaiting = NULL, attended_marked_by = 'player', updated_at = datetime('now') WHERE id = ? AND status <> 'attended'")
+    .run(t.id);
   res.json({ ok: true });
+});
+
+// Accept the AT's time, decline, or ask for another time (which goes back to the AT to confirm).
+const respondSchema = z.object({
+  action: z.enum(["accept", "decline", "reschedule"]),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  time: z.string().regex(/^\d{2}:\d{2}$/, "Pick a time.").optional(),
+  note: z.string().trim().max(500).optional(),
+});
+
+meRouter.post("/care/treatments/:id/respond", (req, res) => {
+  const playerId = req.user!.playerId!;
+  const parsed = respondSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid answer." });
+  const t = myTreatment(Number(req.params.id), playerId);
+  if (!t) return res.status(404).json({ error: "Booking not found." });
+  const { action, date, time, note } = parsed.data;
+  if (action === "reschedule" && !time) return res.status(400).json({ error: "Pick the time that works for you." });
+  const next =
+    action === "accept"
+      ? { status: "booked", awaiting: null, treat_date: t.treat_date, treat_time: t.treat_time }
+      : action === "decline"
+        ? { status: "declined", awaiting: null, treat_date: t.treat_date, treat_time: t.treat_time }
+        : { status: "pending", awaiting: "trainer", treat_date: date ?? t.treat_date, treat_time: time! };
+  const row = getDb()
+    .prepare(
+      `UPDATE treatments SET status = @status, awaiting = @awaiting, treat_date = @treat_date, treat_time = @treat_time,
+         player_note = @note, updated_at = datetime('now') WHERE id = @id RETURNING *`,
+    )
+    .get({ ...next, note: note || null, id: t.id }) as Treatment;
+  res.json(row);
+  const name = playerName(playerId);
+  const what = kindLabel(row.kind);
+  const msg =
+    action === "accept"
+      ? [`${name} accepted`, `${what} ${whenLabel(row, teamToday())}`]
+      : action === "decline"
+        ? [`${name} declined`, `${what} ${whenLabel(t, teamToday())}${note ? ` · “${note}”` : ""}`]
+        : [`${name} asked for another time`, `${what}: ${whenLabel(row, teamToday())} instead of ${whenLabel(t, teamToday())}${note ? ` · “${note}”` : ""}`];
+  void notify.trainers(playerId, msg[0], msg[1], `treatment-${t.id}`);
+});
+
+// The player asks for an appointment at a time that suits their schedule; the AT confirms it.
+const requestSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  time: z.string().regex(/^\d{2}:\d{2}$/, "Pick a time."),
+  kind: z.enum(KINDS).default("treatment"),
+  reason: z.string().trim().max(200).optional(),
+  note: z.string().trim().max(500).optional(),
+});
+
+meRouter.post("/care/requests", (req, res) => {
+  const playerId = req.user!.playerId!;
+  const parsed = requestSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Check the details and try again." });
+  const r = parsed.data;
+  if (r.date < teamToday()) return res.status(400).json({ error: "Pick today or a later day." });
+  const row = getDb()
+    .prepare(
+      `INSERT INTO treatments (player_id, treat_date, treat_time, kind, reason, status, awaiting, requested_by, player_note, created_by)
+       VALUES (?, ?, ?, ?, ?, 'pending', 'trainer', 'player', ?, 'player') RETURNING *`,
+    )
+    .get(playerId, r.date, r.time, r.kind, r.reason || null, r.note || null) as Treatment;
+  res.status(201).json(row);
+  void notify.trainers(
+    playerId,
+    `${playerName(playerId)} asked for an appointment`,
+    `${kindLabel(row.kind)}${row.reason ? ` · ${row.reason}` : ""} · ${whenLabel(row, teamToday())}${r.note ? ` · “${r.note}”` : ""}`,
+    `treatment-${row.id}`,
+  );
+});
+
+// Quick replies ("On my way") or a short message back to the AT.
+export const QUICK_REPLIES: Record<string, string> = {
+  on_my_way: "On my way",
+  running_late: "Running 10 minutes late",
+  feeling_better: "Feeling better now",
+  need_time: "Can we do another time?",
+};
+const myMessageSchema = z.object({ quick: z.enum(Object.keys(QUICK_REPLIES) as [string, ...string[]]).optional(), body: z.string().trim().max(1000).optional() });
+
+meRouter.post("/care/messages", (req, res) => {
+  const playerId = req.user!.playerId!;
+  const parsed = myMessageSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid message." });
+  const { quick, body } = parsed.data;
+  const text = [quick ? QUICK_REPLIES[quick] : null, body || null].filter(Boolean).join(" · ");
+  if (!text) return res.status(400).json({ error: "Write a message." });
+  const today = teamToday();
+  const row = getDb()
+    .prepare("INSERT INTO care_messages (player_id, msg_date, author_role, author_email, body, quick) VALUES (?, ?, 'player', ?, ?, ?) RETURNING *")
+    .get(playerId, today, req.user!.email ?? null, text, quick ?? null);
+  res.status(201).json(row);
+  void notify.trainers(playerId, playerName(playerId), text, `care-msg-${playerId}`);
 });

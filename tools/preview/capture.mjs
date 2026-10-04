@@ -57,6 +57,8 @@ out.trainerMe = { role: "trainer", email: "at@fau.edu", playerId: null, playerNa
     issues: all("SELECT * FROM injuries"),
     stages: all("SELECT * FROM injury_stage_history"),
     logs: all("SELECT * FROM rehab_logs"),
+    messages: all("SELECT * FROM care_messages"),
+    checks: all("SELECT * FROM training_checks"),
   };
   db.close();
   out.carePain = {};

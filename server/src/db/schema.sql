@@ -575,14 +575,22 @@ CREATE TABLE IF NOT EXISTS player_availability (
   PRIMARY KEY (player_id, status_date)
 );
 
--- "Come in at 2:00 PM": a treatment booking the player sees (and gets a push for).
+-- Appointments with the athletic trainer: morning proactive treatment, treatment,
+-- rehab, a pre-training check. The AT books freely and the player accepts, declines
+-- or asks for another time; a player can also request a time. Whoever's turn it is
+-- next is in `awaiting`; once both agree it's 'booked'.
 CREATE TABLE IF NOT EXISTS treatments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
   treat_date TEXT NOT NULL,
   treat_time TEXT, -- HH:MM, team local
-  instructions TEXT,
-  status TEXT NOT NULL DEFAULT 'booked' CHECK (status IN ('booked', 'attended', 'missed')),
+  kind TEXT NOT NULL DEFAULT 'treatment' CHECK (kind IN ('check', 'proactive', 'treatment', 'rehab', 'other')),
+  reason TEXT, -- what it's for, e.g. "Left hamstring", "Calves"
+  instructions TEXT, -- what to do before / bring, e.g. "Ice 15 min before you come in"
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'booked', 'attended', 'missed', 'declined', 'cancelled')),
+  awaiting TEXT CHECK (awaiting IN ('player', 'trainer') OR awaiting IS NULL), -- whose answer a pending one needs
+  requested_by TEXT NOT NULL DEFAULT 'trainer' CHECK (requested_by IN ('trainer', 'player')),
+  player_note TEXT, -- the player's latest reply ("I have class until 10")
   attended_marked_by TEXT, -- 'player' or the AT's email
   created_by TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -660,4 +668,44 @@ CREATE TABLE IF NOT EXISTS checkin_alerts_sent (
   alert_key TEXT NOT NULL, -- severe:<region> | moderate:<region> | low:<threshold>
   sent_at TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (player_id, entry_date, alert_key)
+);
+
+-- The back-and-forth between the AT and a player (coaches can read it): "Come in
+-- at 7:30 to get checked", "On my way". Quick replies keep their key in `quick`.
+CREATE TABLE IF NOT EXISTS care_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  msg_date TEXT NOT NULL,
+  author_role TEXT NOT NULL CHECK (author_role IN ('player', 'trainer', 'coach')),
+  author_email TEXT,
+  body TEXT NOT NULL,
+  quick TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_care_messages_day ON care_messages(msg_date, player_id);
+
+-- Before training: a player who may miss part or all of today's session. Most are
+-- spotted from their check-in (worked out live); this row holds what the staff did:
+-- a manual flag, the AT calling them in (appointment), "fine to train", the AT's
+-- recommendation after seeing them, and the coach's final decision (which becomes
+-- the day's play status).
+CREATE TABLE IF NOT EXISTS training_checks (
+  player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  check_date TEXT NOT NULL,
+  flagged INTEGER NOT NULL DEFAULT 0,
+  flag_note TEXT,
+  flagged_by TEXT,
+  appointment_id INTEGER REFERENCES treatments(id) ON DELETE SET NULL,
+  cleared_by TEXT, -- AT: fine to train, nothing to decide
+  cleared_at TEXT,
+  recommendation TEXT CHECK (recommendation IN ('full', 'as_tolerated', 'limited', 'rehab', 'out') OR recommendation IS NULL),
+  rec_note TEXT,
+  recommended_by TEXT,
+  recommended_at TEXT,
+  decision TEXT CHECK (decision IN ('full', 'as_tolerated', 'limited', 'rehab', 'out') OR decision IS NULL),
+  decision_note TEXT,
+  decided_by TEXT,
+  decided_at TEXT,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (player_id, check_date)
 );

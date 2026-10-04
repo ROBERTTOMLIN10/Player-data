@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useCareDay } from "../api/client";
-import { attendanceMark, levelInfo, sideLabel, stageLabel, timeLabel, TREATMENT_STYLE } from "../lib/care";
+import { appointmentState, attendanceMark, kindLabel, levelInfo, sideLabel, stageLabel, timeLabel } from "../lib/care";
 import { downloadFrom } from "../lib/download";
 import { formatDate, formatDateLong } from "../lib/format";
 import type { CareDayPlayer, OpenIssue, PlayLevel } from "../types";
@@ -41,11 +41,11 @@ export function InjuryReport({ date, onOpenPlayer }: { date: string | null; onOp
   const byDate = (a: Row, b: Row) => String(b.issue?.injury_date ?? "").localeCompare(String(a.issue?.injury_date ?? ""));
   const groups = REPORT_ORDER.map((level) => ({ level, rows: injuryRows.filter((r) => r.level === level).sort(byDate) })).filter((g) => g.rows.length);
 
-  const treatments = data.players.flatMap((p) => p.treatments.map((t) => ({ ...t, name: p.name, player: p })));
+  const treatments = data.players.flatMap((p) => p.treatments.filter((t) => t.status !== "declined").map((t) => ({ ...t, name: p.name, player: p })));
   const counts = {
     out: data.players.filter((p) => p.availability?.level === "out").length,
     restricted: data.players.filter((p) => p.availability && ["as_tolerated", "limited", "rehab"].includes(p.availability.level)).length,
-    booked: treatments.length,
+    booked: treatments.filter((t) => t.status !== "missed").length,
     came: treatments.filter((t) => t.status === "attended").length,
   };
 
@@ -64,13 +64,13 @@ export function InjuryReport({ date, onOpenPlayer }: { date: string | null; onOp
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Tile label="Out" value={counts.out} tone="text-owl-red-light" />
         <Tile label="Restricted" value={counts.restricted} tone="text-gold" />
-        <Tile label="Treatments booked" value={counts.booked} />
+        <Tile label="Appointments" value={counts.booked} />
         <Tile label="Came in" value={`${counts.came}/${counts.booked}`} tone="text-teal" />
       </div>
 
       {treatments.length > 0 && (
         <Card className="p-0">
-          <div className="border-b border-border px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-text-dim">Treatment today</div>
+          <div className="border-b border-border px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-text-dim">Appointments today</div>
           <ul className="divide-y divide-border/60">
             {treatments
               .sort((a, b) => String(a.treat_time ?? "").localeCompare(String(b.treat_time ?? "")))
@@ -80,9 +80,13 @@ export function InjuryReport({ date, onOpenPlayer }: { date: string | null; onOp
                     <span className="w-20 shrink-0 whitespace-nowrap font-semibold tabular-nums">{timeLabel(t.treat_time) || "—"}</span>
                     <span className="min-w-0 flex-1 truncate">
                       <span className="font-medium">{t.name}</span>
-                      {t.instructions && <span className="text-text-dim"> · {t.instructions}</span>}
+                      <span className="text-text-dim">
+                        {" "}
+                        · {kindLabel(t.kind)}
+                        {t.reason ? ` · ${t.reason}` : ""}
+                      </span>
                     </span>
-                    <span className={`shrink-0 rounded-full border px-1.5 py-px text-[11px] ${TREATMENT_STYLE[t.status].chip}`}>{TREATMENT_STYLE[t.status].label}</span>
+                    <span className={`shrink-0 rounded-full border px-1.5 py-px text-[11px] ${appointmentState(t).chip}`}>{appointmentState(t).label}</span>
                   </button>
                 </li>
               ))}

@@ -2,7 +2,8 @@ import { Router } from "express";
 import * as XLSX from "xlsx";
 import { z } from "zod";
 import { getDb } from "../db/connection.js";
-import { CATEGORIES, careDay, issueDetail, LEVELS, notifyTreatment, playerCare, STAGES, type Treatment } from "../lib/care.js";
+import { availabilityOn, CATEGORIES, careDay, issueDetail, KINDS, kindLabel, LEVELS, notifyTreatment, playerCare, STAGES, type Treatment } from "../lib/care.js";
+import { beforeTraining, getCheck, levelLabel, notify, playerName, updateCheck, whenLabel } from "../lib/beforeTraining.js";
 import { getAlertPrefs, READINESS_THRESHOLDS, saveAlertPrefs } from "../lib/careAlerts.js";
 import { personalUserId } from "../lib/follows.js";
 import { vapidPublicKey } from "../lib/push.js";
@@ -94,10 +95,19 @@ careRouter.put("/availability/:playerId", (req, res) => {
   res.json({ ok: true });
 });
 
-// ---- Treatments ------------------------------------------------------------------
+// ---- Appointments ------------------------------------------------------------------
+// The AT books freely (the player then accepts, declines or asks for another time);
+// a player's request or new time comes back here for the AT to confirm.
 
 const time = z.string().regex(/^\d{2}:\d{2}$/, "Pick a time.").nullable().optional();
-const treatmentSchema = z.object({ player_id: z.number().int(), date: isoDate, time, instructions: text(1000) });
+const treatmentSchema = z.object({
+  player_id: z.number().int(),
+  date: isoDate,
+  time,
+  kind: z.enum(KINDS).default("treatment"),
+  reason: text(200),
+  instructions: text(1000),
+});
 
 careRouter.post("/treatments", async (req, res) => {
   const parsed = treatmentSchema.safeParse(req.body);
@@ -106,9 +116,12 @@ careRouter.post("/treatments", async (req, res) => {
   if (!playerExists(t.player_id)) return res.status(404).json({ error: "Player not found." });
   const row = getDb()
     .prepare(
-      "INSERT INTO treatments (player_id, treat_date, treat_time, instructions, created_by) VALUES (?, ?, ?, ?, ?) RETURNING *",
+      `INSERT INTO treatments (player_id, treat_date, treat_time, kind, reason, instructions, status, awaiting, requested_by, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, 'pending', 'player', 'trainer', ?) RETURNING *`,
     )
-    .get(t.player_id, t.date, t.time ?? null, t.instructions, who(req)) as Treatment;
+    .get(t.player_id, t.date, t.time ?? null, t.kind, t.reason, t.instructions, who(req)) as Treatment;
+  // A pre-training check booked from anywhere puts them on that day's before-training list.
+  if (row.kind === "check" && !getCheck(row.player_id, row.treat_date)?.appointment_id) updateCheck(row.player_id, row.treat_date, { appointment_id: row.id });
   res.status(201).json(row);
   void notifyTreatment(row, false, teamToday());
 });
@@ -116,8 +129,10 @@ careRouter.post("/treatments", async (req, res) => {
 const treatmentUpdate = z.object({
   date: isoDate.optional(),
   time,
+  kind: z.enum(KINDS).optional(),
+  reason: text(200),
   instructions: text(1000),
-  status: z.enum(["booked", "attended", "missed"]).optional(),
+  status: z.enum(["booked", "attended", "missed", "cancelled"]).optional(),
 });
 
 careRouter.patch("/treatments/:id", (req, res) => {
@@ -131,26 +146,200 @@ careRouter.patch("/treatments/:id", (req, res) => {
   const next = {
     treat_date: u.date ?? before.treat_date,
     treat_time: u.time !== undefined ? u.time : before.treat_time,
+    kind: u.kind ?? before.kind,
+    reason: "reason" in req.body ? u.reason : before.reason,
     instructions: "instructions" in req.body ? u.instructions : before.instructions,
-    status: u.status ?? before.status,
+    status: before.status as string,
+    awaiting: before.awaiting as string | null,
   };
+  const moved = next.treat_date !== before.treat_date || next.treat_time !== before.treat_time;
+  if (u.status) {
+    // 'booked' = the AT confirms the player's time; attended / missed / cancelled close it.
+    next.status = u.status;
+    next.awaiting = null;
+  } else if (moved) {
+    // A new time from the AT goes back to the player to accept.
+    next.status = "pending";
+    next.awaiting = "player";
+  }
   const row = db
     .prepare(
-      `UPDATE treatments SET treat_date = @treat_date, treat_time = @treat_time, instructions = @instructions, status = @status,
-         attended_marked_by = CASE WHEN @status <> status THEN @by ELSE attended_marked_by END, updated_at = datetime('now')
+      `UPDATE treatments SET treat_date = @treat_date, treat_time = @treat_time, kind = @kind, reason = @reason, instructions = @instructions,
+         status = @status, awaiting = @awaiting,
+         attended_marked_by = CASE WHEN @status IN ('attended', 'missed') AND @status <> status THEN @by ELSE attended_marked_by END,
+         updated_at = datetime('now')
        WHERE id = @id RETURNING *`,
     )
     .get({ ...next, by: who(req), id }) as Treatment;
   res.json(row);
-  // The player hears about a new time or new instructions, not about attendance.
-  if (next.treat_date !== before.treat_date || next.treat_time !== before.treat_time || next.instructions !== before.instructions) {
-    void notifyTreatment(row, true, teamToday());
-  }
+  // The player hears about a new time or instructions, and when the AT confirms their time.
+  const confirmed = u.status === "booked" && before.status === "pending";
+  if (moved || confirmed || next.instructions !== before.instructions || next.kind !== before.kind) void notifyTreatment(row, true, teamToday());
 });
 
 careRouter.delete("/treatments/:id", (req, res) => {
   getDb().prepare("DELETE FROM treatments WHERE id = ?").run(Number(req.params.id));
   res.json({ ok: true });
+});
+
+// ---- Messages with the player ----------------------------------------------------------
+
+const messageSchema = z.object({ player_id: z.number().int(), date: isoDate, body: z.string().trim().min(1, "Write a message.").max(1000) });
+
+careRouter.post("/messages", (req, res) => {
+  const parsed = messageSchema.safeParse(req.body);
+  if (!parsed.success) return bad(res, parsed.error);
+  const m = parsed.data;
+  if (!playerExists(m.player_id)) return res.status(404).json({ error: "Player not found." });
+  const role = req.user!.role === "trainer" ? "trainer" : "coach";
+  const row = getDb()
+    .prepare("INSERT INTO care_messages (player_id, msg_date, author_role, author_email, body) VALUES (?, ?, ?, ?, ?) RETURNING *")
+    .get(m.player_id, m.date, role, who(req), m.body);
+  res.status(201).json(row);
+  void notify.player(m.player_id, role === "trainer" ? "Athletic trainer" : "Coach", m.body, `care-msg-${m.player_id}`);
+});
+
+// ---- Before training -------------------------------------------------------------------
+
+careRouter.get("/before-training", (req, res) => {
+  res.json({ today: teamToday(), ...beforeTraining(dateOf(req.query.date)) });
+});
+
+const dateBody = z.object({ date: isoDate });
+const trainerOnly = (req: { user?: { role: string } }, res: { status: (n: number) => { json: (b: unknown) => void } }) => {
+  if (req.user?.role === "trainer") return true;
+  res.status(403).json({ error: "Only the athletic trainer can do that." });
+  return false;
+};
+
+// The AT puts someone on the list by hand (e.g. after a hallway conversation), or takes them off.
+careRouter.post("/checks/:playerId/flag", (req, res) => {
+  const playerId = Number(req.params.playerId);
+  const parsed = dateBody.extend({ note: text(300), flagged: z.boolean().default(true) }).safeParse(req.body);
+  if (!parsed.success) return bad(res, parsed.error);
+  if (!playerExists(playerId)) return res.status(404).json({ error: "Player not found." });
+  const { date, note, flagged } = parsed.data;
+  res.json(updateCheck(playerId, date, flagged ? { flagged: 1, flag_note: note, flagged_by: who(req) } : { flagged: 0, flag_note: null }));
+});
+
+// "Come in at 7:30 to get checked": books the appointment (the player accepts or asks for another time) with what to do first.
+const callInSchema = dateBody.extend({
+  time: z.string().regex(/^\d{2}:\d{2}$/, "Pick a time."),
+  kind: z.enum(KINDS).default("check"),
+  reason: text(200),
+  instructions: text(1000),
+  message: text(1000),
+});
+
+careRouter.post("/checks/:playerId/call-in", (req, res) => {
+  const playerId = Number(req.params.playerId);
+  const parsed = callInSchema.safeParse(req.body);
+  if (!parsed.success) return bad(res, parsed.error);
+  if (!playerExists(playerId)) return res.status(404).json({ error: "Player not found." });
+  const c = parsed.data;
+  const db = getDb();
+  const existing = getCheck(playerId, c.date);
+  const prior = existing?.appointment_id ? (db.prepare("SELECT * FROM treatments WHERE id = ?").get(existing.appointment_id) as Treatment | undefined) : undefined;
+  let appt: Treatment;
+  if (prior && prior.status !== "cancelled") {
+    appt = db
+      .prepare(
+        `UPDATE treatments SET treat_time = ?, kind = ?, reason = ?, instructions = ?, status = 'pending', awaiting = 'player', updated_at = datetime('now')
+         WHERE id = ? RETURNING *`,
+      )
+      .get(c.time, c.kind, c.reason, c.instructions, prior.id) as Treatment;
+  } else {
+    appt = db
+      .prepare(
+        `INSERT INTO treatments (player_id, treat_date, treat_time, kind, reason, instructions, status, awaiting, requested_by, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', 'player', 'trainer', ?) RETURNING *`,
+      )
+      .get(playerId, c.date, c.time, c.kind, c.reason, c.instructions, who(req)) as Treatment;
+  }
+  updateCheck(playerId, c.date, { appointment_id: appt.id, cleared_at: null, cleared_by: null });
+  if (c.message) {
+    db.prepare("INSERT INTO care_messages (player_id, msg_date, author_role, author_email, body) VALUES (?, ?, ?, ?, ?)").run(
+      playerId,
+      c.date,
+      req.user!.role === "trainer" ? "trainer" : "coach",
+      who(req),
+      c.message,
+    );
+  }
+  res.json({ ok: true, appointment: appt });
+  void notify.player(
+    playerId,
+    `See the athletic trainer ${whenLabel(appt, teamToday())}`,
+    [kindLabel(appt.kind) + (appt.reason ? ` · ${appt.reason}` : ""), appt.instructions, c.message].filter(Boolean).join("\n"),
+    `treatment-${appt.id}`,
+  );
+});
+
+// The AT is happy for them to train as normal: nothing for the coach to decide.
+careRouter.post("/checks/:playerId/clear", (req, res) => {
+  const playerId = Number(req.params.playerId);
+  const parsed = dateBody.extend({ cleared: z.boolean().default(true) }).safeParse(req.body);
+  if (!parsed.success) return bad(res, parsed.error);
+  const { date, cleared } = parsed.data;
+  res.json(updateCheck(playerId, date, cleared ? { cleared_at: new Date().toISOString(), cleared_by: who(req) } : { cleared_at: null, cleared_by: null }));
+});
+
+// After seeing them: the AT's recommendation for today, for the coach to agree or change.
+const levelSchema = dateBody.extend({ level: z.enum(LEVELS), note: text(500) });
+
+careRouter.post("/checks/:playerId/recommend", (req, res) => {
+  if (!trainerOnly(req, res)) return;
+  const playerId = Number(req.params.playerId);
+  const parsed = levelSchema.safeParse(req.body);
+  if (!parsed.success) return bad(res, parsed.error);
+  const { date, level, note } = parsed.data;
+  const check = updateCheck(playerId, date, {
+    recommendation: level,
+    rec_note: note,
+    recommended_by: who(req),
+    recommended_at: new Date().toISOString(),
+    cleared_at: null,
+    cleared_by: null,
+    decision: null,
+    decision_note: null,
+    decided_by: null,
+    decided_at: null,
+  });
+  // Seen: the call-in counts as attended.
+  if (check.appointment_id) {
+    getDb().prepare("UPDATE treatments SET status = 'attended', awaiting = NULL, attended_marked_by = COALESCE(attended_marked_by, ?), updated_at = datetime('now') WHERE id = ? AND status IN ('pending', 'booked')").run(who(req), check.appointment_id);
+  }
+  res.json(check);
+  void notify.coaches(`${playerName(playerId)}: AT recommends ${levelLabel(level)}`, `${note ? `${note}\n` : ""}Tap to agree or change it.`, `check-${playerId}-${date}`);
+});
+
+// The coach's final call (with the AT's recommendation in front of them). It becomes the day's play status.
+careRouter.post("/checks/:playerId/decide", (req, res) => {
+  if (req.user?.role !== "coach") return res.status(403).json({ error: "The coach makes the final call." });
+  const playerId = Number(req.params.playerId);
+  const parsed = levelSchema.safeParse(req.body);
+  if (!parsed.success) return bad(res, parsed.error);
+  const { date, level, note } = parsed.data;
+  const db = getDb();
+  const check = updateCheck(playerId, date, { decision: level, decision_note: note, decided_by: who(req), decided_at: new Date().toISOString() });
+  const current = availabilityOn(date).get(playerId);
+  const practiceNote = note ?? check.rec_note ?? (current?.level === level ? current.practice_note : null);
+  db.prepare(
+    `INSERT INTO player_availability (player_id, status_date, level, practice_note, bike, jogging, running, set_by, updated_at)
+     VALUES (@playerId, @date, @level, @practiceNote, @bike, @jogging, @running, @by, datetime('now'))
+     ON CONFLICT(player_id, status_date) DO UPDATE SET level = excluded.level, practice_note = excluded.practice_note, set_by = excluded.set_by, updated_at = excluded.updated_at`,
+  ).run({ playerId, date, level, practiceNote, bike: current?.bike ?? null, jogging: current?.jogging ?? null, running: current?.running ?? null, by: who(req) });
+  res.json(check);
+  const agreed = check.recommendation === level;
+  void notify.trainers(playerId, `${playerName(playerId)}: ${levelLabel(level)} today`, agreed ? "Coach agreed with your recommendation." : `Coach changed it from ${check.recommendation ? levelLabel(check.recommendation) : "—"}.${note ? ` ${note}` : ""}`, `check-${playerId}-${date}`);
+});
+
+// Undo the decision (back to awaiting the coach) or start over.
+careRouter.post("/checks/:playerId/reopen", (req, res) => {
+  const playerId = Number(req.params.playerId);
+  const parsed = dateBody.safeParse(req.body);
+  if (!parsed.success) return bad(res, parsed.error);
+  res.json(updateCheck(playerId, parsed.data.date, { decision: null, decision_note: null, decided_by: null, decided_at: null }));
 });
 
 // ---- Follow-up notes ---------------------------------------------------------------
