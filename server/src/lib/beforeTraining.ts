@@ -194,7 +194,7 @@ export const notify = {
   /** To every athletic trainer: a player replied or asked for a time. */
   trainers: (playerId: number, title: string, body: string, tag: string) => push(usersWithRole("trainer"), title, body, `/injuries?player=${playerId}`, tag),
   /** To every coach: the AT has a recommendation waiting for them. */
-  coaches: (title: string, body: string, tag: string) => push(usersWithRole("coach"), title, body, "/readiness", tag),
+  coaches: (title: string, body: string, tag: string) => push(usersWithRole("coach"), title, body, "/readiness?view=practice", tag),
 };
 
 /** "Today at 7:30 AM" / "Oct 6 at 3:00 PM". */

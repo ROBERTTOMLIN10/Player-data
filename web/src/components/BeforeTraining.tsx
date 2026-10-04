@@ -29,7 +29,7 @@ const STAGE: Record<CheckStage, { label: string; chip: string; dot: string }> = 
 
 const BEFORE_STEPS = ["Ice 15 min before", "Heat before you come in", "Foam roll", "Light stretch", "Bring your brace / tape", "Don't start the warm-up until you've seen me"];
 const STAFF_QUICK = [
-  { key: "come_in", label: "Come see me before training" },
+  { key: "come_in", label: "Come see me before practice" },
   { key: "how_now", label: "How does it feel now?" },
   { key: "start_ice", label: "Start icing now" },
 ];
@@ -40,7 +40,7 @@ function useRefresh() {
 }
 
 /**
- * Before training: who may miss part or all of today's session and where each one
+ * Pre practice: who may miss part or all of today's session and where each one
  * is — called in, seen (the AT's recommendation), and the coach's final call. The
  * AT acts from here (call in with what to do first, message, recommend); coaches
  * see the whole back-and-forth and confirm. On the Injuries page and the
@@ -72,7 +72,7 @@ export function BeforeTraining({
     <Card className="p-0">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3">
         <div className="min-w-0 flex-1">
-          <h2 className="font-display text-base font-semibold">Before training</h2>
+          <h2 className="font-display text-base font-semibold">Pre practice</h2>
           <p className="text-xs text-text-dim">
             {formatDateLong(data.date)} ·{" "}
             {data.items.length === 0
@@ -91,7 +91,7 @@ export function BeforeTraining({
       {data.items.length === 0 ? (
         <p className="px-4 py-4 text-sm text-text-dim">
           No one&rsquo;s check-in shows severe soreness, soreness on an injury, or readiness at {data.threshold}% or lower, and no one is restricted.
-          {role === "trainer" ? " Flag anyone you want to see before training." : ""}
+          {role === "trainer" ? " Flag anyone you want to see before practice." : ""}
         </p>
       ) : (
         <ul className="divide-y divide-border/70">
@@ -209,7 +209,7 @@ function ItemRow({
         {role === "trainer" && item.stage === "flagged" && (
           <>
             <button className={primary} onClick={() => toggle("call")}>
-              Call in before training
+              Call in before practice
             </button>
             <button className={ghost} disabled={busy} onClick={() => run(() => careApi.clear(item.player_id, { date }))}>
               Fine to train
@@ -322,7 +322,7 @@ function CallInForm({ item, date, busy, onSubmit }: { item: BeforeTrainingItem; 
   const [kind, setKind] = useState<AppointmentKind>(a?.kind ?? "check");
   const [reason, setReason] = useState(a?.reason ?? firstArea ?? "");
   const [instructions, setInstructions] = useState(a?.instructions ?? "");
-  const [message, setMessage] = useState(a ? "" : "Come see me before training so I can check you out.");
+  const [message, setMessage] = useState(a ? "" : "Come see me before practice so I can check you out.");
   const add = (step: string) => setInstructions((cur) => (cur.includes(step) ? cur : cur ? `${cur}. ${step}` : step));
   return (
     <div className="mt-3 flex flex-col gap-2 rounded-lg border border-border bg-surface-raised/40 p-3">

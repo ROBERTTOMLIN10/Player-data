@@ -115,13 +115,13 @@ for (let back = 30; back >= 0; back--) {
   const old = await issue(3, { category: "injury", description: "Groin strain", region: "groin_l", side: "left", injury_date: shift(today, -40) }, [[30, "Adductor program", 40, "Back to full"]], [[35, "running"], [32, "modified"], [30, "full"], [28, "match_ready"]]);
   await req(`/care/issues/${old}`, { method: "PATCH", cookie: at, body: { closed: true } });
   // Follow-up notes between a coach and the AT.
-  await req("/care/notes", { method: "POST", cookie: coach, body: { player_id: pid(1), date: today, body: "Did he come in before training?" } });
+  await req("/care/notes", { method: "POST", cookie: coach, body: { player_id: pid(1), date: today, body: "Did he come in before practice?" } });
   await req("/care/notes", { method: "POST", cookie: at, body: { player_id: pid(1), date: today, body: "Yes, 1:00. Rehab went well, cleared for non-contact." } });
   await req("/care/notes", { method: "POST", cookie: at, body: { player_id: pid(2), date: today, body: "Out at least 2–3 weeks. Will update after imaging." } });
 
   // Before training. Hamstring: called in at 7:30, came in, the AT recommends Limited (waiting on the coach).
   const p1 = await playerLogin(1);
-  const { data: call } = await req(`/care/checks/${pid(1)}/call-in`, { method: "POST", cookie: at, body: { date: today, time: "07:30", kind: "check", reason: "Right hamstring", instructions: "Light bike 10 min before you come in", message: "Saw your check-in. Come see me at 7:30 so I can check the hamstring before training." } });
+  const { data: call } = await req(`/care/checks/${pid(1)}/call-in`, { method: "POST", cookie: at, body: { date: today, time: "07:30", kind: "check", reason: "Right hamstring", instructions: "Light bike 10 min before you come in", message: "Saw your check-in. Come see me at 7:30 so I can check the hamstring before practice." } });
   await req(`/me/care/treatments/${call.appointment.id}/respond`, { method: "POST", cookie: p1, body: { action: "accept" } });
   await req("/me/care/messages", { method: "POST", cookie: p1, body: { quick: "on_my_way" } });
   await req(`/care/checks/${pid(1)}/recommend`, { method: "POST", cookie: at, body: { date: today, level: "limited", note: "Non-contact. Strides up to 80%, no finishing" } });

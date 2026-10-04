@@ -15,7 +15,7 @@ export const STAGES = ["rehab", "running", "modified", "full", "match_ready"] as
 export const CATEGORIES = ["injury", "gen_med", "ppe"] as const;
 export const KINDS = ["check", "proactive", "treatment", "rehab", "other"] as const;
 export type Kind = (typeof KINDS)[number];
-const KIND_LABEL: Record<Kind, string> = { check: "Pre-training check", proactive: "Proactive treatment", treatment: "Treatment", rehab: "Rehab", other: "Appointment" };
+const KIND_LABEL: Record<Kind, string> = { check: "Pre-practice check", proactive: "Proactive treatment", treatment: "Treatment", rehab: "Rehab", other: "Appointment" };
 export const kindLabel = (k: Kind) => KIND_LABEL[k] ?? "Appointment";
 
 export interface Availability {

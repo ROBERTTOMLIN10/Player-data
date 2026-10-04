@@ -47,7 +47,7 @@ export const TREATMENT_STYLE: Record<Treatment["status"], { label: string; chip:
 };
 
 export const KINDS: { key: AppointmentKind; label: string; short: string }[] = [
-  { key: "check", label: "Pre-training check", short: "Check" },
+  { key: "check", label: "Pre-practice check", short: "Check" },
   { key: "proactive", label: "Proactive treatment", short: "Proactive" },
   { key: "treatment", label: "Treatment", short: "Treatment" },
   { key: "rehab", label: "Rehab", short: "Rehab" },

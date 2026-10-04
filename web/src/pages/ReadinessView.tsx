@@ -25,17 +25,18 @@ function shiftIso(iso: string, days: number) {
   return d.toISOString().slice(0, 10);
 }
 
-type View = "board" | "report";
+type View = "board" | "practice" | "report";
 
 /**
- * Readiness for coaches and the athletic trainer: the morning board (with each
- * player's care: play status, treatment, notes) and the live injury report.
+ * Readiness for coaches and the athletic trainer: the morning readiness board (with
+ * each player's care: play status, appointments, notes), Pre practice (who may miss
+ * part or all of practice, and the AT → coach decision) and the live injury report.
  * Tapping a player opens their care panel.
  */
 export default function ReadinessView() {
   const [params, setParams] = useSearchParams();
   const dateParam = params.get("date");
-  const view: View = params.get("view") === "report" ? "report" : "board";
+  const view: View = params.get("view") === "report" ? "report" : params.get("view") === "practice" ? "practice" : "board";
   const { data, isLoading } = useSquadReadiness(dateParam);
   const [filter, setFilter] = useState<Filter>("all");
   const [careFor, setCareFor] = useState<{ id: number; name: string } | null>(null);
@@ -103,10 +104,11 @@ export default function ReadinessView() {
       <Segmented
         value={view}
         options={[
-          { key: "board", label: "Board" },
+          { key: "board", label: "Readiness" },
+          { key: "practice", label: "Pre practice" },
           { key: "report", label: "Injury report" },
         ]}
-        onChange={(v) => setParam("view", v === "report" ? "report" : null)}
+        onChange={(v) => setParam("view", v === "board" ? null : v)}
         label="Readiness view"
       />
       <div className="flex sm:w-44 sm:justify-end">
@@ -114,6 +116,16 @@ export default function ReadinessView() {
       </div>
     </div>
   );
+
+  if (view === "practice") {
+    return (
+      <div className="flex flex-col gap-5">
+        {toggle}
+        <BeforeTraining date={dateParam} onOpenPlayer={(p) => setCareFor(p)} />
+        {carePanel}
+      </div>
+    );
+  }
 
   if (view === "report") {
     return (
@@ -193,8 +205,6 @@ export default function ReadinessView() {
         <SummaryTile label="Good" value={summary.green} dot={STATUS_STYLE.green.dot} />
         <SummaryTile label="Squad avg" value={summary.averageScore === null ? "—" : `${summary.averageScore}%`} />
       </div>
-
-      <BeforeTraining date={dateParam} compact onOpenPlayer={(p) => setCareFor(p)} />
 
       <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
         <section className="min-w-0">

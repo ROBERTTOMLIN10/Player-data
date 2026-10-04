@@ -102,7 +102,7 @@ function AppointmentCard({ t, today, onChange, highlight = false }: { t: Appt; t
   return (
     <div className={`rounded-xl border p-4 ${tone}`}>
       {highlight && t.status !== "attended" && (
-        <div className="mb-2 text-sm font-semibold text-gold">The athletic trainer wants to see you before training</div>
+        <div className="mb-2 text-sm font-semibold text-gold">The athletic trainer wants to see you before practice</div>
       )}
       <div className="flex items-start gap-3">
         <span className="mt-0.5 text-lg" aria-hidden>
