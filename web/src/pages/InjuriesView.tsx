@@ -189,6 +189,7 @@ function IssueDetailView({ id }: { id: number }) {
         </section>
       )}
 
+      {i.category === "injury" && (
       <section>
         <SectionHeading title="Pain trend" subtitle={i.region ? `${regionLabel(i.region)} soreness from the player's morning check-ins, with their readiness` : "Readiness and overall soreness from the player's morning check-ins"} />
         <Card>
@@ -199,6 +200,7 @@ function IssueDetailView({ id }: { id: number }) {
           )}
         </Card>
       </section>
+      )}
 
       <section>
         <SectionHeading title="Daily rehab log" subtitle="What they did and how it went" />
@@ -333,7 +335,7 @@ function PainChart({ data, hasRegion }: { data: { date: string; readiness: numbe
             labelFormatter={(d) => formatDateLong(String(d))}
             formatter={(v, name) => (name === "Readiness" ? [`${v}%`, name] : [hasRegion ? PAIN_LABELS[Number(v)] : Number(v).toFixed(1), "Pain"])}
           />
-          <Bar yAxisId="pain" dataKey="value" name="Pain" radius={[3, 3, 0, 0]}>
+          <Bar yAxisId="pain" dataKey="value" name="Pain" radius={[3, 3, 0, 0]} maxBarSize={28}>
             {rows.map((r, n) => (
               <Cell key={n} fill={PAIN_COLORS[Math.min(3, Math.round(r.value))]} />
             ))}

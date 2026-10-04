@@ -33,7 +33,8 @@ export function InjuryReport({ date, onOpenPlayer }: { date: string | null; onOp
     for (const i of p.issues.filter((x) => x.category === "gen_med")) genMed.push({ player: p, issue: i, level });
     for (const i of p.issues.filter((x) => x.category === "ppe")) ppe.push({ player: p, issue: i, level });
     if (injuries.length) for (const i of injuries) injuryRows.push({ player: p, issue: i, level });
-    else if (level !== "full") injuryRows.push({ player: p, issue: null, level });
+    // Restricted with nothing logged: still on the report (a player out sick is listed under Gen Med instead).
+    else if (level !== "full" && !p.issues.length) injuryRows.push({ player: p, issue: null, level });
   }
   const byDate = (a: Row, b: Row) => String(b.issue?.injury_date ?? "").localeCompare(String(a.issue?.injury_date ?? ""));
   const groups = REPORT_ORDER.map((level) => ({ level, rows: injuryRows.filter((r) => r.level === level).sort(byDate) })).filter((g) => g.rows.length);
@@ -73,7 +74,7 @@ export function InjuryReport({ date, onOpenPlayer }: { date: string | null; onOp
               .map((t) => (
                 <li key={t.id}>
                   <button onClick={() => onOpenPlayer(t.player)} className="flex w-full items-center gap-3 px-4 py-2 text-left text-sm hover:bg-surface-raised">
-                    <span className="w-16 shrink-0 font-semibold tabular-nums">{timeLabel(t.treat_time) || "—"}</span>
+                    <span className="w-20 shrink-0 whitespace-nowrap font-semibold tabular-nums">{timeLabel(t.treat_time) || "—"}</span>
                     <span className="min-w-0 flex-1 truncate">
                       <span className="font-medium">{t.name}</span>
                       {t.instructions && <span className="text-text-dim"> · {t.instructions}</span>}
@@ -178,7 +179,12 @@ function ReportRow({ row, first, onOpen }: { row: Row; first: boolean; onOpen: (
         )}
       </td>
       <td className="max-w-[16rem] px-2 py-2.5 text-xs">{note ?? ""}</td>
-      <td className="px-2 py-2.5 text-center font-semibold">{attendanceMark(p.treatments) || <span className="font-normal text-text-dim">NA</span>}</td>
+      <td className="px-2 py-2.5 text-center font-semibold">
+        {(() => {
+          const mark = attendanceMark(p.treatments);
+          return mark === "Y" || mark === "N" ? mark : <span className="text-xs font-normal text-text-dim">{mark || "NA"}</span>;
+        })()}
+      </td>
       <td className="whitespace-nowrap px-2 py-2.5 text-text-dim">{i?.expected_return ? formatDate(i.expected_return) : ""}</td>
     </tr>
   );

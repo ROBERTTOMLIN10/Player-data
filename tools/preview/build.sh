@@ -73,14 +73,14 @@ for (let k = 1; k <= 20; k++) {
 }'
 
 echo "== Capture API responses (player: $PLAYER_EMAIL)"
-PLAYER_EMAIL="$PLAYER_EMAIL" SNAPSHOT_FILE="$OUT/snapshot.json" node "$HERE/capture.mjs" "$OUT/data.json" "$OUT/teams"
+PLAYER_EMAIL="$PLAYER_EMAIL" SNAPSHOT_FILE="$OUT/snapshot.json" DB_PATH="$DB" node "$HERE/capture.mjs" "$OUT/data.json" "$OUT/teams"
 kill $SERVER_PID 2>/dev/null || true
 
 echo "== Build preview app"
 DEMO="$OUT/demo-web"
 rm -rf "$DEMO" && mkdir -p "$DEMO/src/demo"
 cp -r web/index.html web/src web/vite.config.ts web/tsconfig.json web/package.json "$DEMO/"
-cp "$HERE/mock.ts" "$HERE/DemoBar.tsx" "$HERE/uploads.ts" "$HERE/liveUploads.ts" "$DEMO/src/demo/"
+cp "$HERE/mock.ts" "$HERE/DemoBar.tsx" "$HERE/uploads.ts" "$HERE/liveUploads.ts" "$HERE/careMock.ts" "$DEMO/src/demo/"
 mkdir -p "$DEMO/server/src/import" && cp server/src/import/columnMapping.ts server/src/import/gpsFilename.ts server/src/import/nameNormalization.ts server/src/import/samePerson.ts "$DEMO/server/src/import/"
 cp "$OUT/data.json" "$DEMO/src/demo/data.json"
 ln -s "$ROOT/node_modules" "$DEMO/node_modules"

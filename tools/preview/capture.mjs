@@ -41,6 +41,27 @@ const syncStatus = await get(coach, "/api/admin/sync-status");
 syncStatus.intervalMinutes = 30; // the test server runs with auto-sync effectively off; show the real default
 syncStatus.nextRunAt = null;
 await get(coach, "/api/admin/accounts");
+// Athletic trainer care: the roster (from the care day) and the raw care tables, so the
+// preview can answer care requests and changes without a server (tools/preview/careMock.ts).
+out.trainerMe = { role: "trainer", email: "at@fau.edu", playerId: null, playerName: null, authRequired: true };
+{
+  const day = await get(coach, "/api/care/day");
+  out.careRoster = day.players.map((p) => ({ player_id: p.player_id, name: p.name, position: p.position }));
+  const { default: Database } = await import("better-sqlite3");
+  const db = new Database(process.env.DB_PATH, { readonly: true });
+  const all = (sql) => db.prepare(sql).all();
+  out.careRaw = {
+    availability: all("SELECT * FROM player_availability"),
+    treatments: all("SELECT * FROM treatments"),
+    notes: all("SELECT * FROM care_notes"),
+    issues: all("SELECT * FROM injuries"),
+    stages: all("SELECT * FROM injury_stage_history"),
+    logs: all("SELECT * FROM rehab_logs"),
+  };
+  db.close();
+  out.carePain = {};
+  for (const i of out.careRaw.issues) out.carePain[i.id] = (await (await fetch(`${B}/api/care/issues/${i.id}`, { headers: { cookie: coach } })).json()).painTrend;
+}
 await get(coach, "/api/admin/reminders");
 // NCAA D1
 const board = await get(coach, "/api/ncaa/scoreboard");

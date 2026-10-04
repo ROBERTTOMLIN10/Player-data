@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { demo, type DemoRole } from "./mock";
 import { listUploads } from "./uploads";
 
-/** Preview-only strip for switching between the player and coach views. */
+/** Preview-only strip for switching between the player, coach and athletic trainer views. */
 export function DemoBar() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -47,6 +47,7 @@ export function DemoBar() {
       <div className="flex gap-1 rounded-lg bg-black/25 p-0.5" role="group" aria-label="View as">
         {btn("player", "Player view")}
         {btn("coach", "Coach view")}
+        {btn("trainer", "AT view")}
       </div>
       {pending > 0 && (
         <span className="rounded-md bg-black/25 px-2 py-1 font-medium">

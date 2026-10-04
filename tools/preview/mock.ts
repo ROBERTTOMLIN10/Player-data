@@ -4,9 +4,10 @@
 import raw from "./data.json";
 import { handlePreviewUpload, listUploads } from "./uploads";
 import { applyPendingUploads, applyUpload, rowsFromWorkbook } from "./liveUploads";
+import { createCareMock } from "./careMock";
 
 const data: Record<string, any> = raw as any;
-export type DemoRole = "player" | "coach" | null;
+export type DemoRole = "player" | "coach" | "trainer" | null;
 export const demo = { role: "player" as DemoRole };
 
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
@@ -17,6 +18,7 @@ const GAME = data["/api/me/readiness/today"].game;
 let myEntry: any = null;
 let pushOn = false;
 const squad = clone(data["/api/readiness/squad"]);
+const care = createCareMock(data, TODAY, PLAYER_ID);
 const reminders = clone(data["/api/admin/reminders"]);
 const accounts = clone(data["/api/admin/accounts"]);
 
@@ -77,7 +79,13 @@ function recomputeSquad() {
   squad.regionCounts = rc;
 }
 
+/** The board with each player's care as it stands now (care changes while clicking around). */
 function squadFor(date: string | null) {
+  const board = squadOn(date);
+  return { ...board, players: board.players.map((p: any) => ({ ...p, care: care.summaryFor(p.player_id, board.date) })) };
+}
+
+function squadOn(date: string | null) {
   if (!date || date === TODAY) return squad;
   // Other days: roster with nobody checked in (the preview only has today's data).
   return {
@@ -160,8 +168,9 @@ function route(method: string, path: string, q: URLSearchParams, body: any): Res
   const key = path + (q.toString() ? `?${q.toString()}` : "");
 
   if (path === "/api/auth/login" && method === "POST") {
-    demo.role = String(body?.email ?? "").toLowerCase().includes("coach") ? "coach" : "player";
-    return json(demo.role === "coach" ? data.coachMe : data.playerMe);
+    const email = String(body?.email ?? "").toLowerCase();
+    demo.role = email.includes("coach") ? "coach" : email.startsWith("at@") || email.includes("trainer") ? "trainer" : "player";
+    return json(demo.role === "coach" ? data.coachMe : demo.role === "trainer" ? data.trainerMe : data.playerMe);
   }
   if (path === "/api/auth/logout") {
     demo.role = null;
@@ -169,7 +178,7 @@ function route(method: string, path: string, q: URLSearchParams, body: any): Res
   }
   if (path === "/api/auth/me") {
     if (!role) return json({ error: "Sign in required." }, 401);
-    return json(role === "coach" ? data.coachMe : data.playerMe);
+    return json(role === "coach" ? data.coachMe : role === "trainer" ? data.trainerMe : data.playerMe);
   }
   if (!role) return json({ error: "Sign in required." }, 401);
 
@@ -217,6 +226,8 @@ function route(method: string, path: string, q: URLSearchParams, body: any): Res
   }
 
   // ---- coach ----
+  const careResponse = care.route(method, path, q, body ?? {}, role ?? "");
+  if (careResponse) return careResponse;
   if (path === "/api/readiness/squad") return json(squadFor(q.get("date")));
   if (path.startsWith("/api/readiness/player/")) {
     const id = Number(path.split("/").pop());
