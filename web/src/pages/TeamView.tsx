@@ -143,47 +143,6 @@ export default function TeamView() {
         </Card>
       </section>
 
-      <section>
-        <SectionHeading title="Games" subtitle="Click a row to view that game's roster" />
-        <Card className="overflow-x-auto p-0">
-          <table className="w-full min-w-[560px] text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-dim">
-                <th className="px-4 py-3 font-medium">Date</th>
-                <th className="px-4 py-3 font-medium">Opponent</th>
-                <th className="px-4 py-3 font-medium">Players</th>
-                <th className="px-4 py-3 font-medium">Avg Load</th>
-                <th className="px-4 py-3 font-medium">Avg Distance</th>
-              </tr>
-            </thead>
-            <tbody>
-              {games.map((g) => (
-                <tr
-                  key={g.id}
-                  onClick={() => setSelectedGameId(g.id)}
-                  className={`cursor-pointer border-b border-border/60 transition-colors last:border-0 hover:bg-surface-raised ${
-                    selectedGameId === g.id ? "bg-owl-red/10" : ""
-                  }`}
-                >
-                  <td className="px-4 py-3 text-text-dim">{formatDate(g.game_date)}</td>
-                  <td className="px-4 py-3 font-medium">
-                    <span className="flex items-center gap-2">
-                      <TeamLogo name={g.opponent ?? "Game"} url={logoFor(g.game_date)} size="sm" />
-                      <OpponentLink date={g.game_date}>{g.opponent ?? "—"}</OpponentLink>
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">{g.player_count}</td>
-                  <td className="px-4 py-3">{formatMetricValue(g.avg_load as number, { key: "load", label: "Load", unit: "", decimals: 0 })}</td>
-                  <td className="px-4 py-3">
-                    {formatMetricValue(g.avg_distance_mi as number, { key: "distance_mi", label: "Distance", unit: "mi", decimals: 2 })}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      </section>
-
       {selectedGameId && gameDetail && (
         <section id="game-detail" className="scroll-mt-20">
           <div className="mb-3 flex flex-wrap items-center gap-3">
@@ -222,6 +181,51 @@ export default function TeamView() {
               onSelectPlayer={(playerId) => navigate(`/players/${playerId}`)}
             />
           )}
+
+      <section>
+        <SectionHeading title="Games" subtitle="Click a row to view that game's roster above" />
+        <Card className="overflow-x-auto p-0">
+          <table className="w-full min-w-[560px] text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-dim">
+                <th className="px-4 py-3 font-medium">Date</th>
+                <th className="px-4 py-3 font-medium">Opponent</th>
+                <th className="px-4 py-3 font-medium">Players</th>
+                <th className="px-4 py-3 font-medium">Avg Load</th>
+                <th className="px-4 py-3 font-medium">Avg Distance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {games.map((g) => (
+                <tr
+                  key={g.id}
+                  onClick={() => {
+                    setSelectedGameId(g.id);
+                    // The game's breakdown sits above this list: bring it into view.
+                    setTimeout(() => document.getElementById("game-detail")?.scrollIntoView({ behavior: "smooth", block: "start" }), 300);
+                  }}
+                  className={`cursor-pointer border-b border-border/60 transition-colors last:border-0 hover:bg-surface-raised ${
+                    selectedGameId === g.id ? "bg-owl-red/10" : ""
+                  }`}
+                >
+                  <td className="px-4 py-3 text-text-dim">{formatDate(g.game_date)}</td>
+                  <td className="px-4 py-3 font-medium">
+                    <span className="flex items-center gap-2">
+                      <TeamLogo name={g.opponent ?? "Game"} url={logoFor(g.game_date)} size="sm" />
+                      <OpponentLink date={g.game_date}>{g.opponent ?? "—"}</OpponentLink>
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">{g.player_count}</td>
+                  <td className="px-4 py-3">{formatMetricValue(g.avg_load as number, { key: "load", label: "Load", unit: "", decimals: 0 })}</td>
+                  <td className="px-4 py-3">
+                    {formatMetricValue(g.avg_distance_mi as number, { key: "distance_mi", label: "Distance", unit: "mi", decimals: 2 })}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      </section>
         </section>
       )}
 
