@@ -76,10 +76,15 @@ Data page (see step 0).
 
 ## Automatic refresh
 
-A Routine rebuilds and republishes the preview every hour from the working
-branch (`claude/friendly-dijkstra-s2fxp1`), using the data the
-`Preview data` workflow saves every 30 minutes. A manual rebuild is still
-right after a code change, so Rob sees it straight away.
+A Routine ("Refresh FAU app preview + import GPS uploads", at :50 past every
+hour) rebuilds and republishes the preview from the working branch
+(`claude/friendly-dijkstra-s2fxp1`), using the data the `Preview data`
+workflow saves every 30 minutes. It also does step 0 on its own: each pending
+GPS upload gets its own PR from main (branch `gps/<file>`, titled "GPS data:
+<opponent> (<date>)") for Rob to merge, is included in that hour's preview,
+and is marked imported. So after Rob uploads a game, there is usually a PR
+waiting within the hour; "merge it" on that PR is all that's left. A manual
+rebuild is still right after a code change, so Rob sees it straight away.
 
 ## When the app changes
 
