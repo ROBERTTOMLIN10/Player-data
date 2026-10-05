@@ -4,9 +4,10 @@
 import raw from "./data.json";
 import { handlePreviewUpload, listUploads } from "./uploads";
 import { applyPendingUploads, applyUpload, rowsFromWorkbook } from "./liveUploads";
+import { createCareMock } from "./careMock";
 
 const data: Record<string, any> = raw as any;
-export type DemoRole = "player" | "coach" | null;
+export type DemoRole = "player" | "coach" | "trainer" | null;
 export const demo = { role: "player" as DemoRole };
 
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
@@ -17,6 +18,7 @@ const GAME = data["/api/me/readiness/today"].game;
 let myEntry: any = null;
 let pushOn = false;
 const squad = clone(data["/api/readiness/squad"]);
+const care = createCareMock(data, TODAY, PLAYER_ID);
 const reminders = clone(data["/api/admin/reminders"]);
 const accounts = clone(data["/api/admin/accounts"]);
 
@@ -77,7 +79,19 @@ function recomputeSquad() {
   squad.regionCounts = rc;
 }
 
+/** The board with each player's care as it stands now (care changes while clicking around). */
+// Before training is worked out from each player's check-in on the board.
+care.setEntries((date) =>
+  squadOn(date)
+    .players.filter((p: any) => p.entry)
+    .map((p: any) => ({ player_id: p.player_id, readiness_score: p.entry.readiness_score, notes: p.entry.notes, submitted_at: p.entry.updated_at ?? p.entry.submitted_at, soreness: p.entry.soreness ?? [] })),
+);
+
 function squadFor(date: string | null) {
+  return squadOn(date);
+}
+
+function squadOn(date: string | null) {
   if (!date || date === TODAY) return squad;
   // Other days: roster with nobody checked in (the preview only has today's data).
   return {
@@ -160,8 +174,9 @@ function route(method: string, path: string, q: URLSearchParams, body: any): Res
   const key = path + (q.toString() ? `?${q.toString()}` : "");
 
   if (path === "/api/auth/login" && method === "POST") {
-    demo.role = String(body?.email ?? "").toLowerCase().includes("coach") ? "coach" : "player";
-    return json(demo.role === "coach" ? data.coachMe : data.playerMe);
+    const email = String(body?.email ?? "").toLowerCase();
+    demo.role = email.includes("coach") ? "coach" : email.startsWith("at@") || email.includes("trainer") ? "trainer" : "player";
+    return json(demo.role === "coach" ? data.coachMe : demo.role === "trainer" ? data.trainerMe : data.playerMe);
   }
   if (path === "/api/auth/logout") {
     demo.role = null;
@@ -169,7 +184,7 @@ function route(method: string, path: string, q: URLSearchParams, body: any): Res
   }
   if (path === "/api/auth/me") {
     if (!role) return json({ error: "Sign in required." }, 401);
-    return json(role === "coach" ? data.coachMe : data.playerMe);
+    return json(role === "coach" ? data.coachMe : role === "trainer" ? data.trainerMe : data.playerMe);
   }
   if (!role) return json({ error: "Sign in required." }, 401);
 
@@ -198,6 +213,7 @@ function route(method: string, path: string, q: URLSearchParams, body: any): Res
       const row = squad.players.find((p: any) => p.player_id === PLAYER_ID);
       if (row) Object.assign(row, { entry: myEntry }, flag(myEntry, row.baseline));
       recomputeSquad();
+      care.onCheckin(PLAYER_ID, myEntry);
     }
     return json({ date: TODAY, game: GAME, entry: myEntry });
   }
@@ -217,6 +233,8 @@ function route(method: string, path: string, q: URLSearchParams, body: any): Res
   }
 
   // ---- coach ----
+  const careResponse = care.route(method, path, q, body ?? {}, role ?? "");
+  if (careResponse) return careResponse;
   if (path === "/api/readiness/squad") return json(squadFor(q.get("date")));
   if (path.startsWith("/api/readiness/player/")) {
     const id = Number(path.split("/").pop());
@@ -378,6 +396,11 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
   await new Promise((r) => setTimeout(r, 120));
   return route(method, url.pathname, url.searchParams, body);
+};
+
+/** The phone alert this view would have received (check-in alerts to the AT), if any. */
+export const demoAlerts = {
+  take: (role: DemoRole) => (role ? care.takeAlert(role) : null),
 };
 
 export const demoPush = {
