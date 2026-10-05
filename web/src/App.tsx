@@ -95,7 +95,7 @@ function CoachApp({ me }: { me: Me }) {
 }
 
 /**
- * The athletic trainer's view: Injuries first (who to see before practice: Pre practice, then
+ * The athletic trainer's view: Injuries first (who to see before practice: Pre/Post practice, then
  * the recovery tracker), the morning Readiness board (each player's care panel and
  * the live injury report), and RPE trends.
  */

@@ -341,7 +341,6 @@ export interface SquadReadinessPlayer {
   baseline: number | null;
   status: ReadinessStatus;
   flags: string[];
-  care: CareSummary;
 }
 
 export type RegionCounts = Record<string, { light: number; moderate: number; severe: number }>;
@@ -921,13 +920,6 @@ export interface OpenIssue extends Issue {
   latestLog: { log_date: string; activities: string; notes: string | null } | null;
 }
 
-export interface CareSummary {
-  availability: Availability | null;
-  treatments: Treatment[];
-  noteCount: number;
-  issues: { id: number; category: IssueCategory; description: string; side: Side | null; stage: RtpStage; days: number | null }[];
-}
-
 export interface CareDayPlayer {
   player_id: number;
   name: string;
@@ -999,6 +991,7 @@ export interface TrainingCheck {
   decision_note: string | null;
   decided_by: string | null;
   decided_at: string | null;
+  kept_same: number;
 }
 
 export type CheckStage = "flagged" | "called_in" | "awaiting_coach" | "decided" | "cleared";

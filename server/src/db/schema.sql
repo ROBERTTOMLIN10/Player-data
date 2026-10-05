@@ -706,6 +706,7 @@ CREATE TABLE IF NOT EXISTS training_checks (
   decision_note TEXT,
   decided_by TEXT,
   decided_at TEXT,
+  kept_same INTEGER NOT NULL DEFAULT 0, -- settled as "still the same": a known injury, nothing new
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (player_id, check_date)
 );

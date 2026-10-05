@@ -83,6 +83,7 @@ function addMissingColumns(db: ReturnType<typeof getDb>) {
     ["team_sites", "discovered_at", "TEXT"],
     ["team_sites", "stats_team_id", "INTEGER"],
     ["team_sites", "roster_url", "TEXT"],
+    ["training_checks", "kept_same", "INTEGER NOT NULL DEFAULT 0"],
   ];
   for (const [table, column, definition] of added) {
     const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];

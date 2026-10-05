@@ -4,13 +4,14 @@ import { regionName } from "./careAlerts.js";
 import { sendToUsers } from "./push.js";
 
 /**
- * Before training: the players who may miss part or all of today's session, and
+ * Pre/Post practice: the players who may miss part or all of today's session, and
  * where each one is in the AT → coach process:
  *
  *   flagged → called in (an appointment the player accepts) → seen, AT recommends
  *   a play status → coach agrees or changes it (final; it becomes the day's play status)
  *
- * or the AT clears them ("fine to train"). A player is on the list when their
+ * or the AT clears them ("fine to train"), or — for a known injury with nothing new —
+ * the AT or a coach settles it as "still the same" (same play status as before). A player is on the list when their
  * check-in shows severe soreness, any soreness where they have an open injury, or
  * readiness at or below PRIORITY_READINESS, when they're already restricted (As
  * tolerated / Limited / Rehab only), or when the AT flags them by hand.
@@ -42,6 +43,7 @@ export interface TrainingCheck {
   decision_note: string | null;
   decided_by: string | null;
   decided_at: string | null;
+  kept_same: number; // settled as "still the same" (a known injury, nothing new)
 }
 
 export interface CareMessage {
@@ -56,7 +58,7 @@ export interface CareMessage {
 }
 
 const REASON_ORDER: ReasonKind[] = ["severe", "injury_area", "low", "restricted", "manual"];
-const RESTRICTED: Level[] = ["as_tolerated", "limited", "rehab"];
+const RESTRICTED: Level[] = ["as_tolerated", "limited", "rehab", "out"];
 const LEVEL_LABEL: Record<Level, string> = { full: "Full", as_tolerated: "As tolerated", limited: "Limited", rehab: "Rehab only", out: "Out" };
 const base = (region: string) => region.replace(/_(l|r)$/, "");
 const sideOf = (region: string) => region.match(/_(l|r)$/)?.[1] ?? null;
@@ -138,7 +140,8 @@ export function beforeTraining(date: string) {
       else if (s.severity === "severe") reasons.push({ kind: "severe", label: `${regionName(s.region)} severe` });
     }
     if (checkin && checkin.readiness_score <= PRIORITY_READINESS) reasons.push({ kind: "low", label: `Readiness ${checkin.readiness_score}%` });
-    if (av && RESTRICTED.includes(av.level)) reasons.push({ kind: "restricted", label: `On ${LEVEL_LABEL[av.level]}${av.practice_note ? ` · ${av.practice_note}` : ""}` });
+    if (av && RESTRICTED.includes(av.level))
+      reasons.push({ kind: "restricted", label: `${av.level === "out" ? "Out" : `On ${LEVEL_LABEL[av.level]}`}${av.practice_note ? ` · ${av.practice_note}` : ""}` });
     if (check?.flagged) reasons.push({ kind: "manual", label: check.flag_note ? `Flagged: ${check.flag_note}` : "Flagged by the AT" });
     // Someone the staff already acted on today stays on the list, even if their check-in changed.
     if (!reasons.length && !check?.appointment_id && !check?.recommendation && !check?.decision) continue;

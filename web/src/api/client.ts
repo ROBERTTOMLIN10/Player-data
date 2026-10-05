@@ -532,6 +532,7 @@ export const careApi = {
   recommend: (playerId: number, body: { date: string; level: PlayLevel; note?: string | null }) => sendJson(`/api/care/checks/${playerId}/recommend`, "POST", body),
   decide: (playerId: number, body: { date: string; level: PlayLevel; note?: string | null }) => sendJson(`/api/care/checks/${playerId}/decide`, "POST", body),
   reopen: (playerId: number, body: { date: string }) => sendJson(`/api/care/checks/${playerId}/reopen`, "POST", body),
+  same: (playerId: number, body: { date: string }) => sendJson(`/api/care/checks/${playerId}/same`, "POST", body),
 };
 export const CARE_QUERY_KEYS = ["careDay", "playerCare", "issues", "issue", "squadReadiness", "beforeTraining"];
 

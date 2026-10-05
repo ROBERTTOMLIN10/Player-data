@@ -88,8 +88,7 @@ care.setEntries((date) =>
 );
 
 function squadFor(date: string | null) {
-  const board = squadOn(date);
-  return { ...board, players: board.players.map((p: any) => ({ ...p, care: care.summaryFor(p.player_id, board.date) })) };
+  return squadOn(date);
 }
 
 function squadOn(date: string | null) {

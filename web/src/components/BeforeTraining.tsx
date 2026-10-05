@@ -40,7 +40,7 @@ function useRefresh() {
 }
 
 /**
- * Pre practice: who may miss part or all of today's session and where each one
+ * Pre/Post practice: who may miss part or all of today's session and where each one
  * is — called in, seen (the AT's recommendation), and the coach's final call. The
  * AT acts from here (call in with what to do first, message, recommend); coaches
  * see the whole back-and-forth and confirm. On the Injuries page and the
@@ -51,11 +51,13 @@ export function BeforeTraining({
   onOpenPlayer,
   focusPlayerId,
   compact = false,
+  onDateChange,
 }: {
   date: string | null;
   onOpenPlayer?: (p: { id: number; name: string }) => void;
   focusPlayerId?: number | null;
   compact?: boolean;
+  onDateChange?: (date: string | null) => void;
 }) {
   const { data } = useBeforeTraining(date);
   const { data: me } = useMe();
@@ -64,43 +66,159 @@ export function BeforeTraining({
   if (!data) return null;
 
   const open = data.items.filter((i) => i.stage !== "decided" && i.stage !== "cleared");
+  const settled = data.items.filter((i) => i.stage === "decided" || i.stage === "cleared");
   const needCoach = data.items.filter((i) => i.stage === "awaiting_coach").length;
   const notSeen = data.items.filter((i) => i.stage === "flagged").length;
-  const done = data.items.length - open.length;
+  // Settled players, grouped by today's play status like the injury report.
+  const groups = SETTLED_ORDER.map((level) => ({ level, rows: settled.filter((i) => settledLevel(i) === level) })).filter((g) => g.rows.length);
 
   return (
-    <Card className="p-0">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3">
-        <div className="min-w-0 flex-1">
-          <h2 className="font-display text-base font-semibold">Pre practice</h2>
-          <p className="text-xs text-text-dim">
-            {formatDateLong(data.date)} ·{" "}
-            {data.items.length === 0
-              ? "nobody flagged"
-              : [notSeen && `${notSeen} not seen yet`, needCoach && `${needCoach} waiting on coach`, done && `${done} decided`].filter(Boolean).join(" · ") ||
-                `${open.length} in progress`}
-          </p>
+    <div className="flex flex-col gap-4">
+      <Card className="p-0">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3">
+          <div className="min-w-0 flex-1">
+            <h2 className="font-display text-base font-semibold">Pre/Post practice</h2>
+            <p className="text-xs text-text-dim">
+              {formatDateLong(data.date)} ·{" "}
+              {open.length === 0
+                ? settled.length
+                  ? "everyone settled"
+                  : "nobody flagged"
+                : [notSeen && `${notSeen} not seen yet`, needCoach && `${needCoach} waiting on coach`].filter(Boolean).join(" · ") || `${open.length} in progress`}
+            </p>
+          </div>
+          {onDateChange && <DayNav date={data.date} today={data.today} onChange={onDateChange} />}
+          {role === "trainer" && (
+            <button className={ghost} onClick={() => setFlagging((v) => !v)}>
+              {flagging ? "Close" : "+ Flag a player"}
+            </button>
+          )}
         </div>
-        {role === "trainer" && (
-          <button className={ghost} onClick={() => setFlagging((v) => !v)}>
-            {flagging ? "Close" : "+ Flag a player"}
+        {flagging && <FlagForm date={data.date} onDone={() => setFlagging(false)} />}
+        {open.length === 0 ? (
+          <p className="px-4 py-4 text-sm text-text-dim">
+            {settled.length
+              ? "Nothing waiting. Everyone below is settled for the day."
+              : `No one's check-in shows severe soreness, soreness on an injury, or readiness at ${data.threshold}% or lower, and no one is restricted.`}
+            {role === "trainer" ? " Flag anyone you want to see before practice." : ""}
+          </p>
+        ) : (
+          <ul className="divide-y divide-border/70">
+            {open.map((item) => (
+              <ItemRow key={item.player_id} item={item} date={data.date} role={role} onOpenPlayer={onOpenPlayer} focus={focusPlayerId === item.player_id} compact={compact} />
+            ))}
+          </ul>
+        )}
+      </Card>
+
+      {groups.length > 0 && (
+        <Card className="p-0">
+          <div className="border-b border-border px-4 py-3">
+            <h3 className="font-display text-base font-semibold">Settled for {formatDateLong(data.date)}</h3>
+            <p className="text-xs text-text-dim">Agreed by the AT and coach. This is each player&rsquo;s play status for the day.</p>
+          </div>
+          {groups.map((g) => (
+            <div key={g.level} className="border-b border-border/70 last:border-0">
+              <div className="flex items-center gap-2 px-4 pt-3">
+                <LevelChip level={g.level} />
+                <span className="text-xs text-text-dim">{g.rows.length}</span>
+              </div>
+              <ul className="divide-y divide-border/50">
+                {g.rows.map((item) => (
+                  <SettledRow key={item.player_id} item={item} date={data.date} role={role} onOpenPlayer={onOpenPlayer} />
+                ))}
+              </ul>
+            </div>
+          ))}
+        </Card>
+      )}
+    </div>
+  );
+}
+
+const SETTLED_ORDER: PlayLevel[] = ["out", "rehab", "limited", "as_tolerated", "full"];
+const settledLevel = (i: BeforeTrainingItem): PlayLevel => (i.stage === "cleared" ? "full" : (i.check?.decision ?? "full"));
+
+function shiftIso(iso: string, days: number) {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function DayNav({ date, today, onChange }: { date: string; today: string; onChange: (d: string | null) => void }) {
+  return (
+    <div className="flex items-center gap-1">
+      <button onClick={() => onChange(shiftIso(date, -1))} className="rounded-md border border-border px-2 py-1 text-sm text-text-dim hover:text-text" aria-label="Previous day">
+        ←
+      </button>
+      <input
+        type="date"
+        value={date}
+        max={today}
+        onChange={(e) => onChange(e.target.value || null)}
+        className="rounded-md border border-border bg-surface-raised px-2 py-1 text-sm text-text outline-none focus:border-owl-red"
+        aria-label="Day"
+      />
+      <button
+        onClick={() => onChange(shiftIso(date, 1) >= today ? null : shiftIso(date, 1))}
+        disabled={date >= today}
+        className="rounded-md border border-border px-2 py-1 text-sm text-text-dim hover:text-text disabled:opacity-30"
+        aria-label="Next day"
+      >
+        →
+      </button>
+    </div>
+  );
+}
+
+function SettledRow({ item, date, role, onOpenPlayer }: { item: BeforeTrainingItem; date: string; role: "trainer" | "coach"; onOpenPlayer?: (p: { id: number; name: string }) => void }) {
+  const refresh = useRefresh();
+  const [busy, setBusy] = useState(false);
+  const c = item.check;
+  const how =
+    item.stage === "cleared"
+      ? "AT: fine to train"
+      : c?.kept_same
+        ? "Still the same"
+        : c?.recommendation
+          ? c.recommendation === c.decision
+            ? "AT recommended · coach agreed"
+            : `Coach changed it from ${levelInfo(c.recommendation).label}`
+          : "Set by the coach";
+  const note = c?.decision_note ?? c?.rec_note ?? (c?.kept_same ? item.availability?.practice_note : null);
+  const reopen = async () => {
+    setBusy(true);
+    try {
+      await (item.stage === "cleared" ? careApi.clear(item.player_id, { date, cleared: false }) : careApi.reopen(item.player_id, { date }));
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <li className="px-4 py-2.5 text-sm">
+      <div className="flex items-baseline gap-2">
+        <button onClick={() => onOpenPlayer?.({ id: item.player_id, name: item.name })} className="shrink-0 whitespace-nowrap text-left font-medium hover:text-owl-red-light">
+          {item.name}
+        </button>
+        <span className="text-xs text-text-dim">{how}</span>
+        {(role === "coach" || item.stage === "cleared" || c?.kept_same) && (
+          <button className="ml-auto shrink-0 text-xs text-text-dim hover:text-text disabled:opacity-50" disabled={busy} onClick={reopen}>
+            Reopen
           </button>
         )}
       </div>
-      {flagging && <FlagForm date={data.date} onDone={() => setFlagging(false)} />}
-      {data.items.length === 0 ? (
-        <p className="px-4 py-4 text-sm text-text-dim">
-          No one&rsquo;s check-in shows severe soreness, soreness on an injury, or readiness at {data.threshold}% or lower, and no one is restricted.
-          {role === "trainer" ? " Flag anyone you want to see before practice." : ""}
-        </p>
-      ) : (
-        <ul className="divide-y divide-border/70">
-          {data.items.map((item) => (
-            <ItemRow key={item.player_id} item={item} date={data.date} role={role} onOpenPlayer={onOpenPlayer} focus={focusPlayerId === item.player_id} compact={compact} />
-          ))}
-        </ul>
+      {(note || item.appointment) && (
+        <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs">
+          {note && <span className="text-text">{note}</span>}
+          {item.appointment && (
+            <span className="text-text-dim">
+              ✚ {timeLabel(item.appointment.treat_time)} {appointmentState(item.appointment).label.toLowerCase()}
+            </span>
+          )}
+        </div>
       )}
-    </Card>
+    </li>
   );
 }
 
@@ -206,6 +324,16 @@ function ItemRow({
 
       {/* Actions */}
       <div className="mt-2 flex flex-wrap gap-1.5">
+        {(item.stage === "flagged" || item.stage === "called_in") && item.reasons.some((r) => r.kind === "restricted") && (
+          <button
+            className={ghost}
+            disabled={busy}
+            title={`Nothing new: keep them on ${levelInfo(item.availability?.level ?? "full").label} for today`}
+            onClick={() => run(() => careApi.same(item.player_id, { date }))}
+          >
+            Still the same ({levelInfo(item.availability?.level ?? "full").label})
+          </button>
+        )}
         {role === "trainer" && item.stage === "flagged" && (
           <>
             <button className={primary} onClick={() => toggle("call")}>

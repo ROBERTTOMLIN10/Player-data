@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useCareDay } from "../api/client";
-import { appointmentState, attendanceMark, kindLabel, levelInfo, sideLabel, stageLabel, timeLabel } from "../lib/care";
+import { useCareDay, useIssues } from "../api/client";
+import { attendanceMark, categoryLabel, levelInfo, sideLabel, stageLabel } from "../lib/care";
 import { downloadFrom } from "../lib/download";
 import { formatDate, formatDateLong } from "../lib/format";
-import type { CareDayPlayer, OpenIssue, PlayLevel } from "../types";
+import type { CareDayPlayer, Issue, OpenIssue, PlayLevel } from "../types";
 import { Card } from "./Card";
+import { Segmented } from "./SeasonStats";
 
 const REPORT_ORDER: PlayLevel[] = ["as_tolerated", "limited", "rehab", "out", "full"];
 
@@ -20,7 +21,8 @@ interface Row {
  * play status, one row per player and injury, with practice and conditioning
  * notes, the latest note, treatment attendance and expected return. General
  * medical issues and physical-exam (PPE) follow-ups follow in their own sections.
- * It's live: built from what the AT enters, so coaches always see the latest.
+ * It's the squad's summary for the day (from the AT's entries and the Pre/Post
+ * practice decisions), with the season's injury history underneath.
  */
 export function InjuryReport({ date, onOpenPlayer }: { date: string | null; onOpenPlayer: (p: CareDayPlayer) => void }) {
   const { data, isLoading } = useCareDay(date);
@@ -41,12 +43,12 @@ export function InjuryReport({ date, onOpenPlayer }: { date: string | null; onOp
   const byDate = (a: Row, b: Row) => String(b.issue?.injury_date ?? "").localeCompare(String(a.issue?.injury_date ?? ""));
   const groups = REPORT_ORDER.map((level) => ({ level, rows: injuryRows.filter((r) => r.level === level).sort(byDate) })).filter((g) => g.rows.length);
 
-  const treatments = data.players.flatMap((p) => p.treatments.filter((t) => t.status !== "declined").map((t) => ({ ...t, name: p.name, player: p })));
+  // Where the squad is at for the day.
   const counts = {
-    out: data.players.filter((p) => p.availability?.level === "out").length,
+    available: data.players.filter((p) => !p.availability || p.availability.level === "full").length,
     restricted: data.players.filter((p) => p.availability && ["as_tolerated", "limited", "rehab"].includes(p.availability.level)).length,
-    booked: treatments.filter((t) => t.status !== "missed").length,
-    came: treatments.filter((t) => t.status === "attended").length,
+    out: data.players.filter((p) => p.availability?.level === "out").length,
+    injuries: data.players.reduce((n, p) => n + p.issues.filter((i) => i.category === "injury").length, 0),
   };
 
   return (
@@ -55,44 +57,18 @@ export function InjuryReport({ date, onOpenPlayer }: { date: string | null; onOp
         <div>
           <h2 className="font-display text-lg font-semibold sm:text-xl">FAU Men&rsquo;s Soccer Injury Report</h2>
           <p className="text-sm text-text-dim">
-            {formatDateLong(data.date)} · live from the athletic trainer&rsquo;s entries
+            {formatDateLong(data.date)} · where the squad is at, from the AT&rsquo;s entries and today&rsquo;s Pre/Post practice decisions
           </p>
         </div>
         <ExcelButton date={data.date} />
       </div>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Tile label="Out" value={counts.out} tone="text-owl-red-light" />
+        <Tile label="Available" value={`${counts.available}/${data.players.length}`} tone="text-teal" />
         <Tile label="Restricted" value={counts.restricted} tone="text-gold" />
-        <Tile label="Appointments" value={counts.booked} />
-        <Tile label="Came in" value={`${counts.came}/${counts.booked}`} tone="text-teal" />
+        <Tile label="Out" value={counts.out} tone="text-owl-red-light" />
+        <Tile label="Open injuries" value={counts.injuries} />
       </div>
-
-      {treatments.length > 0 && (
-        <Card className="p-0">
-          <div className="border-b border-border px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-text-dim">Appointments today</div>
-          <ul className="divide-y divide-border/60">
-            {treatments
-              .sort((a, b) => String(a.treat_time ?? "").localeCompare(String(b.treat_time ?? "")))
-              .map((t) => (
-                <li key={t.id}>
-                  <button onClick={() => onOpenPlayer(t.player)} className="flex w-full items-center gap-3 px-4 py-2 text-left text-sm hover:bg-surface-raised">
-                    <span className="w-20 shrink-0 whitespace-nowrap font-semibold tabular-nums">{timeLabel(t.treat_time) || "—"}</span>
-                    <span className="min-w-0 flex-1 truncate">
-                      <span className="font-medium">{t.name}</span>
-                      <span className="text-text-dim">
-                        {" "}
-                        · {kindLabel(t.kind)}
-                        {t.reason ? ` · ${t.reason}` : ""}
-                      </span>
-                    </span>
-                    <span className={`shrink-0 rounded-full border px-1.5 py-px text-[11px] ${appointmentState(t).chip}`}>{appointmentState(t).label}</span>
-                  </button>
-                </li>
-              ))}
-          </ul>
-        </Card>
-      )}
 
       {groups.length === 0 ? (
         <Card className="text-sm text-text-dim">Everyone is Full with nothing open. The AT sets play status and logs injuries from each player&rsquo;s panel on the Readiness board.</Card>
@@ -125,6 +101,7 @@ export function InjuryReport({ date, onOpenPlayer }: { date: string | null; onOp
 
       {genMed.length > 0 && <SideSection title="Gen Med" rows={genMed} onOpen={onOpenPlayer} />}
       {ppe.length > 0 && <SideSection title="PPE follow-ups" rows={ppe} onOpen={onOpenPlayer} />}
+      <InjuryHistory />
     </div>
   );
 }
@@ -154,6 +131,83 @@ function ExcelButton({ date }: { date: string }) {
       </button>
       {error && <span className="text-xs text-owl-red-light">{error}</span>}
     </div>
+  );
+}
+
+/** Every injury and issue reported this season: when, how long, and whether they're back. */
+function InjuryHistory() {
+  const { data } = useIssues(true);
+  const [show, setShow] = useState<"all" | "recovered" | "open">("all");
+  if (!data) return null;
+  const rows = data.issues
+    .filter((i) => (show === "all" ? true : show === "recovered" ? Boolean(i.closed_at) : !i.closed_at))
+    .sort((a, b) => String(b.injury_date ?? b.created_at).localeCompare(String(a.injury_date ?? a.created_at)));
+  const recovered = data.issues.filter((i) => i.closed_at).length;
+  const daysOut = (i: Issue) => {
+    const from = i.injury_date ?? i.created_at.slice(0, 10);
+    const to = i.closed_at ?? data.today;
+    return Math.max(0, Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000));
+  };
+  return (
+    <Card className="overflow-x-auto p-0">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
+        <div>
+          <h3 className="font-display text-base font-semibold">Injury history</h3>
+          <p className="text-xs text-text-dim">
+            {data.issues.length} reported · {recovered} recovered · {data.issues.length - recovered} open
+          </p>
+        </div>
+        <Segmented
+          value={show}
+          options={[
+            { key: "all", label: "All" },
+            { key: "open", label: "Open" },
+            { key: "recovered", label: "Recovered" },
+          ]}
+          onChange={setShow}
+          label="Show"
+        />
+      </div>
+      {rows.length === 0 ? (
+        <p className="px-4 py-4 text-sm text-text-dim">Nothing here yet.</p>
+      ) : (
+        <table className="w-full min-w-[640px] text-sm">
+          <thead>
+            <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-text-dim">
+              <th className="px-3 py-2 font-medium">Player</th>
+              <th className="px-2 py-2 font-medium">Injury / issue</th>
+              <th className="px-2 py-2 text-center font-medium">Side</th>
+              <th className="px-2 py-2 font-medium">Reported</th>
+              <th className="px-2 py-2 font-medium">Back</th>
+              <th className="px-2 py-2 text-center font-medium">Days</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((i) => (
+              <tr key={i.id} className="border-b border-border/60 last:border-0 hover:bg-surface-raised">
+                <td className="whitespace-nowrap px-3 py-2 font-medium">{i.player_name}</td>
+                <td className="px-2 py-2">
+                  <Link to={`/injuries/${i.id}`} className="hover:text-owl-red-light hover:underline">
+                    {i.description}
+                  </Link>
+                  {i.category !== "injury" && <span className="ml-1.5 rounded border border-border px-1 text-[10px] uppercase text-text-dim">{categoryLabel(i.category)}</span>}
+                </td>
+                <td className="px-2 py-2 text-center">{sideLabel(i.side) || ""}</td>
+                <td className="whitespace-nowrap px-2 py-2 text-text-dim">{i.injury_date ? formatDate(i.injury_date) : formatDate(i.created_at.slice(0, 10))}</td>
+                <td className="whitespace-nowrap px-2 py-2">
+                  {i.closed_at ? (
+                    <span className="text-teal">{formatDate(i.closed_at)}</span>
+                  ) : (
+                    <span className="text-gold">Open · {stageLabel(i.stage)}</span>
+                  )}
+                </td>
+                <td className="px-2 py-2 text-center tabular-nums">{daysOut(i)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Card>
   );
 }
 

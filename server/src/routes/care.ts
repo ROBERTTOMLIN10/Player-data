@@ -304,6 +304,7 @@ careRouter.post("/checks/:playerId/recommend", (req, res) => {
     decision_note: null,
     decided_by: null,
     decided_at: null,
+    kept_same: 0,
   });
   // Seen: the call-in counts as attended.
   if (check.appointment_id) {
@@ -321,7 +322,7 @@ careRouter.post("/checks/:playerId/decide", (req, res) => {
   if (!parsed.success) return bad(res, parsed.error);
   const { date, level, note } = parsed.data;
   const db = getDb();
-  const check = updateCheck(playerId, date, { decision: level, decision_note: note, decided_by: who(req), decided_at: new Date().toISOString() });
+  const check = updateCheck(playerId, date, { decision: level, decision_note: note, decided_by: who(req), decided_at: new Date().toISOString(), kept_same: 0 });
   const current = availabilityOn(date).get(playerId);
   const practiceNote = note ?? check.rec_note ?? (current?.level === level ? current.practice_note : null);
   db.prepare(
@@ -334,12 +335,41 @@ careRouter.post("/checks/:playerId/decide", (req, res) => {
   void notify.trainers(playerId, `${playerName(playerId)}: ${levelLabel(level)} today`, agreed ? "Coach agreed with your recommendation." : `Coach changed it from ${check.recommendation ? levelLabel(check.recommendation) : "—"}.${note ? ` ${note}` : ""}`, `check-${playerId}-${date}`);
 });
 
+// A known injury with nothing new: settled at the same play status as before (the AT or a coach).
+careRouter.post("/checks/:playerId/same", (req, res) => {
+  const playerId = Number(req.params.playerId);
+  const parsed = dateBody.safeParse(req.body);
+  if (!parsed.success) return bad(res, parsed.error);
+  if (!playerExists(playerId)) return res.status(404).json({ error: "Player not found." });
+  const { date } = parsed.data;
+  const current = availabilityOn(date).get(playerId);
+  const level = current?.level ?? "full";
+  getDb()
+    .prepare(
+      `INSERT INTO player_availability (player_id, status_date, level, practice_note, bike, jogging, running, set_by, updated_at)
+       VALUES (@playerId, @date, @level, @practice_note, @bike, @jogging, @running, @by, datetime('now'))
+       ON CONFLICT(player_id, status_date) DO UPDATE SET set_by = excluded.set_by, updated_at = excluded.updated_at`,
+    )
+    .run({ playerId, date, level, practice_note: current?.practice_note ?? null, bike: current?.bike ?? null, jogging: current?.jogging ?? null, running: current?.running ?? null, by: who(req) });
+  res.json(
+    updateCheck(playerId, date, {
+      decision: level,
+      decision_note: null,
+      decided_by: who(req),
+      decided_at: new Date().toISOString(),
+      kept_same: 1,
+      cleared_at: null,
+      cleared_by: null,
+    }),
+  );
+});
+
 // Undo the decision (back to awaiting the coach) or start over.
 careRouter.post("/checks/:playerId/reopen", (req, res) => {
   const playerId = Number(req.params.playerId);
   const parsed = dateBody.safeParse(req.body);
   if (!parsed.success) return bad(res, parsed.error);
-  res.json(updateCheck(playerId, parsed.data.date, { decision: null, decision_note: null, decided_by: null, decided_at: null }));
+  res.json(updateCheck(playerId, parsed.data.date, { decision: null, decision_note: null, decided_by: null, decided_at: null, kept_same: 0 }));
 });
 
 // ---- Follow-up notes ---------------------------------------------------------------

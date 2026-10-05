@@ -9,7 +9,7 @@ import { positionGroup } from "../lib/positions";
 import { STATUS_STYLE, WELLNESS_QUESTIONS, wellnessTextClass } from "../lib/readiness";
 import type { ReadinessStatus, Severity, SquadReadinessPlayer } from "../types";
 import { OpponentLink } from "../components/ncaa";
-import { CareChips, CarePanel } from "../components/CarePanel";
+import { CarePanel } from "../components/CarePanel";
 import { InjuryReport } from "../components/InjuryReport";
 import { Segmented } from "../components/SeasonStats";
 import { CheckinAlerts } from "../components/CheckinAlerts";
@@ -29,8 +29,9 @@ type View = "board" | "practice" | "report";
 
 /**
  * Readiness for coaches and the athletic trainer: the morning readiness board (with
- * each player's care: play status, appointments, notes), Pre practice (who may miss
- * part or all of practice, and the AT → coach decision) and the live injury report.
+ * each player's care: play status, appointments, notes), Pre/Post practice (who
+ * may miss part or all of practice, the AT → coach decision, then who's settled at
+ * what play status) and the live injury report.
  * Tapping a player opens their care panel.
  */
 export default function ReadinessView() {
@@ -105,7 +106,7 @@ export default function ReadinessView() {
         value={view}
         options={[
           { key: "board", label: "Readiness" },
-          { key: "practice", label: "Pre practice" },
+          { key: "practice", label: "Pre/Post practice" },
           { key: "report", label: "Injury report" },
         ]}
         onChange={(v) => setParam("view", v === "board" ? null : v)}
@@ -121,7 +122,7 @@ export default function ReadinessView() {
     return (
       <div className="flex flex-col gap-5">
         {toggle}
-        <BeforeTraining date={dateParam} onOpenPlayer={(p) => setCareFor(p)} />
+        <BeforeTraining date={dateParam} onOpenPlayer={(p) => setCareFor(p)} onDateChange={setDate} />
         {carePanel}
       </div>
     );
@@ -306,9 +307,6 @@ function PlayerRow({ p, onOpen }: { p: SquadReadinessPlayer; onOpen: () => void 
               {new Date(`${e.updated_at.replace(" ", "T")}Z`).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
             </>
           )}
-        </div>
-        <div className="mt-1 pl-4">
-          <CareChips care={p.care} />
         </div>
       </td>
       {e ? (

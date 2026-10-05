@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { CARE_QUERY_KEYS, careApi, useMe, usePlayerCare } from "../api/client";
 import { regionLabel, SEVERITY_STYLE } from "../lib/bodyRegions";
-import { appointmentState, CATEGORIES, categoryLabel, KINDS, kindLabel, LEVELS, levelInfo, sideLabel, stageLabel, timeLabel } from "../lib/care";
+import { appointmentState, CATEGORIES, categoryLabel, KINDS, kindLabel, LEVELS, sideLabel, stageLabel, timeLabel } from "../lib/care";
 import { CareThread } from "./CareThread";
 import { formatDate } from "../lib/format";
 import type { AppointmentKind, Availability, IssueCategory, PlayLevel, ReadinessEntry, Side } from "../types";
@@ -492,28 +492,5 @@ function Notes({ playerId, date, notes, myEmail }: { playerId: number; date: str
       </div>
       {error && <p className="text-xs text-owl-red-light">{error}</p>}
     </Section>
-  );
-}
-
-/** Small chips for a player's care on the Readiness board. */
-export function CareChips({ care }: { care: import("../types").CareSummary }) {
-  const level = care.availability ? levelInfo(care.availability.level) : null;
-  return (
-    <div className="flex flex-wrap items-center gap-1">
-      {level && care.availability!.level !== "full" && (
-        <span className={`rounded-full border px-1.5 py-px text-[11px] font-medium ${level.chip}`} title={care.availability!.practice_note ?? undefined}>
-          {level.short}
-        </span>
-      )}
-      {care.treatments
-        .filter((t) => t.status !== "declined" && t.status !== "cancelled")
-        .map((t) => (
-          <span key={t.id} className={`rounded-full border px-1.5 py-px text-[11px] ${appointmentState(t).chip}`} title={[kindLabel(t.kind), t.reason, appointmentState(t).label].filter(Boolean).join(" · ")}>
-            ✚ {timeLabel(t.treat_time) || "Appt"} {KINDS.find((k) => k.key === t.kind)?.short}
-            {t.status === "attended" ? " · Came in" : t.status === "missed" ? " · Missed" : t.status === "pending" ? " · Pending" : ""}
-          </span>
-        ))}
-      {care.noteCount > 0 && <span className="rounded-full border border-border px-1.5 py-px text-[11px] text-text-dim">💬 {care.noteCount}</span>}
-    </div>
   );
 }
