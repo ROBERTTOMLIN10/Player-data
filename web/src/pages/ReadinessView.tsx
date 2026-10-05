@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { useSquadReadiness } from "../api/client";
+import { useMe, useSquadReadiness } from "../api/client";
 import { BodyMap, SeverityLegend } from "../components/BodyMap";
 import { Card, SectionHeading } from "../components/Card";
 import { regionLabel, SEVERITY_STYLE } from "../lib/bodyRegions";
@@ -37,7 +37,10 @@ type View = "board" | "practice" | "report";
 export default function ReadinessView() {
   const [params, setParams] = useSearchParams();
   const dateParam = params.get("date");
-  const view: View = params.get("view") === "report" ? "report" : params.get("view") === "practice" ? "practice" : "board";
+  const { data: me } = useMe();
+  // The AT has Pre/Post practice and the injury report on their Injuries tab; here they get the board.
+  const isTrainer = me?.role === "trainer";
+  const view: View = isTrainer ? "board" : params.get("view") === "report" ? "report" : params.get("view") === "practice" ? "practice" : "board";
   const { data, isLoading } = useSquadReadiness(dateParam);
   const [filter, setFilter] = useState<Filter>("all");
   const [careFor, setCareFor] = useState<{ id: number; name: string } | null>(null);
@@ -100,9 +103,9 @@ export default function ReadinessView() {
     />
   );
   const toggle = (
-    <div className="flex flex-wrap items-center justify-center gap-3 sm:justify-between">
-      <span className="hidden w-44 sm:block" />
-      <Segmented
+    <div className={`flex flex-wrap items-center justify-center gap-3 ${isTrainer ? "sm:justify-end" : "sm:justify-between"}`}>
+      {!isTrainer && <span className="hidden w-44 sm:block" />}
+      {!isTrainer && <Segmented
         value={view}
         options={[
           { key: "board", label: "Readiness" },
@@ -111,7 +114,7 @@ export default function ReadinessView() {
         ]}
         onChange={(v) => setParam("view", v === "board" ? null : v)}
         label="Readiness view"
-      />
+      />}
       <div className="flex sm:w-44 sm:justify-end">
         <CheckinAlerts />
       </div>
