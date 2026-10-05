@@ -195,8 +195,13 @@ export function createCareMock(data: Record<string, any>, today: string, myPlaye
     const date = q.get("date") ?? today;
     if (path === "/api/me/care" && method === "GET") {
       const c = getCheck(myPlayerId, today);
+      const av = availabilityOn(today).get(myPlayerId);
       return json({
         today,
+        availability: av ? { level: av.level, practice_note: av.practice_note, bike: av.bike, jogging: av.jogging, running: av.running } : null,
+        issues: raw.issues
+          .filter((i) => i.player_id === myPlayerId && (!i.closed_at || i.closed_at >= shift(today, -60)))
+          .map(({ id, category, description, side, injury_date, expected_return, stage, closed_at }) => ({ id, category, description, side, injury_date, expected_return, stage, closed_at })),
         treatments: raw.treatments
           .filter((t) => t.player_id === myPlayerId && t.treat_date >= today && t.status !== "cancelled")
           .sort((a, b) => (a.treat_date + a.treat_time).localeCompare(b.treat_date + b.treat_time)),

@@ -958,6 +958,8 @@ export interface IssueDetail {
 
 export interface MyCare {
   today: string;
+  availability: Pick<Availability, "level" | "practice_note" | "bike" | "jogging" | "running"> | null;
+  issues: Pick<Issue, "id" | "category" | "description" | "side" | "injury_date" | "expected_return" | "stage" | "closed_at">[];
   treatments: Omit<Treatment, "player_id" | "attended_marked_by" | "created_by" | "updated_at">[];
   messages: CareMessage[];
   check: { appointment_id: number | null; decision: PlayLevel | null; decision_note: string | null } | null;

@@ -10,7 +10,7 @@ import { gameOnDate, getCheckins, readinessScore, shiftDate, teamToday } from ".
 import { getPlayerDetail } from "./players.js";
 import { playerRpe } from "./rpe.js";
 import { alertStaffForCheckin } from "../lib/careAlerts.js";
-import { KINDS, kindLabel, type Treatment } from "../lib/care.js";
+import { availabilityOn, KINDS, kindLabel, type Treatment } from "../lib/care.js";
 import { getCheck, messagesOn, notify, playerName, whenLabel } from "../lib/beforeTraining.js";
 
 /**
@@ -236,8 +236,18 @@ meRouter.get("/care", (req, res) => {
     )
     .all(playerId, today);
   const check = getCheck(playerId, today);
+  // Their own injuries and issues (what, side, stage on the way back, expected return) — not the AT's notes.
+  const issues = db
+    .prepare(
+      `SELECT id, category, description, side, injury_date, expected_return, stage, closed_at FROM injuries
+       WHERE player_id = ? AND (closed_at IS NULL OR closed_at >= date(?, '-60 days')) ORDER BY closed_at IS NOT NULL, injury_date DESC`,
+    )
+    .all(playerId, today);
+  const availability = availabilityOn(today).get(playerId) ?? null;
   res.json({
     today,
+    availability: availability ? { level: availability.level, practice_note: availability.practice_note, bike: availability.bike, jogging: availability.jogging, running: availability.running } : null,
+    issues,
     treatments,
     messages: messagesOn(today, playerId),
     check: check ? { appointment_id: check.appointment_id, decision: check.decision, decision_note: check.decision_note } : null,

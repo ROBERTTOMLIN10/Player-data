@@ -192,7 +192,7 @@ export const notify = {
   /** To the player: the AT wants to see them / sent a message. */
   player: (playerId: number, title: string, body: string, tag: string) => {
     const id = playerUser(playerId);
-    return id ? push([id], title, body, "/", tag) : Promise.resolve();
+    return id ? push([id], title, body, "/athletic-training", tag) : Promise.resolve();
   },
   /** To every athletic trainer: a player replied or asked for a time. */
   trainers: (playerId: number, title: string, body: string, tag: string) => push(usersWithRole("trainer"), title, body, `/injuries?player=${playerId}`, tag),

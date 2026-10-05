@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { markTreatmentAttended, myCareApi, useMyCare } from "../api/client";
-import { appointmentState, KINDS, kindLabel, levelInfo, timeLabel } from "../lib/care";
+import { appointmentState, categoryLabel, KINDS, kindLabel, levelInfo, sideLabel, stageLabel, timeLabel } from "../lib/care";
 import { formatDate } from "../lib/format";
 import type { AppointmentKind, MyCare } from "../types";
 import { CareThread } from "./CareThread";
@@ -20,56 +20,107 @@ const QUICK = [
 type Appt = MyCare["treatments"][number];
 
 /**
- * On the player's check-in screen: their appointments with the athletic trainer
- * (accept, ask for another time, decline, "I came in"), the AT calling them in
- * before training, messages back and forth, and asking for a time themselves.
+ * The player's Athletic Training tab: today's play status, appointments with the
+ * AT (accept, ask for another time, decline, "I came in"), the AT calling them in
+ * before practice, messages back and forth, asking for a time, and their injuries.
  */
-export function TreatmentCard() {
+export function AthleticTrainingPanel() {
   const { data } = useMyCare();
   const qc = useQueryClient();
   const [requesting, setRequesting] = useState(false);
-  if (!data) return null;
+  if (!data) return <div className="py-16 text-center text-text-dim">Loading…</div>;
   const refresh = () => qc.invalidateQueries({ queryKey: ["myCare"] });
   const callIn = data.check?.appointment_id ? data.treatments.find((t) => t.id === data.check!.appointment_id) : undefined;
   const others = data.treatments.filter((t) => t !== callIn && t.status !== "declined");
-  const showThread = data.messages.length > 0 || Boolean(callIn);
+  const level = data.check?.decision ?? data.availability?.level ?? "full";
+  const note = data.check?.decision_note ?? data.availability?.practice_note;
+  const limits = [
+    ["Bike", data.availability?.bike],
+    ["Jogging", data.availability?.jogging],
+    ["Running", data.availability?.running],
+  ].filter(([, v]) => v) as [string, string][];
+  const openIssues = data.issues.filter((i) => !i.closed_at);
+  const recovered = data.issues.filter((i) => i.closed_at);
 
   return (
-    <div className="flex flex-col gap-2">
-      {data.check?.decision && (
-        <div className={`rounded-xl border p-3 text-sm ${levelInfo(data.check.decision).chip}`}>
-          <span className="font-semibold">Today: {levelInfo(data.check.decision).label}</span>
-          {data.check.decision_note ? <span> · {data.check.decision_note}</span> : null}
+    <div className="flex flex-col gap-5">
+      <section className={`rounded-xl border p-4 ${levelInfo(level).chip}`}>
+        <div className="text-xs font-semibold uppercase tracking-wide opacity-80">Today</div>
+        <div className="mt-0.5 font-display text-lg font-semibold">{levelInfo(level).label}</div>
+        {note && <p className="text-sm">{note}</p>}
+        {limits.length > 0 && (
+          <ul className="mt-1 text-xs opacity-90">
+            {limits.map(([k, v]) => (
+              <li key={k}>
+                {k}: {v}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-text-dim">Appointments</h2>
+          {!requesting && (
+            <button onClick={() => setRequesting(true)} className="text-sm text-sky-300 hover:underline">
+              ✚ Request a time
+            </button>
+          )}
         </div>
-      )}
-      {callIn && <AppointmentCard t={callIn} today={data.today} onChange={refresh} highlight />}
-      {others.map((t) => (
-        <AppointmentCard key={t.id} t={t} today={data.today} onChange={refresh} />
-      ))}
-      {showThread && (
-        <div className="rounded-xl border border-border bg-surface p-3">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-dim">Messages with the athletic trainer</div>
-          <CareThread
-            messages={data.messages}
-            mine="player"
-            quick={QUICK}
-            placeholder="Message the AT…"
-            onSend={async (body, quick) => {
-              await myCareApi.message(quick ? { quick } : { body });
-              await refresh();
-            }}
-          />
-        </div>
-      )}
-      {requesting ? (
-        <RequestForm today={data.today} onDone={() => setRequesting(false)} onSaved={refresh} />
-      ) : (
-        <button onClick={() => setRequesting(true)} className="self-start text-sm text-sky-300 hover:underline">
-          ✚ Request a time with the athletic trainer
-        </button>
+        {requesting && <RequestForm today={data.today} onDone={() => setRequesting(false)} onSaved={refresh} />}
+        {callIn && <AppointmentCard t={callIn} today={data.today} onChange={refresh} highlight />}
+        {others.map((t) => (
+          <AppointmentCard key={t.id} t={t} today={data.today} onChange={refresh} />
+        ))}
+        {!callIn && others.length === 0 && !requesting && (
+          <p className="rounded-xl border border-border bg-surface p-4 text-sm text-text-dim">Nothing booked. Request a time if you want to see the athletic trainer.</p>
+        )}
+      </section>
+
+      <section className="rounded-xl border border-border bg-surface p-3">
+        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-dim">Messages with the athletic trainer</h2>
+        {data.messages.length === 0 && <p className="mb-2 text-sm text-text-dim">No messages today. Let the AT know if something&rsquo;s bothering you.</p>}
+        <CareThread
+          messages={data.messages}
+          mine="player"
+          quick={QUICK}
+          placeholder="Message the AT…"
+          onSend={async (body, quick) => {
+            await myCareApi.message(quick ? { quick } : { body });
+            await refresh();
+          }}
+        />
+      </section>
+
+      {data.issues.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-text-dim">Your injuries</h2>
+          <ul className="divide-y divide-border/60 rounded-xl border border-border bg-surface">
+            {[...openIssues, ...recovered].map((i) => (
+              <li key={i.id} className={`px-4 py-3 text-sm ${i.closed_at ? "opacity-60" : ""}`}>
+                <div className="font-medium">
+                  {i.description}
+                  {i.side ? ` (${sideLabel(i.side)})` : ""}
+                </div>
+                <div className="text-xs text-text-dim">
+                  {i.injury_date ? `Since ${formatDate(i.injury_date)}` : categoryLabel(i.category)}
+                  {i.closed_at ? ` · back ${formatDate(i.closed_at)}` : ` · ${stageLabel(i.stage)}`}
+                  {!i.closed_at && i.expected_return ? ` · expected back ~${formatDate(i.expected_return)}` : ""}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
     </div>
   );
+}
+
+/** Something waiting on the player's answer (a time to accept), for the dot on their Athletic Training tab. */
+export function useAtNeedsAnswer() {
+  const { data } = useMyCare();
+  return Boolean(data?.treatments.some((t) => t.status === "pending" && t.awaiting === "player"));
 }
 
 function AppointmentCard({ t, today, onChange, highlight = false }: { t: Appt; today: string; onChange: () => Promise<unknown>; highlight?: boolean }) {

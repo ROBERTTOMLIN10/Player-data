@@ -13,6 +13,8 @@ import TeamView from "./pages/TeamView";
 import PlayersTabView from "./pages/PlayersTabView";
 import AdminView from "./pages/AdminView";
 import ReadinessView from "./pages/ReadinessView";
+import AthleticTrainingView from "./pages/player/AthleticTrainingView";
+import { useAtNeedsAnswer } from "./components/AthleticTraining";
 import RpeView from "./pages/RpeView";
 import LoginView from "./pages/LoginView";
 import ReadinessTabView from "./pages/player/ReadinessTabView";
@@ -131,6 +133,7 @@ function TrainerApp({ me }: { me: Me }) {
 }
 
 function PlayerApp({ me }: { me: Me }) {
+  const atNeedsAnswer = useAtNeedsAnswer();
   return (
     <Shell
       me={me}
@@ -143,6 +146,12 @@ function PlayerApp({ me }: { me: Me }) {
           <NavLink to="/" end className={navLinkClass}>
             Readiness
           </NavLink>
+          <NavLink to="/athletic-training" className={navLinkClass}>
+            <span className="relative">
+              Athletic Training
+              {atNeedsAnswer && <span className="absolute -right-2 -top-0.5 h-2 w-2 rounded-full bg-gold" aria-label="Needs your answer" />}
+            </span>
+          </NavLink>
           <NavLink to="/my-gps" className={navLinkClass}>
             My GPS
           </NavLink>
@@ -153,6 +162,7 @@ function PlayerApp({ me }: { me: Me }) {
       }
     >
       <Routes>
+        <Route path="/athletic-training" element={<AthleticTrainingView />} />
         {/* Readiness (check-in first) stays the landing page: the morning reminder opens straight into it. */}
         <Route path="/" element={<ReadinessTabView me={me} />} />
         <Route path="/home" element={<HomeView />} />

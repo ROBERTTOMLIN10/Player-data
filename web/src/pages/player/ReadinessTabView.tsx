@@ -6,7 +6,6 @@ import type { Me } from "../../types";
 import CheckInView from "./CheckInView";
 import MyHistoryView from "./MyHistoryView";
 import MyRpeView from "./MyRpeView";
-import { TreatmentCard } from "../../components/TreatmentCard";
 
 type View = "checkin" | "history" | "rpe";
 const VIEWS: { key: View; label: string }[] = [
@@ -27,10 +26,6 @@ export default function ReadinessTabView({ me }: { me: Me }) {
   const { data: profile } = useMyProfile();
   return (
     <div className="flex flex-col gap-5">
-      {/* Treatment the athletic trainer booked comes first: it's the most time-sensitive thing here. */}
-      <div className="mx-auto w-full max-w-3xl">
-        <TreatmentCard />
-      </div>
       {profile && (
         <div className="mx-auto w-full max-w-3xl">
           <PlayerProfileHeader
