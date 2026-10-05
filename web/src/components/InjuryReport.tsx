@@ -21,7 +21,7 @@ interface Row {
  * play status, one row per player and injury, with practice and conditioning
  * notes, the latest note, treatment attendance and expected return. General
  * medical issues and physical-exam (PPE) follow-ups follow in their own sections.
- * It's the squad's summary for the day (from the AT's entries and the Pre/Post
+ * It's the squad's summary for the day (from the AT's entries and the Pre
  * practice decisions), with the season's injury history underneath.
  */
 export function InjuryReport({ date, onOpenPlayer }: { date: string | null; onOpenPlayer: (p: CareDayPlayer) => void }) {
@@ -57,7 +57,7 @@ export function InjuryReport({ date, onOpenPlayer }: { date: string | null; onOp
         <div>
           <h2 className="font-display text-lg font-semibold sm:text-xl">FAU Men&rsquo;s Soccer Injury Report</h2>
           <p className="text-sm text-text-dim">
-            {formatDateLong(data.date)} · where the squad is at, from the AT&rsquo;s entries and today&rsquo;s Pre/Post practice decisions
+            {formatDateLong(data.date)} · where the squad is at, from the AT&rsquo;s entries and today&rsquo;s Pre practice decisions
           </p>
         </div>
         <ExcelButton date={data.date} />

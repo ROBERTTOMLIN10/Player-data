@@ -40,7 +40,7 @@ function useRefresh() {
 }
 
 /**
- * Pre/Post practice: who may miss part or all of today's session and where each one
+ * Pre practice: who may miss part or all of today's session and where each one
  * is — called in, seen (the AT's recommendation), and the coach's final call. The
  * AT acts from here (call in with what to do first, message, recommend); coaches
  * see the whole back-and-forth and confirm. On the Injuries page and the
@@ -77,7 +77,7 @@ export function BeforeTraining({
       <Card className="p-0">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3">
           <div className="min-w-0 flex-1">
-            <h2 className="font-display text-base font-semibold">Pre/Post practice</h2>
+            <h2 className="font-display text-base font-semibold">Pre practice</h2>
             <p className="text-xs text-text-dim">
               {formatDateLong(data.date)} ·{" "}
               {open.length === 0

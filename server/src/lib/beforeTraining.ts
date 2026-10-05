@@ -4,7 +4,7 @@ import { regionName } from "./careAlerts.js";
 import { sendToUsers } from "./push.js";
 
 /**
- * Pre/Post practice: the players who may miss part or all of today's session, and
+ * Pre practice: the players who may miss part or all of today's session, and
  * where each one is in the AT → coach process:
  *
  *   flagged → called in (an appointment the player accepts) → seen, AT recommends

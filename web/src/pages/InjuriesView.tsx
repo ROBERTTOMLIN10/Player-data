@@ -21,7 +21,7 @@ const daysSince = (from: string | null, to: string) => (from ? Math.round((Date.
 type Tab = "practice" | "report" | "recovery";
 
 /**
- * Injuries, in three views: Pre/Post practice (who needs seeing before practice —
+ * Injuries, in three views: Pre practice (who needs seeing before practice —
  * the AT calls them in, messages them and sends the coach a recommendation — and
  * who's settled at what play status), the injury report (the squad's summary for
  * the day, with history), and the recovery tracker (each injury or issue, where
@@ -50,7 +50,7 @@ export default function InjuriesView() {
         <Segmented
           value={tab}
           options={[
-            { key: "practice", label: "Pre/Post practice" },
+            { key: "practice", label: "Pre practice" },
             { key: "report", label: "Injury report" },
             { key: "recovery", label: "Recovery tracker" },
           ]}

@@ -29,7 +29,7 @@ type View = "board" | "practice" | "report";
 
 /**
  * Readiness for coaches and the athletic trainer: the morning readiness board (with
- * each player's care: play status, appointments, notes), Pre/Post practice (who
+ * each player's care: play status, appointments, notes), Pre practice (who
  * may miss part or all of practice, the AT → coach decision, then who's settled at
  * what play status) and the live injury report.
  * Tapping a player opens their care panel.
@@ -38,7 +38,7 @@ export default function ReadinessView() {
   const [params, setParams] = useSearchParams();
   const dateParam = params.get("date");
   const { data: me } = useMe();
-  // The AT has Pre/Post practice and the injury report on their Injuries tab; here they get the board.
+  // The AT has Pre practice and the injury report on their Injuries tab; here they get the board.
   const isTrainer = me?.role === "trainer";
   const view: View = isTrainer ? "board" : params.get("view") === "report" ? "report" : params.get("view") === "practice" ? "practice" : "board";
   const { data, isLoading } = useSquadReadiness(dateParam);
@@ -109,7 +109,7 @@ export default function ReadinessView() {
         value={view}
         options={[
           { key: "board", label: "Readiness" },
-          { key: "practice", label: "Pre/Post practice" },
+          { key: "practice", label: "Pre practice" },
           { key: "report", label: "Injury report" },
         ]}
         onChange={(v) => setParam("view", v === "board" ? null : v)}
