@@ -10,7 +10,7 @@ import { gameOnDate, getCheckins, readinessScore, shiftDate, teamToday } from ".
 import { getPlayerDetail } from "./players.js";
 import { playerRpe } from "./rpe.js";
 import { alertStaffForCheckin } from "../lib/careAlerts.js";
-import { availabilityOn, KINDS, kindLabel, type Treatment } from "../lib/care.js";
+import { availabilityOn, KINDS, kindLabel, prehabFor, type Treatment } from "../lib/care.js";
 import { getCheck, messagesOn, notify, playerName, whenLabel } from "../lib/beforeTraining.js";
 
 /**
@@ -229,18 +229,29 @@ meRouter.get("/care", (req, res) => {
   const playerId = req.user!.playerId!;
   const today = teamToday();
   const db = getDb();
+  const cols = "t.id, t.treat_date, t.treat_time, t.kind, t.reason, t.instructions, t.status, t.awaiting, t.requested_by, t.player_note, t.injury_id, i.description AS injury, t.confirmed_at";
+  // Today's and upcoming appointments (plus today's visits still waiting on the AT to confirm).
   const treatments = db
     .prepare(
-      `SELECT id, treat_date, treat_time, kind, reason, instructions, status, awaiting, requested_by, player_note FROM treatments
-       WHERE player_id = ? AND treat_date >= ? AND status NOT IN ('cancelled') ORDER BY treat_date, treat_time LIMIT 12`,
+      `SELECT ${cols} FROM treatments t LEFT JOIN injuries i ON i.id = t.injury_id
+       WHERE t.player_id = ? AND t.treat_date >= ? AND t.status NOT IN ('cancelled', 'declined') ORDER BY t.treat_date, t.treat_time LIMIT 12`,
+    )
+    .all(playerId, today);
+  // Treatment log: visits the AT has confirmed, last 90 days.
+  const log = db
+    .prepare(
+      `SELECT ${cols} FROM treatments t LEFT JOIN injuries i ON i.id = t.injury_id
+       WHERE t.player_id = ? AND t.status = 'attended' AND t.confirmed_at IS NOT NULL AND t.treat_date >= date(?, '-90 days')
+       ORDER BY t.treat_date DESC, t.treat_time DESC`,
     )
     .all(playerId, today);
   const check = getCheck(playerId, today);
   // Their own injuries and issues (what, side, stage on the way back, expected return) — not the AT's notes.
+  // Past ones from the last year stay, for pre-hab to keep them from coming back.
   const issues = db
     .prepare(
       `SELECT id, category, description, side, injury_date, expected_return, stage, closed_at FROM injuries
-       WHERE player_id = ? AND (closed_at IS NULL OR closed_at >= date(?, '-60 days')) ORDER BY closed_at IS NOT NULL, injury_date DESC`,
+       WHERE player_id = ? AND category = 'injury' AND (closed_at IS NULL OR closed_at >= date(?, '-365 days')) ORDER BY closed_at IS NOT NULL, injury_date DESC`,
     )
     .all(playerId, today);
   const availability = availabilityOn(today).get(playerId) ?? null;
@@ -249,6 +260,8 @@ meRouter.get("/care", (req, res) => {
     availability: availability ? { level: availability.level, practice_note: availability.practice_note, bike: availability.bike, jogging: availability.jogging, running: availability.running } : null,
     issues,
     treatments,
+    log,
+    prehab: prehabFor(playerId, today, 30),
     messages: messagesOn(today, playerId),
     check: check ? { appointment_id: check.appointment_id, decision: check.decision, decision_note: check.decision_note } : null,
   });
@@ -265,6 +278,7 @@ meRouter.post("/care/treatments/:id/attended", (req, res) => {
     .prepare("UPDATE treatments SET status = 'attended', awaiting = NULL, attended_marked_by = 'player', updated_at = datetime('now') WHERE id = ? AND status <> 'attended'")
     .run(t.id);
   res.json({ ok: true });
+  void notify.trainers(req.user!.playerId!, `${playerName(req.user!.playerId!)} says they came in`, `${kindLabel(t.kind)} ${whenLabel(t, teamToday())}. Confirm it in Pre practice.`, `treatment-${t.id}`);
 });
 
 // Accept the AT's time, decline, or ask for another time (which goes back to the AT to confirm).
@@ -314,6 +328,7 @@ const requestSchema = z.object({
   kind: z.enum(KINDS).default("treatment"),
   reason: z.string().trim().max(200).optional(),
   note: z.string().trim().max(500).optional(),
+  injury_id: z.number().int().nullable().optional(),
 });
 
 meRouter.post("/care/requests", (req, res) => {
@@ -322,12 +337,17 @@ meRouter.post("/care/requests", (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Check the details and try again." });
   const r = parsed.data;
   if (r.date < teamToday()) return res.status(400).json({ error: "Pick today or a later day." });
+  // Treatment is about an injury: one of theirs, or a new problem they describe.
+  if (r.injury_id == null && !r.reason) return res.status(400).json({ error: "Pick the injury, or describe what's bothering you." });
+  if (r.injury_id != null && !getDb().prepare("SELECT 1 FROM injuries WHERE id = ? AND player_id = ?").get(r.injury_id, playerId)) {
+    return res.status(400).json({ error: "Pick one of your injuries." });
+  }
   const row = getDb()
     .prepare(
-      `INSERT INTO treatments (player_id, treat_date, treat_time, kind, reason, status, awaiting, requested_by, player_note, created_by)
-       VALUES (?, ?, ?, ?, ?, 'pending', 'trainer', 'player', ?, 'player') RETURNING *`,
+      `INSERT INTO treatments (player_id, treat_date, treat_time, kind, reason, injury_id, status, awaiting, requested_by, player_note, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, 'pending', 'trainer', 'player', ?, 'player') RETURNING *`,
     )
-    .get(playerId, r.date, r.time, r.kind, r.reason || null, r.note || null) as Treatment;
+    .get(playerId, r.date, r.time, r.kind, r.reason || null, r.injury_id ?? null, r.note || null) as Treatment;
   res.status(201).json(row);
   void notify.trainers(
     playerId,
@@ -335,6 +355,30 @@ meRouter.post("/care/requests", (req, res) => {
     `${kindLabel(row.kind)}${row.reason ? ` · ${row.reason}` : ""} · ${whenLabel(row, teamToday())}${r.note ? ` · “${r.note}”` : ""}`,
     `treatment-${row.id}`,
   );
+});
+
+// Pre-hab the player did for one of their injuries (past or current). The AT confirms it happened.
+const prehabSchema = z.object({
+  injury_id: z.number().int(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  activities: z.string().trim().min(1, "Write what you did.").max(1000),
+  minutes: z.number().int().min(1).max(300).nullable().optional(),
+});
+
+meRouter.post("/care/prehab", (req, res) => {
+  const playerId = req.user!.playerId!;
+  const parsed = prehabSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Check the details and try again." });
+  const p = parsed.data;
+  const today = teamToday();
+  const date = p.date ?? today;
+  if (date > today) return res.status(400).json({ error: "Log pre-hab you've already done." });
+  if (!getDb().prepare("SELECT 1 FROM injuries WHERE id = ? AND player_id = ?").get(p.injury_id, playerId)) return res.status(400).json({ error: "Pick one of your injuries." });
+  const row = getDb()
+    .prepare("INSERT INTO prehab_logs (player_id, injury_id, log_date, activities, minutes) VALUES (?, ?, ?, ?, ?) RETURNING *")
+    .get(playerId, p.injury_id, date, p.activities, p.minutes ?? null);
+  res.status(201).json(row);
+  void notify.trainers(playerId, `${playerName(playerId)} logged pre-hab`, `${p.activities}${p.minutes ? ` · ${p.minutes} min` : ""}. Confirm it in Pre practice.`, `prehab-${playerId}`);
 });
 
 // Quick replies ("On my way") or a short message back to the AT.

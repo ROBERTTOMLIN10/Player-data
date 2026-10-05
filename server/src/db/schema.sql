@@ -591,7 +591,10 @@ CREATE TABLE IF NOT EXISTS treatments (
   awaiting TEXT CHECK (awaiting IN ('player', 'trainer') OR awaiting IS NULL), -- whose answer a pending one needs
   requested_by TEXT NOT NULL DEFAULT 'trainer' CHECK (requested_by IN ('trainer', 'player')),
   player_note TEXT, -- the player's latest reply ("I have class until 10")
+  injury_id INTEGER REFERENCES injuries(id) ON DELETE SET NULL, -- the injury it's for (treatment is about an actual injury issue)
   attended_marked_by TEXT, -- 'player' or the AT's email
+  confirmed_by TEXT, -- the AT confirming they came in (a player's "I came in" waits for this)
+  confirmed_at TEXT,
   created_by TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -710,3 +713,19 @@ CREATE TABLE IF NOT EXISTS training_checks (
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (player_id, check_date)
 );
+
+-- Pre-hab the player logs themselves (for a past injury, to keep it from coming
+-- back, or a current one they're still training with). The AT confirms it happened.
+CREATE TABLE IF NOT EXISTS prehab_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  injury_id INTEGER REFERENCES injuries(id) ON DELETE SET NULL,
+  log_date TEXT NOT NULL,
+  activities TEXT NOT NULL, -- e.g. "Calf raises 3x15, banded ankle work"
+  minutes INTEGER,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'rejected')),
+  confirmed_by TEXT,
+  confirmed_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_prehab_player ON prehab_logs(player_id, log_date);

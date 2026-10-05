@@ -2,7 +2,7 @@ import { Router } from "express";
 import * as XLSX from "xlsx";
 import { z } from "zod";
 import { getDb } from "../db/connection.js";
-import { availabilityOn, CATEGORIES, careDay, issueDetail, KINDS, kindLabel, LEVELS, notifyTreatment, playerCare, STAGES, type Treatment } from "../lib/care.js";
+import { availabilityOn, CATEGORIES, careDay, issueDetail, KINDS, kindLabel, LEVELS, NEEDS_INJURY, notifyTreatment, playerCare, STAGES, type Treatment } from "../lib/care.js";
 import { beforeTraining, getCheck, levelLabel, notify, playerName, updateCheck, whenLabel } from "../lib/beforeTraining.js";
 import { getAlertPrefs, READINESS_THRESHOLDS, saveAlertPrefs } from "../lib/careAlerts.js";
 import { personalUserId } from "../lib/follows.js";
@@ -107,19 +107,26 @@ const treatmentSchema = z.object({
   kind: z.enum(KINDS).default("treatment"),
   reason: text(200),
   instructions: text(1000),
+  injury_id: z.number().int().nullable().optional(),
 });
+
+/** Treatment is about an actual injury: the injury must be the player's own. */
+const injuryOk = (playerId: number, injuryId: number | null | undefined) =>
+  injuryId == null || Boolean(getDb().prepare("SELECT 1 FROM injuries WHERE id = ? AND player_id = ?").get(injuryId, playerId));
 
 careRouter.post("/treatments", async (req, res) => {
   const parsed = treatmentSchema.safeParse(req.body);
   if (!parsed.success) return bad(res, parsed.error);
   const t = parsed.data;
   if (!playerExists(t.player_id)) return res.status(404).json({ error: "Player not found." });
+  if (NEEDS_INJURY.includes(t.kind) && t.injury_id == null) return res.status(400).json({ error: "Pick the injury this is for (log it in Injuries & issues first if it's new)." });
+  if (!injuryOk(t.player_id, t.injury_id)) return res.status(400).json({ error: "That injury isn't this player's." });
   const row = getDb()
     .prepare(
-      `INSERT INTO treatments (player_id, treat_date, treat_time, kind, reason, instructions, status, awaiting, requested_by, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, 'pending', 'player', 'trainer', ?) RETURNING *`,
+      `INSERT INTO treatments (player_id, treat_date, treat_time, kind, reason, instructions, injury_id, status, awaiting, requested_by, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 'player', 'trainer', ?) RETURNING *`,
     )
-    .get(t.player_id, t.date, t.time ?? null, t.kind, t.reason, t.instructions, who(req)) as Treatment;
+    .get(t.player_id, t.date, t.time ?? null, t.kind, t.reason, t.instructions, t.injury_id ?? null, who(req)) as Treatment;
   // A pre-training check booked from anywhere puts them on that day's before-training list.
   if (row.kind === "check" && !getCheck(row.player_id, row.treat_date)?.appointment_id) updateCheck(row.player_id, row.treat_date, { appointment_id: row.id });
   res.status(201).json(row);
@@ -132,6 +139,7 @@ const treatmentUpdate = z.object({
   kind: z.enum(KINDS).optional(),
   reason: text(200),
   instructions: text(1000),
+  injury_id: z.number().int().nullable().optional(),
   status: z.enum(["booked", "attended", "missed", "cancelled"]).optional(),
 });
 
@@ -149,9 +157,11 @@ careRouter.patch("/treatments/:id", (req, res) => {
     kind: u.kind ?? before.kind,
     reason: "reason" in req.body ? u.reason : before.reason,
     instructions: "instructions" in req.body ? u.instructions : before.instructions,
+    injury_id: u.injury_id !== undefined ? u.injury_id : before.injury_id,
     status: before.status as string,
     awaiting: before.awaiting as string | null,
   };
+  if (!injuryOk(before.player_id, next.injury_id)) return res.status(400).json({ error: "That injury isn't this player's." });
   const moved = next.treat_date !== before.treat_date || next.treat_time !== before.treat_time;
   if (u.status) {
     // 'booked' = the AT confirms the player's time; attended / missed / cancelled close it.
@@ -165,8 +175,11 @@ careRouter.patch("/treatments/:id", (req, res) => {
   const row = db
     .prepare(
       `UPDATE treatments SET treat_date = @treat_date, treat_time = @treat_time, kind = @kind, reason = @reason, instructions = @instructions,
-         status = @status, awaiting = @awaiting,
+         injury_id = @injury_id, status = @status, awaiting = @awaiting,
          attended_marked_by = CASE WHEN @status IN ('attended', 'missed') AND @status <> status THEN @by ELSE attended_marked_by END,
+         -- The AT marking them in is the confirmation; missed clears it.
+         confirmed_by = CASE WHEN @status = 'attended' THEN COALESCE(confirmed_by, @by) WHEN @status = 'missed' THEN NULL ELSE confirmed_by END,
+         confirmed_at = CASE WHEN @status = 'attended' THEN COALESCE(confirmed_at, datetime('now')) WHEN @status = 'missed' THEN NULL ELSE confirmed_at END,
          updated_at = datetime('now')
        WHERE id = @id RETURNING *`,
     )
@@ -180,6 +193,57 @@ careRouter.patch("/treatments/:id", (req, res) => {
 careRouter.delete("/treatments/:id", (req, res) => {
   getDb().prepare("DELETE FROM treatments WHERE id = ?").run(Number(req.params.id));
   res.json({ ok: true });
+});
+
+// ---- Confirming what happened -----------------------------------------------------
+// A player's "I came in" and their pre-hab entries count once the AT confirms them.
+
+const happenedSchema = z.object({ happened: z.boolean() });
+
+careRouter.post("/treatments/:id/confirm", (req, res) => {
+  const parsed = happenedSchema.safeParse(req.body);
+  if (!parsed.success) return bad(res, parsed.error);
+  const id = Number(req.params.id);
+  const db = getDb();
+  if (!db.prepare("SELECT 1 FROM treatments WHERE id = ?").get(id)) return res.status(404).json({ error: "Booking not found." });
+  if (parsed.data.happened) {
+    db.prepare("UPDATE treatments SET status = 'attended', awaiting = NULL, confirmed_by = ?, confirmed_at = datetime('now'), updated_at = datetime('now') WHERE id = ?").run(who(req), id);
+  } else {
+    db.prepare("UPDATE treatments SET status = 'missed', awaiting = NULL, confirmed_by = NULL, confirmed_at = NULL, attended_marked_by = ?, updated_at = datetime('now') WHERE id = ?").run(who(req), id);
+  }
+  res.json({ ok: true });
+});
+
+careRouter.post("/prehab/:id/confirm", (req, res) => {
+  const parsed = happenedSchema.safeParse(req.body);
+  if (!parsed.success) return bad(res, parsed.error);
+  const result = getDb()
+    .prepare("UPDATE prehab_logs SET status = ?, confirmed_by = ?, confirmed_at = datetime('now') WHERE id = ?")
+    .run(parsed.data.happened ? "confirmed" : "rejected", who(req), Number(req.params.id));
+  if (!result.changes) return res.status(404).json({ error: "Entry not found." });
+  res.json({ ok: true });
+});
+
+// What's waiting on the AT: "I came in" taps and pre-hab entries from the last three weeks.
+careRouter.get("/to-confirm", (_req, res) => {
+  const db = getDb();
+  const today = teamToday();
+  const visits = db
+    .prepare(
+      `SELECT t.*, i.description AS injury, p.canonical_name AS player_name FROM treatments t
+       JOIN players p ON p.id = t.player_id LEFT JOIN injuries i ON i.id = t.injury_id
+       WHERE t.status = 'attended' AND t.confirmed_at IS NULL AND t.treat_date >= date(?, '-21 days')
+       ORDER BY t.treat_date DESC, t.treat_time DESC`,
+    )
+    .all(today);
+  const prehab = db
+    .prepare(
+      `SELECT l.*, i.description AS injury, p.canonical_name AS player_name FROM prehab_logs l
+       JOIN players p ON p.id = l.player_id LEFT JOIN injuries i ON i.id = l.injury_id
+       WHERE l.status = 'pending' AND l.log_date >= date(?, '-21 days') ORDER BY l.log_date DESC, l.id DESC`,
+    )
+    .all(today);
+  res.json({ today, visits, prehab });
 });
 
 // ---- Messages with the player ----------------------------------------------------------
@@ -308,7 +372,7 @@ careRouter.post("/checks/:playerId/recommend", (req, res) => {
   });
   // Seen: the call-in counts as attended.
   if (check.appointment_id) {
-    getDb().prepare("UPDATE treatments SET status = 'attended', awaiting = NULL, attended_marked_by = COALESCE(attended_marked_by, ?), updated_at = datetime('now') WHERE id = ? AND status IN ('pending', 'booked')").run(who(req), check.appointment_id);
+    getDb().prepare("UPDATE treatments SET status = 'attended', awaiting = NULL, attended_marked_by = COALESCE(attended_marked_by, @by), confirmed_by = COALESCE(confirmed_by, @by), confirmed_at = COALESCE(confirmed_at, datetime('now')), updated_at = datetime('now') WHERE id = @id AND status IN ('pending', 'booked', 'attended')").run({ by: who(req), id: check.appointment_id });
   }
   res.json(check);
   void notify.coaches(`${playerName(playerId)}: AT recommends ${levelLabel(level)}`, `${note ? `${note}\n` : ""}Tap to agree or change it.`, `check-${playerId}-${date}`);

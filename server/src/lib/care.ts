@@ -42,7 +42,11 @@ export interface Treatment {
   awaiting: "player" | "trainer" | null;
   requested_by: "trainer" | "player";
   player_note: string | null;
+  injury_id: number | null;
+  injury?: string | null; // the injury's description, when joined
   attended_marked_by: string | null;
+  confirmed_by: string | null;
+  confirmed_at: string | null;
   created_by: string | null;
   updated_at: string;
 }
@@ -72,6 +76,36 @@ export interface Issue {
   created_at: string;
   updated_at: string;
 }
+
+/** Appointments with the description of the injury they're for. */
+export const TREATMENT_SELECT = "SELECT t.*, i.description AS injury FROM treatments t LEFT JOIN injuries i ON i.id = t.injury_id";
+
+export interface PrehabLog {
+  id: number;
+  player_id: number;
+  injury_id: number | null;
+  injury: string | null;
+  log_date: string;
+  activities: string;
+  minutes: number | null;
+  status: "pending" | "confirmed" | "rejected";
+  confirmed_by: string | null;
+  confirmed_at: string | null;
+  created_at: string;
+}
+
+/** A player's pre-hab entries over the last `days` days, newest first. */
+export function prehabFor(playerId: number, date: string, days: number): PrehabLog[] {
+  return getDb()
+    .prepare(
+      `SELECT p.*, i.description AS injury FROM prehab_logs p LEFT JOIN injuries i ON i.id = p.injury_id
+       WHERE p.player_id = ? AND p.log_date BETWEEN date(?, ?) AND ? ORDER BY p.log_date DESC, p.id DESC`,
+    )
+    .all(playerId, date, `-${days} days`, date) as PrehabLog[];
+}
+
+/** Kinds that are about an injury, so they must say which one. */
+export const NEEDS_INJURY: Kind[] = ["proactive", "treatment", "rehab"];
 
 const daysBetween = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 
@@ -119,7 +153,7 @@ export function careDay(date: string) {
     )
     .all() as { player_id: number; name: string; position: string | null; user_id: number | null }[];
   const availability = availabilityOn(date);
-  const treatments = byPlayer(db.prepare("SELECT * FROM treatments WHERE treat_date = ? AND status <> 'cancelled' ORDER BY treat_time").all(date) as Treatment[]);
+  const treatments = byPlayer(db.prepare(`${TREATMENT_SELECT} WHERE t.treat_date = ? AND t.status <> 'cancelled' ORDER BY t.treat_time`).all(date) as Treatment[]);
   const messages = byPlayer(db.prepare("SELECT * FROM care_messages WHERE msg_date = ? ORDER BY created_at, id").all(date) as { player_id: number }[]);
   const notes = byPlayer(db.prepare("SELECT * FROM care_notes WHERE note_date = ? ORDER BY created_at").all(date) as CareNote[]);
   const issues = byPlayer(openIssuesOn(date));
@@ -152,9 +186,10 @@ export function playerCare(playerId: number, date: string) {
     .prepare("SELECT * FROM care_notes WHERE player_id = ? AND note_date <= ? ORDER BY note_date DESC, created_at DESC LIMIT 30")
     .all(playerId, date) as CareNote[];
   const treatments = db
-    .prepare("SELECT * FROM treatments WHERE player_id = ? AND treat_date >= date(?, '-14 days') ORDER BY treat_date DESC, treat_time DESC")
+    .prepare(`${TREATMENT_SELECT} WHERE t.player_id = ? AND t.treat_date >= date(?, '-14 days') ORDER BY t.treat_date DESC, t.treat_time DESC`)
     .all(playerId, date) as Treatment[];
-  return { date, day, history, pastIssues, recentNotes, treatments };
+  const prehab = prehabFor(playerId, date, 30);
+  return { date, day, history, pastIssues, recentNotes, treatments, prehab };
 }
 
 /** An issue with its stage history, daily notes and the player's pain for that body part from their check-ins. */

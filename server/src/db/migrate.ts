@@ -14,6 +14,8 @@ export function migrate() {
   db.exec(schema);
   if (oldTreatments) restoreOldTreatments(db);
   addMissingColumns(db);
+  // Visits the AT marked attended before AT confirmation existed count as confirmed.
+  db.exec("UPDATE treatments SET confirmed_at = updated_at, confirmed_by = attended_marked_by WHERE status = 'attended' AND confirmed_at IS NULL AND attended_marked_by IS NOT NULL AND attended_marked_by <> 'player'");
   // Instagram handles aren't shown any more (they didn't always match the player): clear any stored ones.
   db.exec("UPDATE roster_players SET instagram = NULL WHERE instagram IS NOT NULL; UPDATE team_players SET instagram = NULL WHERE instagram IS NOT NULL;");
   console.log(`Migration applied against ${db.name}`);
@@ -84,6 +86,9 @@ function addMissingColumns(db: ReturnType<typeof getDb>) {
     ["team_sites", "stats_team_id", "INTEGER"],
     ["team_sites", "roster_url", "TEXT"],
     ["training_checks", "kept_same", "INTEGER NOT NULL DEFAULT 0"],
+    ["treatments", "injury_id", "INTEGER REFERENCES injuries(id) ON DELETE SET NULL"],
+    ["treatments", "confirmed_by", "TEXT"],
+    ["treatments", "confirmed_at", "TEXT"],
   ];
   for (const [table, column, definition] of added) {
     const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
