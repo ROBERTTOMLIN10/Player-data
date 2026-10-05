@@ -211,7 +211,7 @@ export async function notifyTreatment(t: Treatment, changed: boolean, today: str
       {
         title: changed ? `Appointment updated: ${what}` : `Athletic trainer: ${what}`,
         body: `${when ? `Come in ${when}.` : "See the athletic trainer."}${t.instructions ? ` ${t.instructions}` : ""}${ask}`,
-        url: "/athletic-training",
+        url: "/?view=athletic-training",
         tag: `treatment-${t.id}`,
       },
       12 * 60 * 60,

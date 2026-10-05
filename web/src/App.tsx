@@ -13,7 +13,6 @@ import TeamView from "./pages/TeamView";
 import PlayersTabView from "./pages/PlayersTabView";
 import AdminView from "./pages/AdminView";
 import ReadinessView from "./pages/ReadinessView";
-import AthleticTrainingView from "./pages/player/AthleticTrainingView";
 import { useAtNeedsAnswer } from "./components/AthleticTraining";
 import RpeView from "./pages/RpeView";
 import LoginView from "./pages/LoginView";
@@ -144,11 +143,8 @@ function PlayerApp({ me }: { me: Me }) {
             Home
           </NavLink>
           <NavLink to="/" end className={navLinkClass}>
-            Readiness
-          </NavLink>
-          <NavLink to="/athletic-training" className={navLinkClass}>
             <span className="relative">
-              Athletic Training
+              Readiness
               {atNeedsAnswer && <span className="absolute -right-2 -top-0.5 h-2 w-2 rounded-full bg-gold" aria-label="Needs your answer" />}
             </span>
           </NavLink>
@@ -162,7 +158,6 @@ function PlayerApp({ me }: { me: Me }) {
       }
     >
       <Routes>
-        <Route path="/athletic-training" element={<AthleticTrainingView />} />
         {/* Readiness (check-in first) stays the landing page: the morning reminder opens straight into it. */}
         <Route path="/" element={<ReadinessTabView me={me} />} />
         <Route path="/home" element={<HomeView />} />
