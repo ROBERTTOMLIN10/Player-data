@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import type {
   AppointmentKind,
   BeforeTrainingResponse,
+  ToConfirm,
   PlayLevel,
   CareAlertPrefs,
   CareAlertsResponse,
@@ -533,8 +534,16 @@ export const careApi = {
   decide: (playerId: number, body: { date: string; level: PlayLevel; note?: string | null }) => sendJson(`/api/care/checks/${playerId}/decide`, "POST", body),
   reopen: (playerId: number, body: { date: string }) => sendJson(`/api/care/checks/${playerId}/reopen`, "POST", body),
   same: (playerId: number, body: { date: string }) => sendJson(`/api/care/checks/${playerId}/same`, "POST", body),
+  // Confirming what happened
+  confirmVisit: (id: number, happened: boolean) => sendJson(`/api/care/treatments/${id}/confirm`, "POST", { happened }),
+  confirmPrehab: (id: number, happened: boolean) => sendJson(`/api/care/prehab/${id}/confirm`, "POST", { happened }),
 };
-export const CARE_QUERY_KEYS = ["careDay", "playerCare", "issues", "issue", "squadReadiness", "beforeTraining"];
+export const CARE_QUERY_KEYS = ["careDay", "playerCare", "issues", "issue", "squadReadiness", "beforeTraining", "toConfirm"];
+
+/** "I came in" taps and pre-hab entries waiting on the AT. */
+export function useToConfirm(enabled: boolean) {
+  return useQuery({ queryKey: ["toConfirm"], queryFn: () => fetchJson<ToConfirm>("/api/care/to-confirm"), enabled, refetchInterval: 60_000 });
+}
 
 /** Who may miss part or all of training today, and where each one is in the AT → coach process. Refreshes every minute. */
 export function useBeforeTraining(date: string | null) {
@@ -553,7 +562,8 @@ export function useMyCare() {
 export const myCareApi = {
   respond: (id: number, body: { action: "accept" | "decline" | "reschedule"; date?: string; time?: string; note?: string }) =>
     sendJson(`/api/me/care/treatments/${id}/respond`, "POST", body),
-  request: (body: { date: string; time: string; kind: AppointmentKind; reason?: string; note?: string }) => sendJson(`/api/me/care/requests`, "POST", body),
+  request: (body: { date: string; time: string; kind: AppointmentKind; reason?: string; note?: string; injury_id?: number | null }) => sendJson(`/api/me/care/requests`, "POST", body),
+  prehab: (body: { injury_id: number; activities: string; minutes?: number | null; date?: string }) => sendJson(`/api/me/care/prehab`, "POST", body),
   message: (body: { quick?: string; body?: string }) => sendJson(`/api/me/care/messages`, "POST", body),
 };
 

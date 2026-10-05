@@ -75,8 +75,8 @@ for (let back = 30; back >= 0; back--) {
   };
   const playerLogin = async (i) => (await req("/auth/login", { method: "POST", body: { email: `p${pid(i)}@fau.edu`, password: "pw1234" } })).cookie;
   // The AT books; the player accepts (or it's left for them to answer), then maybe came in.
-  const book = async (i, time, kind, reason, instructions, flow = "accepted") => {
-    const { data } = await req("/care/treatments", { method: "POST", cookie: at, body: { player_id: pid(i), date: today, time, kind, reason, instructions } });
+  const book = async (i, time, kind, reason, instructions, flow = "accepted", injury_id = null, date = today) => {
+    const { data } = await req("/care/treatments", { method: "POST", cookie: at, body: { player_id: pid(i), date, time, kind, reason, instructions, injury_id } });
     if (flow === "pending") return data;
     await req(`/me/care/treatments/${data.id}/respond`, { method: "POST", cookie: await playerLogin(i), body: { action: "accept" } });
     if (flow === "attended") await req(`/care/treatments/${data.id}`, { method: "PATCH", cookie: at, body: { status: "attended" } });
@@ -85,26 +85,39 @@ for (let back = 30; back >= 0; back--) {
 
   // Severe quad (checked in today): out, rehab only for now.
   await status(2, "out", "No practice", "Easy bike as tolerated", "NA", "NA", shift(today, -3));
-  await issue(2, { category: "injury", description: "Quad strain", region: "quad_front_l", side: "left", injury_date: shift(today, -3), expected_return: shift(today, 18) }, [
+  const quad = await issue(2, { category: "injury", description: "Quad strain", region: "quad_front_l", side: "left", injury_date: shift(today, -3), expected_return: shift(today, 18) }, [
     [2, "Ice, compression, isometrics", 30, "Painful to walk on day 1"],
     [1, "Stim + quad sets, easy bike 10 min", 40, "Walking without a limp"],
     [0, "Bike 15 min, light stretching", 45, "Pain going down, still not 100%"],
   ]);
-  await book(2, "14:30", "treatment", "Left quad", "Ice + stim. Bring your compression sleeve.");
+  await book(2, "14:30", "treatment", "Left quad", "Ice + stim. Bring your compression sleeve.", "accepted", quad);
   // Hamstring on the way back: limited, non-contact.
   await status(1, "limited", "Non-contact", "No limitations", "Max 70%, 1 min rest between", "Max 80% with enough rest");
-  await issue(1, { category: "injury", description: "Hamstring strain", region: "hamstring_outer_r", side: "right", injury_date: shift(today, -10), expected_return: shift(today, 4) }, [
+  const ham = await issue(1, { category: "injury", description: "Hamstring strain", region: "hamstring_outer_r", side: "right", injury_date: shift(today, -10), expected_return: shift(today, 4) }, [
     [3, "Nordics, bridges, bike 20 min", 45, "Rehab went really well"],
     [0, "Strides at 70%, mobility", 40, "Felt good today"],
   ], [[7, "running"], [2, "modified"]]);
-  await book(1, "13:00", "rehab", "Right hamstring", "Rehab after lunch", "attended");
+  await book(1, "13:00", "rehab", "Right hamstring", "Rehab after lunch", "attended", ham);
   // Ankle: as tolerated with tape.
   await status(6, "as_tolerated", "As tolerated w/ tape");
-  await issue(6, { category: "injury", description: "Ankle sprain", region: "ankle_r", side: "right", injury_date: shift(today, -5) }, [[0, "Taped, balance work", 20, "Felt great today"]], [[3, "running"], [1, "modified"], [0, "full"]]);
-  await book(6, "12:30", "treatment", "Right ankle", "Tape before training");
-  // The preview's player: a proactive slot to answer, and an afternoon treatment they accepted.
-  await book(0, "06:45", "proactive", "Calves", "Foam roll calves before you come in.", "pending");
-  await book(0, "15:00", "treatment", "Calves", "Stretch after practice.");
+  const ankle = await issue(6, { category: "injury", description: "Ankle sprain", region: "ankle_r", side: "right", injury_date: shift(today, -5) }, [[0, "Taped, balance work", 20, "Felt great today"]], [[3, "running"], [1, "modified"], [0, "full"]]);
+  // Ankle: came in for tape and says so; waiting on the AT to confirm.
+  const tape = await book(6, "07:45", "treatment", "Right ankle", "Tape before practice", "accepted", ankle);
+  await req(`/me/care/treatments/${tape.id}/attended`, { method: "POST", cookie: await playerLogin(6) });
+  // The preview's player: a past calf strain (pre-hab to keep it from coming back) and calf
+  // tightness they're training with; a proactive slot to answer, an afternoon treatment,
+  // two confirmed visits in their treatment log and pre-hab entries.
+  const oldCalf = await issue(0, { category: "injury", description: "Calf strain", region: "calf_inner_l", side: "left", injury_date: shift(today, -95) }, [[80, "Back to full", null, "Cleared"]], [[90, "running"], [85, "modified"], [82, "full"]]);
+  await req(`/care/issues/${oldCalf}`, { method: "PATCH", cookie: at, body: { closed: true } });
+  const calf = await issue(0, { category: "injury", description: "Calf tightness", region: "calf_inner_r", side: "both", injury_date: shift(today, -4), stage: "full" });
+  await book(0, "06:45", "proactive", "Calves", "Foam roll calves before you come in.", "pending", calf);
+  await book(0, "15:00", "treatment", "Calves", "Stretch after practice.", "accepted", calf);
+  await book(0, "15:00", "treatment", "Calves", "Soft tissue", "attended", calf, shift(today, -3));
+  await book(0, "07:30", "proactive", "Calves", "Massage gun + stretch", "attended", oldCalf, shift(today, -1));
+  const p0 = await playerLogin(0);
+  const { data: done } = await req("/me/care/prehab", { method: "POST", cookie: p0, body: { injury_id: oldCalf, activities: "Calf raises 3x15, banded ankle work", minutes: 15, date: shift(today, -2) } });
+  await req(`/care/prehab/${done.id}/confirm`, { method: "POST", cookie: at, body: { happened: true } });
+  await req("/me/care/prehab", { method: "POST", cookie: p0, body: { injury_id: calf, activities: "Foam roll + soleus stretch", minutes: 10, date: shift(today, -1) } });
   // A player asks for a time that fits their classes (the AT confirms it).
   await req("/me/care/requests", { method: "POST", cookie: await playerLogin(5), body: { date: today, time: "16:00", kind: "treatment", reason: "Lower back", note: "I have class until 3:30" } });
   // General medical and a physical-exam follow-up.

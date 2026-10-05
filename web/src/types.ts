@@ -872,7 +872,11 @@ export interface Treatment {
   awaiting: "player" | "trainer" | null; // whose answer a pending one needs
   requested_by: "trainer" | "player";
   player_note: string | null;
+  injury_id: number | null;
+  injury?: string | null; // the injury's description
   attended_marked_by?: string | null;
+  confirmed_by?: string | null;
+  confirmed_at: string | null; // the AT confirmed they came in
   created_by?: string | null;
   updated_at?: string;
 }
@@ -944,6 +948,27 @@ export interface PlayerCare {
   pastIssues: Issue[];
   recentNotes: CareNote[];
   treatments: Treatment[];
+  prehab: PrehabLog[];
+}
+
+export interface PrehabLog {
+  id: number;
+  player_id: number;
+  injury_id: number | null;
+  injury: string | null;
+  log_date: string;
+  activities: string;
+  minutes: number | null;
+  status: "pending" | "confirmed" | "rejected";
+  confirmed_by: string | null;
+  confirmed_at: string | null;
+  created_at: string;
+}
+
+export interface ToConfirm {
+  today: string;
+  visits: (Treatment & { player_name: string })[];
+  prehab: (PrehabLog & { player_name: string })[];
 }
 
 export interface IssueDetail {
@@ -961,6 +986,8 @@ export interface MyCare {
   availability: Pick<Availability, "level" | "practice_note" | "bike" | "jogging" | "running"> | null;
   issues: Pick<Issue, "id" | "category" | "description" | "side" | "injury_date" | "expected_return" | "stage" | "closed_at">[];
   treatments: Omit<Treatment, "player_id" | "attended_marked_by" | "created_by" | "updated_at">[];
+  log: Omit<Treatment, "player_id" | "attended_marked_by" | "created_by" | "updated_at">[];
+  prehab: PrehabLog[];
   messages: CareMessage[];
   check: { appointment_id: number | null; decision: PlayLevel | null; decision_note: string | null } | null;
 }

@@ -6,6 +6,7 @@ import { formatDateLong } from "../lib/format";
 import type { AppointmentKind, BeforeTrainingItem, CheckStage, PlayLevel, ReasonKind } from "../types";
 import { Card } from "./Card";
 import { CareThread } from "./CareThread";
+import { ToConfirm } from "./ToConfirm";
 
 const input = "w-full rounded-md border border-border bg-surface-raised px-2.5 py-1.5 text-sm text-text outline-none focus:border-owl-red";
 const primary = "rounded-md bg-owl-red px-3 py-1.5 text-sm font-semibold text-white hover:bg-owl-red-light disabled:opacity-50";
@@ -74,6 +75,7 @@ export function BeforeTraining({
 
   return (
     <div className="flex flex-col gap-4">
+      {role === "trainer" && <ToConfirm />}
       <Card className="p-0">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3">
           <div className="min-w-0 flex-1">

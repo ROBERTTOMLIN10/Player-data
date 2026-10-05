@@ -24,6 +24,7 @@ interface Raw {
   logs: Row[];
   messages: Row[];
   checks: Row[];
+  prehab: Row[];
 }
 
 /** Today's check-in for each player (from the preview's squad board). */
@@ -46,11 +47,20 @@ const shift = (iso: string, n: number) => {
 
 export function createCareMock(data: Record<string, any>, today: string, myPlayerId: number) {
   const raw: Raw = JSON.parse(JSON.stringify(data.careRaw ?? {}));
-  for (const k of ["availability", "treatments", "notes", "issues", "stages", "logs", "messages", "checks"] as const) raw[k] ??= [];
+  for (const k of ["availability", "treatments", "notes", "issues", "stages", "logs", "messages", "checks", "prehab"] as const) raw[k] ??= [];
   let entriesOn: EntriesOn = () => [];
   const roster: { player_id: number; name: string; position: string | null }[] = data.careRoster ?? [];
   const pain: Record<string, any[]> = data.carePain ?? {};
   let nextId = 100_000;
+  // Appointments and pre-hab carry the description of the injury they're for.
+  const injuryName = (id: number | null) => (id == null ? null : (raw.issues.find((i) => i.id === id)?.description ?? null));
+  const withInjury = <T extends Row>(r: T) => ({ ...r, injury: injuryName(r.injury_id) });
+  const NEEDS_INJURY = ["proactive", "treatment", "rehab"];
+  const prehabFor = (playerId: number, date: string, days: number) =>
+    raw.prehab
+      .filter((x) => x.player_id === playerId && x.log_date <= date && x.log_date >= shift(date, -days))
+      .sort((a, b) => b.log_date.localeCompare(a.log_date) || b.id - a.id)
+      .map(withInjury);
 
   // Check-in alerts (server/src/lib/careAlerts.ts): settings per view, and the
   // phone alerts each view would have received, shown as a banner in the preview.
@@ -104,7 +114,8 @@ export function createCareMock(data: Record<string, any>, today: string, myPlaye
         availability: av.get(p.player_id) ?? null,
         treatments: raw.treatments
           .filter((t) => t.player_id === p.player_id && t.treat_date === date && t.status !== "cancelled")
-          .sort((a, b) => String(a.treat_time).localeCompare(String(b.treat_time))),
+          .sort((a, b) => String(a.treat_time).localeCompare(String(b.treat_time)))
+          .map(withInjury),
         notes: raw.notes.filter((n) => n.player_id === p.player_id && n.note_date === date),
         messages: raw.messages.filter((m) => m.player_id === p.player_id && m.msg_date === date),
         issues: issues.filter((i) => i.player_id === p.player_id),
@@ -200,11 +211,18 @@ export function createCareMock(data: Record<string, any>, today: string, myPlaye
         today,
         availability: av ? { level: av.level, practice_note: av.practice_note, bike: av.bike, jogging: av.jogging, running: av.running } : null,
         issues: raw.issues
-          .filter((i) => i.player_id === myPlayerId && (!i.closed_at || i.closed_at >= shift(today, -60)))
+          .filter((i) => i.player_id === myPlayerId && i.category === "injury" && (!i.closed_at || i.closed_at >= shift(today, -365)))
+          .sort((a, b) => Number(Boolean(a.closed_at)) - Number(Boolean(b.closed_at)) || String(b.injury_date ?? "").localeCompare(String(a.injury_date ?? "")))
           .map(({ id, category, description, side, injury_date, expected_return, stage, closed_at }) => ({ id, category, description, side, injury_date, expected_return, stage, closed_at })),
         treatments: raw.treatments
-          .filter((t) => t.player_id === myPlayerId && t.treat_date >= today && t.status !== "cancelled")
-          .sort((a, b) => (a.treat_date + a.treat_time).localeCompare(b.treat_date + b.treat_time)),
+          .filter((t) => t.player_id === myPlayerId && t.treat_date >= today && !["cancelled", "declined"].includes(t.status))
+          .sort((a, b) => (a.treat_date + a.treat_time).localeCompare(b.treat_date + b.treat_time))
+          .map(withInjury),
+        log: raw.treatments
+          .filter((t) => t.player_id === myPlayerId && t.status === "attended" && t.confirmed_at && t.treat_date >= shift(today, -90))
+          .sort((a, b) => (b.treat_date + b.treat_time).localeCompare(a.treat_date + a.treat_time))
+          .map(withInjury),
+        prehab: prehabFor(myPlayerId, today, 30),
         messages: raw.messages.filter((m) => m.player_id === myPlayerId && m.msg_date === today),
         check: c ? { appointment_id: c.appointment_id, decision: c.decision, decision_note: c.decision_note } : null,
       });
@@ -220,9 +238,17 @@ export function createCareMock(data: Record<string, any>, today: string, myPlaye
       Object.assign(t, { player_note: body.note || null, updated_at: nowSql() });
       return json(t);
     }
+    if (path === "/api/me/care/prehab" && method === "POST") {
+      if (body.injury_id == null) return json({ error: "Pick one of your injuries." }, 400);
+      if (!String(body.activities ?? "").trim()) return json({ error: "Write what you did." }, 400);
+      const row = { id: nextId++, player_id: myPlayerId, injury_id: body.injury_id, log_date: body.date ?? today, activities: String(body.activities).trim(), minutes: body.minutes ?? null, status: "pending", confirmed_by: null, confirmed_at: null, created_at: nowSql() };
+      raw.prehab.push(row);
+      return json(row, 201);
+    }
     if (path === "/api/me/care/requests" && method === "POST") {
       if (!body.time) return json({ error: "Pick a time." }, 400);
-      const row = { id: nextId++, player_id: myPlayerId, treat_date: body.date, treat_time: body.time, kind: body.kind ?? "treatment", reason: body.reason || null, instructions: null, status: "pending", awaiting: "trainer", requested_by: "player", player_note: body.note || null, attended_marked_by: null, created_by: "player", created_at: nowSql(), updated_at: nowSql() };
+      if (body.injury_id == null && !body.reason) return json({ error: "Pick the injury, or describe what's bothering you." }, 400);
+      const row = { id: nextId++, player_id: myPlayerId, treat_date: body.date, treat_time: body.time, kind: body.kind ?? "treatment", reason: body.reason || null, injury_id: body.injury_id ?? null, confirmed_at: null, instructions: null, status: "pending", awaiting: "trainer", requested_by: "player", player_note: body.note || null, attended_marked_by: null, created_by: "player", created_at: nowSql(), updated_at: nowSql() };
       raw.treatments.push(row);
       return json(row, 201);
     }
@@ -264,7 +290,8 @@ export function createCareMock(data: Record<string, any>, today: string, myPlaye
         history: raw.availability.filter((a) => a.player_id === id && a.status_date <= date).sort((a, b) => b.status_date.localeCompare(a.status_date)).slice(0, 30),
         pastIssues: raw.issues.filter((i) => i.player_id === id && i.closed_at),
         recentNotes: raw.notes.filter((n) => n.player_id === id && n.note_date <= date).slice(-30).reverse(),
-        treatments: raw.treatments.filter((t) => t.player_id === id && t.treat_date >= shift(date, -14)),
+        treatments: raw.treatments.filter((t) => t.player_id === id && t.treat_date >= shift(date, -14)).map(withInjury),
+        prehab: prehabFor(id, date, 30),
       });
     }
     if ((m = path.match(/^\/api\/care\/availability\/(\d+)$/)) && method === "PUT") {
@@ -274,7 +301,8 @@ export function createCareMock(data: Record<string, any>, today: string, myPlaye
       return json({ ok: true });
     }
     if (path === "/api/care/treatments" && method === "POST") {
-      const row = { id: nextId++, player_id: body.player_id, treat_date: body.date, treat_time: body.time ?? null, kind: body.kind ?? "treatment", reason: body.reason || null, instructions: body.instructions || null, status: "pending", awaiting: "player", requested_by: "trainer", player_note: null, attended_marked_by: null, created_by: who, created_at: nowSql(), updated_at: nowSql() };
+      if (NEEDS_INJURY.includes(body.kind ?? "treatment") && body.injury_id == null) return json({ error: "Pick the injury this is for (log it in Injuries & issues first if it's new)." }, 400);
+      const row = { id: nextId++, player_id: body.player_id, treat_date: body.date, treat_time: body.time ?? null, kind: body.kind ?? "treatment", reason: body.reason || null, injury_id: body.injury_id ?? null, confirmed_at: null, confirmed_by: null, instructions: body.instructions || null, status: "pending", awaiting: "player", requested_by: "trainer", player_note: null, attended_marked_by: null, created_by: who, created_at: nowSql(), updated_at: nowSql() };
       raw.treatments.push(row);
       if (row.kind === "check" && !getCheck(row.player_id, row.treat_date)?.appointment_id) updateCheck(row.player_id, row.treat_date, { appointment_id: row.id });
       return json(row, 201);
@@ -290,6 +318,8 @@ export function createCareMock(data: Record<string, any>, today: string, myPlaye
       if (body.status) {
         if (["attended", "missed"].includes(body.status) && body.status !== t.status) t.attended_marked_by = who;
         Object.assign(t, { status: body.status, awaiting: null });
+        if (body.status === "attended") Object.assign(t, { confirmed_at: t.confirmed_at ?? nowSql(), confirmed_by: t.confirmed_by ?? who });
+        if (body.status === "missed") Object.assign(t, { confirmed_at: null, confirmed_by: null });
       } else if (moved) Object.assign(t, { status: "pending", awaiting: "player" });
       Object.assign(t, {
         treat_date: body.date ?? t.treat_date,
@@ -297,9 +327,33 @@ export function createCareMock(data: Record<string, any>, today: string, myPlaye
         kind: body.kind ?? t.kind,
         reason: "reason" in body ? body.reason || null : t.reason,
         instructions: "instructions" in body ? body.instructions || null : t.instructions,
+        injury_id: body.injury_id !== undefined ? body.injury_id : t.injury_id,
         updated_at: nowSql(),
       });
       return json(t);
+    }
+    if ((m = path.match(/^\/api\/care\/treatments\/(\d+)\/confirm$/)) && method === "POST") {
+      const t = raw.treatments.find((x) => x.id === Number(m![1]));
+      if (!t) return json({ error: "Booking not found." }, 404);
+      if (body.happened) Object.assign(t, { status: "attended", awaiting: null, confirmed_by: who, confirmed_at: nowSql() });
+      else Object.assign(t, { status: "missed", awaiting: null, confirmed_by: null, confirmed_at: null, attended_marked_by: who });
+      return json({ ok: true });
+    }
+    if ((m = path.match(/^\/api\/care\/prehab\/(\d+)\/confirm$/)) && method === "POST") {
+      const x = raw.prehab.find((y) => y.id === Number(m![1]));
+      if (!x) return json({ error: "Entry not found." }, 404);
+      Object.assign(x, { status: body.happened ? "confirmed" : "rejected", confirmed_by: who, confirmed_at: nowSql() });
+      return json({ ok: true });
+    }
+    if (path === "/api/care/to-confirm") {
+      const name = (pid: number) => roster.find((p) => p.player_id === pid)?.name ?? "Player";
+      return json({
+        today,
+        visits: raw.treatments
+          .filter((t) => t.status === "attended" && !t.confirmed_at && t.treat_date >= shift(today, -21))
+          .map((t) => ({ ...withInjury(t), player_name: name(t.player_id) })),
+        prehab: raw.prehab.filter((x) => x.status === "pending" && x.log_date >= shift(today, -21)).map((x) => ({ ...withInjury(x), player_name: name(x.player_id) })),
+      });
     }
     if (path === "/api/care/messages" && method === "POST") {
       if (!String(body.body ?? "").trim()) return json({ error: "Write a message." }, 400);
@@ -333,8 +387,8 @@ export function createCareMock(data: Record<string, any>, today: string, myPlaye
         case "recommend": {
           if (role !== "trainer") return json({ error: "Only the athletic trainer can do that." }, 403);
           const c = updateCheck(playerId, d, { recommendation: body.level, rec_note: body.note || null, recommended_by: who, recommended_at: new Date().toISOString(), cleared_at: null, cleared_by: null, decision: null, decision_note: null, decided_by: null, decided_at: null, kept_same: 0 });
-          const appt = raw.treatments.find((t) => t.id === c.appointment_id && ["pending", "booked"].includes(t.status));
-          if (appt) Object.assign(appt, { status: "attended", awaiting: null, attended_marked_by: appt.attended_marked_by ?? who });
+          const appt = raw.treatments.find((t) => t.id === c.appointment_id && ["pending", "booked", "attended"].includes(t.status));
+          if (appt) Object.assign(appt, { status: "attended", awaiting: null, attended_marked_by: appt.attended_marked_by ?? who, confirmed_by: appt.confirmed_by ?? who, confirmed_at: appt.confirmed_at ?? nowSql() });
           return json(c);
         }
         case "decide": {

@@ -101,7 +101,14 @@ export function CarePanel({
         ) : (
           <>
             <PlayStatus playerId={playerId} date={date} current={day?.availability ?? null} />
-            <Treatments playerId={playerId} date={date} treatments={day?.treatments ?? []} />
+            <Treatments
+              playerId={playerId}
+              date={date}
+              treatments={day?.treatments ?? []}
+              injuries={[...(day?.issues ?? []).filter((i) => i.category === "injury"), ...data.pastIssues.filter((i) => i.category === "injury")]}
+              isTrainer={me?.role === "trainer"}
+            />
+            <LogAndPrehab treatments={data.treatments} prehab={data.prehab} isTrainer={me?.role === "trainer"} />
             <Messages playerId={playerId} name={name} date={date} messages={day?.messages ?? []} />
             <Issues playerId={playerId} date={date} issues={day?.issues ?? []} soreRegions={entry?.soreness.map((s) => s.region) ?? []} />
             <Notes playerId={playerId} date={date} notes={day?.notes ?? []} myEmail={me?.email ?? null} />
@@ -176,10 +183,24 @@ function PlayStatus({ playerId, date, current }: { playerId: number; date: strin
   );
 }
 
-function Treatments({ playerId, date, treatments }: { playerId: number; date: string; treatments: import("../types").Treatment[] }) {
+function Treatments({
+  playerId,
+  date,
+  treatments,
+  injuries,
+  isTrainer,
+}: {
+  playerId: number;
+  date: string;
+  treatments: import("../types").Treatment[];
+  injuries: { id: number; description: string; side: Side | null; closed_at: string | null }[];
+  isTrainer: boolean;
+}) {
   const refresh = useRefreshCare();
   const [time, setTime] = useState("");
   const [kind, setKind] = useState<AppointmentKind>("treatment");
+  const [injury, setInjury] = useState<string>(injuries.find((i) => !i.closed_at)?.id.toString() ?? "");
+  const needsInjury = kind === "treatment" || kind === "rehab" || kind === "proactive";
   const [reason, setReason] = useState("");
   const [instructions, setInstructions] = useState("");
   const [busy, setBusy] = useState(false);
@@ -211,13 +232,23 @@ function Treatments({ playerId, date, treatments }: { playerId: number; date: st
                   <span className="font-semibold">{timeLabel(t.treat_time) || "Any time"}</span>
                   <span>
                     {kindLabel(t.kind)}
-                    {t.reason ? <span className="text-text-dim"> · {t.reason}</span> : null}
+                    {t.injury ? <span className="text-text-dim"> · {t.injury}</span> : t.reason ? <span className="text-text-dim"> · {t.reason}</span> : null}
                   </span>
                   <span className={`rounded-full border px-1.5 py-px text-[11px] ${state.chip}`}>
                     {state.label}
-                    {t.status === "attended" && t.attended_marked_by === "player" ? " (player)" : ""}
+                    {t.status === "attended" && !t.confirmed_at ? " · player says · confirm" : ""}
                   </span>
                   <span className="ml-auto flex gap-1">
+                    {isTrainer && t.status === "attended" && !t.confirmed_at && (
+                      <>
+                        <button className={ghost} disabled={busy} onClick={() => run(() => careApi.confirmVisit(t.id, true))}>
+                          Confirm
+                        </button>
+                        <button className={ghost} disabled={busy} onClick={() => run(() => careApi.confirmVisit(t.id, false))}>
+                          Didn&rsquo;t happen
+                        </button>
+                      </>
+                    )}
                     {t.status === "pending" && t.awaiting === "trainer" && (
                       <button className={ghost} disabled={busy} onClick={() => run(() => careApi.updateTreatment(t.id, { status: "booked" }))}>
                         Confirm
@@ -255,16 +286,30 @@ function Treatments({ playerId, date, treatments }: { playerId: number; date: st
               </option>
             ))}
           </select>
-          <input className={`${input} col-span-2 sm:col-span-1`} placeholder="Area / reason (e.g. Calves)" value={reason} onChange={(e) => setReason(e.target.value)} />
+          {needsInjury ? (
+            <select className={`${input} col-span-2 sm:col-span-1`} value={injury} onChange={(e) => setInjury(e.target.value)} aria-label="For which injury">
+              <option value="">For which injury…</option>
+              {injuries.map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.description}
+                  {i.side ? ` (${sideLabel(i.side)})` : ""}
+                  {i.closed_at ? " · past" : ""}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input className={`${input} col-span-2 sm:col-span-1`} placeholder="Area / reason (e.g. Calves)" value={reason} onChange={(e) => setReason(e.target.value)} />
+          )}
         </div>
+        {needsInjury && injuries.length === 0 && <p className="text-[11px] text-gold">Treatment is for an injury: log it under Injuries &amp; issues below first.</p>}
         <input className={input} placeholder="Instructions (e.g. Ice ankle 15 min before)" value={instructions} onChange={(e) => setInstructions(e.target.value)} />
         <div className="flex items-center gap-2">
           <button
             className={button}
-            disabled={busy || !time}
+            disabled={busy || !time || (needsInjury && !injury)}
             onClick={() =>
               run(async () => {
-                await careApi.bookTreatment({ player_id: playerId, date, time, kind, reason, instructions });
+                await careApi.bookTreatment({ player_id: playerId, date, time, kind, reason, instructions, injury_id: needsInjury ? Number(injury) : null });
                 setTime("");
                 setReason("");
                 setInstructions("");
@@ -277,6 +322,64 @@ function Treatments({ playerId, date, treatments }: { playerId: number; date: st
         </div>
       </div>
       {error && <p className="text-xs text-owl-red-light">{error}</p>}
+    </Section>
+  );
+}
+
+/** Confirmed visits (last two weeks) and the player's pre-hab, with the AT's confirm buttons. */
+function LogAndPrehab({ treatments, prehab, isTrainer }: { treatments: import("../types").Treatment[]; prehab: import("../types").PrehabLog[]; isTrainer: boolean }) {
+  const refresh = useRefreshCare();
+  const [busy, setBusy] = useState(false);
+  const visits = treatments.filter((t) => t.status === "attended" && t.confirmed_at);
+  if (!visits.length && !prehab.length) return null;
+  const run = async (fn: () => Promise<unknown>) => {
+    setBusy(true);
+    try {
+      await fn();
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Section title="Treatment log & pre-hab">
+      <ul className="flex flex-col gap-1 text-sm">
+        {visits.map((t) => (
+          <li key={`v${t.id}`} className="flex flex-wrap gap-x-2">
+            <span className="w-16 shrink-0 text-text-dim">{formatDate(t.treat_date)}</span>
+            <span>{kindLabel(t.kind)}</span>
+            <span className="text-text-dim">{t.injury ?? t.reason ?? ""}</span>
+            <span className="ml-auto text-[11px] text-teal">✓ came in</span>
+          </li>
+        ))}
+        {prehab.map((p) => (
+          <li key={`p${p.id}`} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="w-16 shrink-0 text-text-dim">{formatDate(p.log_date)}</span>
+            <span>Pre-hab</span>
+            <span className="min-w-0 flex-1 text-text-dim">
+              {p.activities}
+              {p.minutes ? ` · ${p.minutes} min` : ""}
+              {p.injury ? ` · ${p.injury}` : ""}
+            </span>
+            {p.status === "pending" ? (
+              isTrainer ? (
+                <span className="flex gap-1">
+                  <button className={ghost} disabled={busy} onClick={() => run(() => careApi.confirmPrehab(p.id, true))}>
+                    Confirm
+                  </button>
+                  <button className={ghost} disabled={busy} onClick={() => run(() => careApi.confirmPrehab(p.id, false))}>
+                    Didn&rsquo;t happen
+                  </button>
+                </span>
+              ) : (
+                <span className="text-[11px] text-gold">waiting on AT</span>
+              )
+            ) : (
+              <span className={`text-[11px] ${p.status === "confirmed" ? "text-teal" : "text-text-dim"}`}>{p.status === "confirmed" ? "✓ confirmed" : "not confirmed"}</span>
+            )}
+          </li>
+        ))}
+      </ul>
     </Section>
   );
 }
