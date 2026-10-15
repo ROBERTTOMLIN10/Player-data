@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { getDb } from "../db/connection.js";
 
-export type Role = "coach" | "player";
+export type Role = "coach" | "player" | "trainer"; // trainer = athletic trainer (AT view)
 
 export interface AuthUser {
   userId: number | null; // null = env-var coach login (no users row)

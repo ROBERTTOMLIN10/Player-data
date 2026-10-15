@@ -198,7 +198,7 @@ export function FavoritesPanel() {
 }
 
 /** Turns phone notifications on for this device (needed for any game alert). */
-function PushSwitch({ publicKey }: { publicKey: string }) {
+export function PushSwitch({ publicKey }: { publicKey: string }) {
   const [state, setState] = useState<PushState | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

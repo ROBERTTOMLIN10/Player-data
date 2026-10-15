@@ -1,5 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import type {
+  AppointmentKind,
+  BeforeTrainingResponse,
+  ToConfirm,
+  PlayLevel,
+  CareAlertPrefs,
+  CareAlertsResponse,
+  CareDay,
+  IssueDetail,
+  Issue,
+  MyCare,
+  PlayerCare,
   AlertSettings,
   FollowsResponse,
   CompareResult,
@@ -222,7 +233,7 @@ export function useAccounts() {
   return useQuery({ queryKey: ["accounts"], queryFn: () => fetchJson<AccountsList>("/api/admin/accounts") });
 }
 
-export function createAccount(input: { role: "player" | "coach"; email: string; password: string; playerId?: number }) {
+export function createAccount(input: { role: "player" | "coach" | "trainer"; email: string; password: string; playerId?: number }) {
   return sendJson<{ user_id: number }>("/api/admin/accounts", "POST", input);
 }
 
@@ -467,3 +478,98 @@ export function useFollows() {
 export function saveFollow(seo: string, change: { starred?: boolean; alerts?: Partial<AlertSettings> }) {
   return sendJson<{ ok: true }>(`/api/follows/${encodeURIComponent(seo)}`, "PUT", change);
 }
+
+// --- Player care (AT view) ------------------------------------------------------
+
+export function useCareDay(date: string | null) {
+  return useQuery({
+    queryKey: ["careDay", date],
+    queryFn: () => fetchJson<CareDay>(`/api/care/day${date ? `?date=${date}` : ""}`),
+    refetchInterval: 60_000,
+  });
+}
+
+export function usePlayerCare(playerId: number | null, date: string | null) {
+  return useQuery({
+    queryKey: ["playerCare", playerId, date],
+    queryFn: () => fetchJson<PlayerCare>(`/api/care/player/${playerId}${date ? `?date=${date}` : ""}`),
+    enabled: playerId !== null,
+  });
+}
+
+export function useIssues(includeClosed: boolean) {
+  return useQuery({
+    queryKey: ["issues", includeClosed],
+    queryFn: () => fetchJson<{ today: string; issues: Issue[] }>(`/api/care/issues${includeClosed ? "?include=closed" : ""}`),
+  });
+}
+
+export function useIssue(id: number | null) {
+  return useQuery({
+    queryKey: ["issue", id],
+    queryFn: () => fetchJson<IssueDetail>(`/api/care/issues/${id}`),
+    enabled: id !== null,
+  });
+}
+
+/** Care writes: every one refreshes the board, the report, the player's panel and the issue lists. */
+export const careApi = {
+  setAvailability: (playerId: number, body: Record<string, unknown>) => sendJson(`/api/care/availability/${playerId}`, "PUT", body),
+  bookTreatment: (body: Record<string, unknown>) => sendJson(`/api/care/treatments`, "POST", body),
+  updateTreatment: (id: number, body: Record<string, unknown>) => sendJson(`/api/care/treatments/${id}`, "PATCH", body),
+  deleteTreatment: (id: number) => sendJson(`/api/care/treatments/${id}`, "DELETE"),
+  addNote: (body: Record<string, unknown>) => sendJson(`/api/care/notes`, "POST", body),
+  deleteNote: (id: number) => sendJson(`/api/care/notes/${id}`, "DELETE"),
+  addIssue: (body: Record<string, unknown>) => sendJson<{ id: number }>(`/api/care/issues`, "POST", body),
+  updateIssue: (id: number, body: Record<string, unknown>) => sendJson(`/api/care/issues/${id}`, "PATCH", body),
+  deleteIssue: (id: number) => sendJson(`/api/care/issues/${id}`, "DELETE"),
+  addLog: (issueId: number, body: Record<string, unknown>) => sendJson(`/api/care/issues/${issueId}/logs`, "POST", body),
+  deleteLog: (issueId: number, logId: number) => sendJson(`/api/care/issues/${issueId}/logs/${logId}`, "DELETE"),
+  sendMessage: (body: { player_id: number; date: string; body: string }) => sendJson(`/api/care/messages`, "POST", body),
+  // Before training
+  flag: (playerId: number, body: { date: string; note?: string | null; flagged?: boolean }) => sendJson(`/api/care/checks/${playerId}/flag`, "POST", body),
+  callIn: (playerId: number, body: Record<string, unknown>) => sendJson(`/api/care/checks/${playerId}/call-in`, "POST", body),
+  clear: (playerId: number, body: { date: string; cleared?: boolean }) => sendJson(`/api/care/checks/${playerId}/clear`, "POST", body),
+  recommend: (playerId: number, body: { date: string; level: PlayLevel; note?: string | null }) => sendJson(`/api/care/checks/${playerId}/recommend`, "POST", body),
+  decide: (playerId: number, body: { date: string; level: PlayLevel; note?: string | null }) => sendJson(`/api/care/checks/${playerId}/decide`, "POST", body),
+  reopen: (playerId: number, body: { date: string }) => sendJson(`/api/care/checks/${playerId}/reopen`, "POST", body),
+  same: (playerId: number, body: { date: string }) => sendJson(`/api/care/checks/${playerId}/same`, "POST", body),
+  // Confirming what happened
+  confirmVisit: (id: number, happened: boolean) => sendJson(`/api/care/treatments/${id}/confirm`, "POST", { happened }),
+  confirmPrehab: (id: number, happened: boolean) => sendJson(`/api/care/prehab/${id}/confirm`, "POST", { happened }),
+};
+export const CARE_QUERY_KEYS = ["careDay", "playerCare", "issues", "issue", "squadReadiness", "beforeTraining", "toConfirm"];
+
+/** "I came in" taps and pre-hab entries waiting on the AT. */
+export function useToConfirm(enabled: boolean) {
+  return useQuery({ queryKey: ["toConfirm"], queryFn: () => fetchJson<ToConfirm>("/api/care/to-confirm"), enabled, refetchInterval: 60_000 });
+}
+
+/** Who may miss part or all of training today, and where each one is in the AT → coach process. Refreshes every minute. */
+export function useBeforeTraining(date: string | null) {
+  return useQuery({
+    queryKey: ["beforeTraining", date],
+    queryFn: () => fetchJson<BeforeTrainingResponse>(`/api/care/before-training${date ? `?date=${date}` : ""}`),
+    refetchInterval: 60_000,
+  });
+}
+
+export function useMyCare() {
+  return useQuery({ queryKey: ["myCare"], queryFn: () => fetchJson<MyCare>("/api/me/care"), refetchInterval: 60_000 });
+}
+
+/** The player's side of appointments and messages with the AT. */
+export const myCareApi = {
+  respond: (id: number, body: { action: "accept" | "decline" | "reschedule"; date?: string; time?: string; note?: string }) =>
+    sendJson(`/api/me/care/treatments/${id}/respond`, "POST", body),
+  request: (body: { date: string; time: string; kind: AppointmentKind; reason?: string; note?: string; injury_id?: number | null }) => sendJson(`/api/me/care/requests`, "POST", body),
+  prehab: (body: { injury_id: number; activities: string; minutes?: number | null; date?: string }) => sendJson(`/api/me/care/prehab`, "POST", body),
+  message: (body: { quick?: string; body?: string }) => sendJson(`/api/me/care/messages`, "POST", body),
+};
+
+export function useCareAlerts() {
+  return useQuery({ queryKey: ["careAlerts"], queryFn: () => fetchJson<CareAlertsResponse>("/api/care/alerts") });
+}
+export const saveCareAlerts = (change: Partial<CareAlertPrefs>) => sendJson<CareAlertsResponse>("/api/care/alerts", "PUT", change);
+
+export const markTreatmentAttended = (id: number) => sendJson(`/api/me/care/treatments/${id}/attended`, "POST");
