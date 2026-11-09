@@ -3,6 +3,8 @@ import { getDb } from "../db/connection.js";
 import { SESSION_ROLE_SQL } from "../lib/fitness.js";
 import { CORE_METRIC_KEYS, GLITCH_TOP_SPEED_MPH } from "../lib/metrics.js";
 import { withFlags } from "../lib/sessionFlags.js";
+import { buildPlayerReport, seasonStart, type ReportGameStat, type ReportInput, type ReportSession } from "../lib/playerReport.js";
+import { teamToday } from "../lib/readiness.js";
 import { PROFILE_COLUMNS } from "../import/sidearmRoster.js";
 
 export const playersRouter = Router();
@@ -57,6 +59,15 @@ playersRouter.get("/", (_req, res) => {
     )
     .all();
   res.json(players);
+});
+
+// The player's season report (for the PDF), optionally for a date range: ?from=YYYY-MM-DD&to=YYYY-MM-DD.
+playersRouter.get("/:id/report", (req, res) => {
+  const playerId = Number(req.params.id);
+  if (!Number.isInteger(playerId)) return res.status(400).json({ error: "invalid player id" });
+  const report = playerReportFor(playerId, req.query.from, req.query.to);
+  if (!report) return res.status(404).json({ error: "player not found" });
+  res.json(report);
 });
 
 playersRouter.get("/:id", (req, res) => {
@@ -129,4 +140,30 @@ export function getPlayerDetail(playerId: number) {
       .get(playerId) ?? null;
 
   return { player, profile, sessions: withFlags(sessions), seasonTotals, gameStats, statTotals };
+}
+
+const isoDay = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
+
+/** The season report for one player (shared with the player's own download). Defaults to this season so far. */
+export function playerReportFor(playerId: number, from: unknown, to: unknown) {
+  const detail = getPlayerDetail(playerId);
+  if (!detail) return null;
+  const today = teamToday();
+  const teamSessions = getDb()
+    .prepare(
+      `SELECT s.*, g.game_date, g.opponent, mp.minutes AS minutes_played, mp.started
+       FROM gps_sessions s JOIN games g ON g.id = s.game_id
+       LEFT JOIN minutes_played mp ON mp.game_id = s.game_id AND mp.player_id = s.player_id`,
+    )
+    .all() as ReportSession[];
+  return buildPlayerReport({
+    player: detail.player as ReportInput["player"],
+    profile: detail.profile as Record<string, unknown> | null,
+    sessions: detail.sessions as unknown as ReportSession[],
+    gameStats: detail.gameStats as ReportGameStat[],
+    teamSessions,
+    from: isoDay(from) ? from : seasonStart(today),
+    to: isoDay(to) ? to : today,
+    generated: today,
+  });
 }

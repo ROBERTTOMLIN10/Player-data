@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import type {
   AppointmentKind,
   BeforeTrainingResponse,
+  PlayerReport,
   ToConfirm,
   PlayLevel,
   CareAlertPrefs,
@@ -571,5 +572,11 @@ export function useCareAlerts() {
   return useQuery({ queryKey: ["careAlerts"], queryFn: () => fetchJson<CareAlertsResponse>("/api/care/alerts") });
 }
 export const saveCareAlerts = (change: Partial<CareAlertPrefs>) => sendJson<CareAlertsResponse>("/api/care/alerts", "PUT", change);
+
+/** A player's season report for the PDF (coaches: any player; players: their own). */
+export function fetchPlayerReport(who: { playerId: number } | "me", from: string, to: string) {
+  const q = `?from=${from}&to=${to}`;
+  return fetchJson<PlayerReport>(who === "me" ? `/api/me/report${q}` : `/api/players/${who.playerId}/report${q}`);
+}
 
 export const markTreatmentAttended = (id: number) => sendJson(`/api/me/care/treatments/${id}/attended`, "POST");

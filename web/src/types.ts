@@ -1058,3 +1058,64 @@ export interface CareAlertsResponse {
   thresholds: number[];
   publicKey: string;
 }
+
+/** A player's season report (the downloadable PDF): see server/src/lib/playerReport.ts. */
+export interface PlayerReport {
+  generated: string;
+  range: { from: string; to: string };
+  player: { id: number; canonical_name: string; position: string | null; jersey_number: string | null };
+  profile: PlayerProfile | null;
+  match: {
+    games: {
+      game_date: string;
+      opponent: string;
+      result: string;
+      minutes: number | null;
+      started: number;
+      goals: number;
+      assists: number;
+      points: number;
+      shots: number;
+      shots_on_goal: number;
+      yellow_cards: number;
+      red_cards: number;
+      is_goalie?: number;
+      saves?: number | null;
+      goals_allowed?: number | null;
+    }[];
+    totals: {
+      played: number;
+      started: number;
+      minutes: number;
+      goals: number;
+      assists: number;
+      points: number;
+      shots: number;
+      shots_on_goal: number;
+      yellow_cards: number;
+      red_cards: number;
+      saves: number | null;
+    };
+  };
+  physical: {
+    key: string;
+    label: string;
+    unit: string;
+    decimals: number;
+    avg: number | null;
+    best: number | null;
+    bestGame: { date: string; opponent: string | null } | null;
+    teamAvg: number | null;
+    rank: number | null;
+    of: number;
+  }[];
+  gpsGames: {
+    game_date: string;
+    opponent: string | null;
+    minutes: number | null;
+    started: number | null;
+    glitch: boolean;
+    metrics: Record<string, { value: number | null; teamAvg: number | null }>;
+  }[];
+  trackedGames: number;
+}
