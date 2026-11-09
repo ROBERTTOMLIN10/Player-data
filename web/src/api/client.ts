@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type {
+  PlayerReport,
   AlertSettings,
   FollowsResponse,
   CompareResult,
@@ -466,4 +467,10 @@ export function useFollows() {
 /** Star/unstar a team or change which alerts it sends. */
 export function saveFollow(seo: string, change: { starred?: boolean; alerts?: Partial<AlertSettings> }) {
   return sendJson<{ ok: true }>(`/api/follows/${encodeURIComponent(seo)}`, "PUT", change);
+}
+
+/** A player's season report for the PDF (coaches: any player; players: their own). */
+export function fetchPlayerReport(who: { playerId: number } | "me", from: string, to: string) {
+  const q = `?from=${from}&to=${to}`;
+  return fetchJson<PlayerReport>(who === "me" ? `/api/me/report${q}` : `/api/players/${who.playerId}/report${q}`);
 }
