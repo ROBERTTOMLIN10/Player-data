@@ -15,7 +15,7 @@
 import fs from "node:fs";
 import { getDb } from "../../server/src/db/connection.js";
 import { migrate } from "../../server/src/db/migrate.js";
-import { syncSchedule } from "../../server/src/import/syncSchedule.js";
+import { dropRenamedScheduleRows, syncSchedule } from "../../server/src/import/syncSchedule.js";
 import { syncMinutes } from "../../server/src/import/importMinutes.js";
 import { syncSeason, syncStatsAndRankings } from "../../server/src/jobs/ncaaSync.js";
 import { syncAllTeams } from "../../server/src/teams/sync.js";
@@ -274,6 +274,8 @@ if (mode === "export") {
       if (game) insert("minutes_played", { ...row, game_id: game.id, player_id: playerId(_player) }, "game_id, player_id");
     }
   })();
+  // Snapshots saved before the fix can carry a game twice under an old name.
+  dropRenamedScheduleRows(db);
   // Snapshots from before rank history existed: seed it from their cached
   // tables, dated (team timezone) by when each table was fetched.
   if (!snap.ncaaRankHistory?.length) {
