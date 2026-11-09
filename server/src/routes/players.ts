@@ -5,6 +5,7 @@ import { CORE_METRIC_KEYS, GLITCH_TOP_SPEED_MPH } from "../lib/metrics.js";
 import { withFlags } from "../lib/sessionFlags.js";
 import { buildPlayerReport, seasonStart, type ReportGameStat, type ReportInput, type ReportSession } from "../lib/playerReport.js";
 import { teamToday } from "../lib/readiness.js";
+import { sendReportImage } from "../lib/reportImage.js";
 import { PROFILE_COLUMNS } from "../import/sidearmRoster.js";
 
 export const playersRouter = Router();
@@ -60,6 +61,9 @@ playersRouter.get("/", (_req, res) => {
     .all();
   res.json(players);
 });
+
+// Photos and logos for the report PDF (only ones the app already stores).
+playersRouter.get("/report-image", sendReportImage);
 
 // The player's season report (for the PDF), optionally for a date range: ?from=YYYY-MM-DD&to=YYYY-MM-DD.
 playersRouter.get("/:id/report", (req, res) => {

@@ -1082,6 +1082,7 @@ export interface PlayerReport {
       is_goalie?: number;
       saves?: number | null;
       goals_allowed?: number | null;
+      opponent_logo_url?: string | null;
     }[];
     totals: {
       played: number;
@@ -1112,6 +1113,10 @@ export interface PlayerReport {
   gpsGames: {
     game_date: string;
     opponent: string | null;
+    opponent_logo_url: string | null;
+    result: string;
+    goals: number | null;
+    assists: number | null;
     minutes: number | null;
     started: number | null;
     glitch: boolean;

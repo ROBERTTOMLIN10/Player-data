@@ -62,6 +62,7 @@ export interface ReportGameStat {
   is_goalie?: number;
   saves?: number | null;
   goals_allowed?: number | null;
+  opponent_logo_url?: string | null;
 }
 
 export interface ReportInput {
@@ -145,9 +146,14 @@ export function buildPlayerReport(input: ReportInput) {
   for (const s of team) teamByGame.set(s.game_id, [...(teamByGame.get(s.game_id) ?? []), s]);
   const gpsGames = mine.map((s) => {
     const others = teamByGame.get(s.game_id) ?? [];
+    const line = games.find((g) => g.game_date === s.game_date); // his box score line that day, if any
     return {
       game_date: s.game_date,
       opponent: s.opponent,
+      opponent_logo_url: line?.opponent_logo_url ?? null,
+      result: line?.status && line.team_score != null && line.opponent_score != null ? `${line.status} ${line.team_score}-${line.opponent_score}` : (line?.status ?? ""),
+      goals: line?.goals ?? null,
+      assists: line?.assists ?? null,
       minutes: s.minutes_played,
       started: s.started ?? null,
       glitch: !valid(s),
