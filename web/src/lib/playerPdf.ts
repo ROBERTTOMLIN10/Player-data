@@ -76,7 +76,10 @@ export async function playerReportPdf(report: PlayerReport): Promise<Blob> {
   const textLeft = photo ? M + 96 : M;
   if (photo) {
     try {
-      doc.addImage(photo, M, 18, 82, 82, undefined, "FAST");
+      // Keep the photo's own shape inside an 82pt box.
+      const { width, height } = doc.getImageProperties(photo);
+      const scale = Math.min(82 / width, 82 / height);
+      doc.addImage(photo, M + (82 - width * scale) / 2, 18 + (82 - height * scale) / 2, width * scale, height * scale, undefined, "FAST");
     } catch {
       // unreadable image: leave the space
     }
