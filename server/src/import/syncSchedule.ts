@@ -90,6 +90,8 @@ export async function syncSchedule(): Promise<SyncScheduleSummary> {
     }
   });
   runUpserts();
+  const dropped = dropRenamedScheduleRows(db, scheduleGames);
+  if (dropped) console.log(`Removed ${dropped} out-of-date schedule row(s) (same game, renamed on fausports.com).`);
 
   const upsertPlayerStats = db.prepare(`
     INSERT INTO player_game_stats (
@@ -300,4 +302,39 @@ if (isMainModule) {
     console.error("Fatal error:", err);
     process.exitCode = 1;
   });
+}
+
+/**
+ * fausports.com renames a game over time ("Missouri State" becomes "No. 17
+ * Missouri State" once ranked; "American Conference Championship" becomes
+ * "Memphis" once the opponent is known). Rows are keyed by date + opponent, so
+ * the old name is left behind as a game that never got a result. Rows that share
+ * fausports' own game id are the same game: keep the one from the latest scrape
+ * (or, without one, the one with a result, else the newest) and drop the rest.
+ * A row with player stats is never dropped.
+ */
+export function dropRenamedScheduleRows(db: ReturnType<typeof getDb>, scraped: SidearmScheduleGame[] = []): number {
+  let dropped = 0;
+  const precise = db.prepare(
+    `DELETE FROM schedule_games WHERE json_extract(raw_json, '$.id') = ? AND opponent <> ?
+       AND NOT EXISTS (SELECT 1 FROM player_game_stats p WHERE p.schedule_game_id = schedule_games.id)`,
+  );
+  for (const sg of scraped) {
+    const id = (sg.raw as { id?: unknown } | null)?.id;
+    if (typeof id === "number" || typeof id === "string") dropped += precise.run(id, sg.opponent).changes;
+  }
+  dropped += db
+    .prepare(
+      `DELETE FROM schedule_games WHERE id IN (
+         SELECT a.id FROM schedule_games a
+         JOIN schedule_games b
+           ON json_extract(a.raw_json, '$.id') IS NOT NULL
+          AND json_extract(a.raw_json, '$.id') = json_extract(b.raw_json, '$.id') AND a.id <> b.id
+         WHERE NOT EXISTS (SELECT 1 FROM player_game_stats p WHERE p.schedule_game_id = a.id)
+           AND ((a.status IS NULL AND b.status IS NOT NULL)
+             OR ((a.status IS NULL) = (b.status IS NULL)
+                 AND (a.updated_at < b.updated_at OR (a.updated_at = b.updated_at AND a.id < b.id)))))`,
+    )
+    .run().changes;
+  return dropped;
 }
