@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import XLSX from "xlsx";
 import { getDb } from "../db/connection.js";
 import { normalizePlayerName } from "./nameNormalization.js";
+import { sensorWearer } from "./sensorNames.js";
 import { findSamePerson, playerCandidates } from "./samePerson.js";
 import { CORE_FIELD_MAP, DATE_HEADER_CANDIDATES, matchZoneColumn, NAME_HEADER_CANDIDATES } from "./columnMapping.js";
 import { normalizeOpponent, parseGpsFilename } from "./gpsFilename.js";
@@ -216,7 +217,7 @@ export function importTitanFile(filePath: string): ImportTitanResult {
         warnings.push(message);
         continue;
       }
-      const playerId = findOrCreatePlayer(db, rawName);
+      const playerId = findOrCreatePlayer(db, sensorWearer(rawName));
 
       const core: Record<string, number | null> = {};
       for (const [header, field] of Object.entries(CORE_FIELD_MAP)) {

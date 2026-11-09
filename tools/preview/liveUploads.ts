@@ -10,6 +10,7 @@
 import * as XLSX from "xlsx";
 import { CORE_FIELD_MAP, NAME_HEADER_CANDIDATES } from "../../server/src/import/columnMapping";
 import { normalizePlayerName } from "../../server/src/import/nameNormalization";
+import { sensorWearer } from "../../server/src/import/sensorNames";
 import { findSamePerson } from "../../server/src/import/samePerson";
 import type { UploadRecord } from "./uploads";
 
@@ -50,7 +51,7 @@ export function rowsFromWorkbook(bytes: Uint8Array): { name: string; session: Se
   return rows
     .filter((r) => String(r[nameKey] ?? "").trim())
     .map((r) => ({
-      name: String(r[nameKey]).trim(),
+      name: sensorWearer(String(r[nameKey])),
       session: Object.fromEntries(Object.entries(CORE_FIELD_MAP).map(([col, field]) => [field, num(r[col])])),
     }));
 }
