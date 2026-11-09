@@ -33,7 +33,7 @@ export function PlayerReportButton({ playerId }: { playerId?: number }) {
     setError(null);
     try {
       const report = await fetchPlayerReport(playerId ? { playerId } : "me", from, to);
-      await saveFile(reportFilename(report), await playerReportPdf(report));
+      await saveFile(reportFilename(report), await playerReportPdf(report, { imageProxy: playerId ? "/api/players/report-image" : "/api/me/report-image" }));
       setOpen(false);
     } catch (e) {
       setError((e as Error).message || "Couldn't build the PDF.");

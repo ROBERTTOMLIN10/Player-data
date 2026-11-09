@@ -8,6 +8,7 @@ import { getReminderSettings } from "../jobs/morningReminder.js";
 import { removeSubscription, saveSubscription, vapidPublicKey } from "../lib/push.js";
 import { gameOnDate, getCheckins, readinessScore, shiftDate, teamToday } from "../lib/readiness.js";
 import { getPlayerDetail, playerReportFor } from "./players.js";
+import { sendReportImage } from "../lib/reportImage.js";
 import { playerRpe } from "./rpe.js";
 
 /**
@@ -117,6 +118,8 @@ const checkinSchema = z.object({
     .max(BODY_REGION_IDS.size)
     .refine((list) => new Set(list.map((s) => s.region)).size === list.length, "duplicate body region"),
 });
+
+meRouter.get("/report-image", sendReportImage);
 
 // Their own season report (the PDF to send to coaches and agents).
 meRouter.get("/report", (req, res) => {
