@@ -82,7 +82,7 @@ rm -rf "$DEMO" && mkdir -p "$DEMO/src/demo"
 cp -r web/index.html web/src web/vite.config.ts web/tsconfig.json web/package.json "$DEMO/"
 cp "$HERE/mock.ts" "$HERE/DemoBar.tsx" "$HERE/uploads.ts" "$HERE/liveUploads.ts" "$HERE/careMock.ts" "$DEMO/src/demo/"
 mkdir -p "$DEMO/server/src/import" && cp server/src/import/columnMapping.ts server/src/import/gpsFilename.ts server/src/import/nameNormalization.ts server/src/import/samePerson.ts "$DEMO/server/src/import/"
-mkdir -p "$DEMO/server/src/lib" && cp server/src/lib/careReport.ts "$DEMO/server/src/lib/"
+mkdir -p "$DEMO/server/src/lib" && cp server/src/lib/careReport.ts server/src/lib/playerReport.ts "$DEMO/server/src/lib/"
 cp "$OUT/data.json" "$DEMO/src/demo/data.json"
 ln -s "$ROOT/node_modules" "$DEMO/node_modules"
 python3 - "$DEMO" <<'PY'
@@ -117,7 +117,8 @@ export async function disablePush(): Promise<PushState> {
 '''
 open(p, "w").write(s)
 p = os.path.join(d, "vite.config.ts"); s = open(p).read()
-s = s.replace("plugins: [react(), tailwindcss()],", 'base: "./",\n  plugins: [react(), tailwindcss()],')
+# One script file: the page is inlined, so lazy-loaded chunks (e.g. the PDF library's) are bundled in.
+s = s.replace("plugins: [react(), tailwindcss()],", 'base: "./",\n  build: { rollupOptions: { output: { inlineDynamicImports: true } } },\n  plugins: [react(), tailwindcss()],')
 open(p, "w").write(s)
 PY
 ( cd "$DEMO" && npx vite build )

@@ -5,6 +5,7 @@ import raw from "./data.json";
 import { handlePreviewUpload, listUploads } from "./uploads";
 import { applyPendingUploads, applyUpload, rowsFromWorkbook } from "./liveUploads";
 import { createCareMock } from "./careMock";
+import { buildPlayerReport, seasonStart } from "../../server/src/lib/playerReport";
 
 const data: Record<string, any> = raw as any;
 export type DemoRole = "player" | "coach" | "trainer" | null;
@@ -153,6 +154,24 @@ function compare(ids: number[]) {
   return { sessions, seasonAverages, teamAverages: data["/api/team/summary"].seasonAverages };
 }
 
+/** The player report (PDF) from the captured player pages, with the same builder as the server. */
+function playerReport(id: number, q: URLSearchParams) {
+  const d = data[`/api/players/${id}`];
+  if (!d) return null;
+  const teamSessions = (data["/api/players"] ?? []).flatMap((p: any) => data[`/api/players/${p.id}`]?.sessions ?? []);
+  const iso = (v: string | null) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+  return buildPlayerReport({
+    player: d.player,
+    profile: d.profile,
+    sessions: d.sessions,
+    gameStats: d.gameStats ?? [],
+    teamSessions,
+    from: iso(q.get("from")) ?? seasonStart(TODAY),
+    to: iso(q.get("to")) ?? TODAY,
+    generated: TODAY,
+  });
+}
+
 function nowSql() {
   return new Date().toISOString().replace("T", " ").slice(0, 19);
 }
@@ -187,6 +206,14 @@ function route(method: string, path: string, q: URLSearchParams, body: any): Res
     return json(role === "coach" ? data.coachMe : role === "trainer" ? data.trainerMe : data.playerMe);
   }
   if (!role) return json({ error: "Sign in required." }, 401);
+
+  // ---- player report (PDF) ----
+  if (path === "/api/me/report") return json(playerReport(PLAYER_ID, q));
+  const reportMatch = path.match(/^\/api\/players\/(\d+)\/report$/);
+  if (reportMatch && role === "coach") {
+    const r = playerReport(Number(reportMatch[1]), q);
+    return r ? json(r) : json({ error: "player not found" }, 404);
+  }
 
   // ---- player ----
   if (path === "/api/me/readiness/today") {
