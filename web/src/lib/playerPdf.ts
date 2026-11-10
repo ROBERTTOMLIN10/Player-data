@@ -403,7 +403,7 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
 
   // Match-stat tiles (two rows of five)
   let y = 244;
-  y = heading("Match stats", y, `${longDate(report.range.from)} – ${longDate(report.range.to)}  ·  ${report.trackedGames} games with GPS data`);
+  y = heading("Match stats", y, `${longDate(report.range.from)} – ${longDate(report.range.to)}  ·  ${report.trackedGames} games played with GPS data`);
   const t = report.match.totals;
   const tiles: [string, string, RGB][] = [
     ["Games", String(t.played), TEXT],
@@ -549,7 +549,7 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
   y = heading(
     "Physical profile (GPS)",
     y,
-    `Per game, per 90 minutes, and against the team${posLabel ? ` and the ${report.position!.label}` : ""}. Ranks among teammates with enough tracked games.`,
+    `Per game, per 90 minutes, and against the team${posLabel ? ` and the ${report.position!.label}` : ""}. Counts games played (box-score minutes); ranked against teammates with 3+ games.`,
   );
   autoTable(doc, {
     ...darkTable(),
@@ -667,15 +667,17 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
   y = heading("Match involvement", y, "Minutes each game (red = started), with goals and assists above, and shots.");
   const mg = report.match.games;
   {
-    const ch2 = 150;
+    const ch2 = 156;
     card(M, y, W - 2 * M, ch2);
     const px = M + 34;
     const py = y + 30;
     const pw = W - 2 * M - 48;
-    const ph = ch2 - 62;
+    const ph = ch2 - 72;
     const n = Math.max(1, mg.length);
     const slot = pw / n;
     const bw = Math.min(16, slot * 0.6);
+    // Opponent logos under the bars (initials when a logo can't be loaded).
+    const logoS = Math.max(8, Math.min(14, slot - 4));
     const maxMin = Math.max(90, ...mg.map((g) => g.minutes ?? 0));
     stroke(BORDER);
     doc.setLineWidth(0.4);
@@ -700,9 +702,7 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
         fill(TEAL);
         doc.circle(bx + bw / 2, my, 2.6, "F");
       }
-      color(DIM);
-      font(5.5);
-      doc.text(initials(cleanOpponent(g.opponent)), bx + bw / 2, py + ph + 9, { align: "center" });
+      teamLogo(g.opponent_logo_url, g.opponent, bx + bw / 2 - logoS / 2, py + ph + 3, logoS);
     });
     cardTitle("Minutes, goals and assists", M + 12, y + 18);
     legend(M + 210, y + 18, [
@@ -716,7 +716,7 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
     doc.text(`${fmtDate(mg[0]?.game_date ?? report.range.from)} – ${fmtDate(mg[mg.length - 1]?.game_date ?? report.range.to)}`, M + W - 2 * M - 12, y + ch2 - 10, { align: "right" });
     y += ch2 + 10;
 
-    const ch3 = 110;
+    const ch3 = 116;
     card(M, y, W - 2 * M, ch3);
     cardTitle("Shots and shots on goal", M + 12, y + 18);
     legend(M + 210, y + 18, [
@@ -724,7 +724,7 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
       ["On goal", RED_LIGHT],
     ]);
     const qy = y + 28;
-    const qh = ch3 - 46;
+    const qh = ch3 - 54;
     const maxShots = Math.max(2, ...mg.map((g) => g.shots));
     for (const v of [0, Math.ceil(maxShots / 2), maxShots]) {
       const yy = qy + qh - (v / maxShots) * qh;
@@ -740,14 +740,12 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
       doc.rect(bx, qy + qh - (g.shots / maxShots) * qh, bw, (g.shots / maxShots) * qh, "F");
       fill(RED_LIGHT);
       doc.rect(bx + bw * 0.2, qy + qh - (g.shots_on_goal / maxShots) * qh, bw * 0.6, (g.shots_on_goal / maxShots) * qh, "F");
-      color(DIM);
-      font(5.5);
-      doc.text(initials(cleanOpponent(g.opponent)), bx + bw / 2, qy + qh + 9, { align: "center" });
+      teamLogo(g.opponent_logo_url, g.opponent, bx + bw / 2 - logoS / 2, qy + qh + 3, logoS);
     });
     y += ch3 + 20;
   }
 
-  y = heading("Game by game", y, "Match stats and GPS for every game in one place.");
+  y = heading("Game by game", y, "Match stats and GPS for every game in one place. Season averages count games played (box-score minutes), so exhibitions without minutes are left out.");
   const gps = new Map(report.gpsGames.map((g) => [g.game_date, g]));
   const dates = [...new Set([...mg.map((g) => g.game_date), ...report.gpsGames.map((g) => g.game_date)])].sort();
   const val = (d: string, k: string, dec: number) => {
