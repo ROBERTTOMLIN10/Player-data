@@ -886,8 +886,13 @@ export interface PlayerReport {
     best: number | null;
     bestGame: { date: string; opponent: string | null } | null;
     teamAvg: number | null;
+    teamBest: number | null;
     rank: number | null;
     of: number;
+    posAvg: number | null;
+    posRank: number | null;
+    posOf: number;
+    per90: { value: number | null; teamValue: number | null; rank: number | null; of: number } | null;
   }[];
   gpsGames: {
     game_date: string;
@@ -899,7 +904,8 @@ export interface PlayerReport {
     minutes: number | null;
     started: number | null;
     glitch: boolean;
-    metrics: Record<string, { value: number | null; teamAvg: number | null }>;
+    metrics: Record<string, { value: number | null; teamAvg: number | null; rank: number | null; of: number; squad: number[] }>;
   }[];
   trackedGames: number;
+  position: { group: string; label: string } | null;
 }

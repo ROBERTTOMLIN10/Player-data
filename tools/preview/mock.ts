@@ -152,6 +152,7 @@ function playerReport(id: number, q: URLSearchParams) {
     sessions: d.sessions,
     gameStats: d.gameStats ?? [],
     teamSessions,
+    positions: Object.fromEntries((data["/api/players"] ?? []).map((p: any) => [p.id, p.position ?? null])),
     from: iso(q.get("from")) ?? seasonStart(TODAY),
     to: iso(q.get("to")) ?? TODAY,
     generated: TODAY,

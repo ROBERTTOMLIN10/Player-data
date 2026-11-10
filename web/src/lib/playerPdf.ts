@@ -4,15 +4,22 @@ import type { PlayerReport } from "../types";
 
 /**
  * The player's season report as a PDF, styled like the app (dark pages, Owl red,
- * gold and teal highlights), to send to coaches and agents:
- *  1. Cover: photo, profile, match-stat tiles, physical profile with team ranks.
- *  2. Season trends (his line vs the team average) and the full game-by-game table.
- *  3. Two games a page: opponent, result, minutes, and bars for him vs the team.
+ * gold and teal, the site's Space Grotesk and Inter fonts), to send to coaches
+ * and agents:
+ *  1. Cover: photo and profile, match-stat tiles, a radar of the physical profile
+ *     against the team, and highlights in plain words.
+ *  2. Physical profile (per game, per 90, against the team and the position) and
+ *     season trend charts.
+ *  3. Match involvement charts and the full game-by-game table.
+ *  4. A page per game: the player against the rest of the squad, and where the
+ *     player ranked in the squad that game (teammates anonymous).
  * Built in the browser; photos and logos come through the server when the
  * browser can't read them directly.
  */
 
 type RGB = [number, number, number];
+type Metric = PlayerReport["physical"][number];
+type GpsGame = PlayerReport["gpsGames"][number];
 const INK: RGB = [11, 12, 15];
 const SURFACE: RGB = [21, 23, 28];
 const RAISED: RGB = [28, 31, 38];
@@ -48,6 +55,7 @@ function diffPct(v: number | null, team: number | null): number | null {
 const pctText = (p: number | null) => (p == null ? "" : p === 0 ? "even" : `${p > 0 ? "+" : ""}${p}%`);
 const pctColor = (p: number | null): RGB => (p == null || p === 0 ? DIM : p > 0 ? TEAL : RED_LIGHT);
 const ordinal = (n: number) => `${n}${["th", "st", "nd", "rd"][n % 100 > 10 && n % 100 < 14 ? 0 : n % 10] ?? "th"}`;
+const rankColor = (r: number | null): RGB => (r == null ? DIM : r <= 3 ? GOLD : r <= 5 ? TEAL : TEXT);
 const initials = (name: string) =>
   name
     .replace(/^(No\.\s*\d+|RV)\s+/i, "")
@@ -124,6 +132,47 @@ export function reportFilename(report: PlayerReport): string {
   return `${name}_FAU_Mens_Soccer_${report.range.to.slice(0, 4)}.pdf`;
 }
 
+/** Highlights in plain words, strongest first. */
+function highlights(report: PlayerReport, first: string): { text: string; color: RGB }[] {
+  const out: { text: string; color: RGB }[] = [];
+  const t = report.match.totals;
+  const pos = report.position?.label;
+  if (t.goals || t.assists) {
+    out.push({ text: `${t.goals} goal${t.goals === 1 ? "" : "s"} and ${t.assists} assist${t.assists === 1 ? "" : "s"} in ${t.played} games`, color: RED_LIGHT });
+  }
+  out.push({ text: `${t.played} games, ${t.minutes.toLocaleString("en-US")} minutes, ${t.started} start${t.started === 1 ? "" : "s"}`, color: DIM });
+  const named = new Set<string>();
+  const byRank = [...report.physical].filter((m) => m.rank && m.rank <= 3).sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99));
+  for (const m of byRank.slice(0, 3)) {
+    out.push({ text: `${ordinal(m.rank!)} on the team in ${m.label.toLowerCase()} (${short(m.avg, m.unit, m.decimals)} a game)`, color: GOLD });
+    named.add(m.key);
+  }
+  for (const m of report.physical.filter((x) => x.per90?.rank && x.per90.rank <= 3 && !named.has(x.key)).slice(0, 2)) {
+    out.push({ text: `${ordinal(m.per90!.rank!)} on the team per 90 minutes in ${m.label.toLowerCase()}`, color: GOLD });
+    named.add(m.key);
+  }
+  if (pos) {
+    for (const m of report.physical.filter((x) => x.posRank === 1 && !named.has(x.key)).slice(0, 2)) {
+      out.push({ text: `Best among the ${pos} in ${m.label.toLowerCase()}`, color: TEAL });
+      named.add(m.key);
+    }
+  }
+  const speed = report.physical.find((m) => m.key === "top_speed_mph");
+  if (speed?.best != null && speed.bestGame) {
+    out.push({ text: `Top speed ${withUnit(speed.best, "mph", 1)}, ${fmtDate(speed.bestGame.date)} vs ${cleanOpponent(speed.bestGame.opponent)}`, color: TEXT });
+  }
+  const big = report.gpsGames.filter((g) => !g.glitch).sort((a, b) => (b.metrics.load?.value ?? 0) - (a.metrics.load?.value ?? 0))[0];
+  if (big) {
+    out.push({
+      text: `Biggest game: ${short(big.metrics.distance_mi?.value, "mi", 2)} and ${fixed(big.metrics.sprints_count?.value, 0)} sprints vs ${cleanOpponent(big.opponent)}, ${fmtDate(big.game_date)}`,
+      color: TEXT,
+    });
+  }
+  const above = report.physical.filter((m) => m.avg != null && m.teamAvg != null && m.avg > m.teamAvg).length;
+  out.push({ text: `${first} is above the team average in ${above} of ${report.physical.length} physical numbers`, color: above >= report.physical.length / 2 ? TEAL : DIM });
+  return out.slice(0, 8);
+}
+
 // ---- The document ---------------------------------------------------------------------
 
 export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?: string } = {}): Promise<Blob> {
@@ -133,8 +182,24 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
   const M = 36;
   const p = report.profile;
   const name = report.player.canonical_name;
+  const first = name.split(" ")[0];
   const jersey = report.player.jersey_number;
   const lastY = () => (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
+
+  // The site's fonts (Inter for text, Space Grotesk for headings), when they load.
+  let BODY = "helvetica";
+  let DISPLAY = "helvetica";
+  try {
+    const { PDF_FONTS } = await import("./pdfFonts");
+    for (const [file, dataUrl] of Object.entries(PDF_FONTS)) doc.addFileToVFS(file, dataUrl.slice(dataUrl.indexOf(",") + 1));
+    doc.addFont("Inter-Regular.ttf", "Inter", "normal");
+    doc.addFont("Inter-Bold.ttf", "Inter", "bold");
+    doc.addFont("SpaceGrotesk-Bold.ttf", "Grotesk", "bold");
+    BODY = "Inter";
+    DISPLAY = "Grotesk";
+  } catch {
+    // standard font
+  }
 
   // Images first (photo + every opponent logo, each fetched once).
   const photo = await loadImage(p?.photo_url, opts.imageProxy);
@@ -151,7 +216,11 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
   const stroke = (c: RGB) => doc.setDrawColor(c[0], c[1], c[2]);
   const color = (c: RGB) => doc.setTextColor(c[0], c[1], c[2]);
   const font = (size: number, style: "normal" | "bold" = "normal") => {
-    doc.setFont("helvetica", style);
+    doc.setFont(BODY, style);
+    doc.setFontSize(size);
+  };
+  const display = (size: number) => {
+    doc.setFont(DISPLAY, "bold");
     doc.setFontSize(size);
   };
   const paintBackground = () => {
@@ -169,7 +238,7 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
     fill(RED);
     doc.roundedRect(x, y, s, s, s * 0.2, s * 0.2, "F");
     color([255, 255, 255]);
-    font(s * 0.36, "bold");
+    display(s * 0.36);
     doc.text("FAU", x + s / 2, y + s * 0.56, { align: "center" });
     fill([255, 160, 175]);
     doc.rect(x + s * 0.28, y + s * 0.68, s * 0.44, s * 0.04, "F");
@@ -190,14 +259,14 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
     fill(RAISED);
     doc.roundedRect(x, y, s, s, s * 0.2, s * 0.2, "F");
     color(DIM);
-    font(s * 0.36, "bold");
+    display(s * 0.36);
     doc.text(initials(cleanOpponent(opponent)), x + s / 2, y + s * 0.62, { align: "center" });
   };
   const heading = (text: string, y: number, sub?: string) => {
     fill(RED);
     doc.rect(M, y - 10, 3, 13, "F");
     color(TEXT);
-    font(12, "bold");
+    display(12.5);
     doc.text(text.toUpperCase(), M + 9, y);
     if (sub) {
       color(DIM);
@@ -206,6 +275,11 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
     }
     return y + (sub ? 24 : 12);
   };
+  const cardTitle = (text: string, x: number, y: number) => {
+    color(TEXT);
+    display(9.5);
+    doc.text(text, x, y);
+  };
   /** Thin header on inner pages: badge, report title, player. */
   const pageHeader = () => {
     fauBadge(M, 18, 22);
@@ -213,7 +287,7 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
     font(7.5, "bold");
     doc.text("FAU MEN'S SOCCER  ·  PLAYER REPORT", M + 30, 32);
     color(TEXT);
-    font(10, "bold");
+    display(11);
     doc.text(`${jersey ? `#${jersey}  ` : ""}${name}`, W - M, 32, { align: "right" });
     fill(RED);
     doc.rect(M, 46, W - 2 * M, 1.2, "F");
@@ -224,10 +298,10 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
     pageHeader();
     return 72;
   };
-  const darkTable = {
+  const darkTable = () => ({
     theme: "plain" as const,
-    styles: { fontSize: 8, cellPadding: 4, textColor: TEXT, lineColor: BORDER, lineWidth: 0, fillColor: SURFACE, valign: "middle" as const },
-    headStyles: { fillColor: RAISED, textColor: DIM, fontStyle: "bold" as const, fontSize: 7 },
+    styles: { font: BODY, fontSize: 8, cellPadding: 4, textColor: TEXT, lineColor: BORDER, lineWidth: 0, fillColor: SURFACE, valign: "middle" as const },
+    headStyles: { font: BODY, fillColor: RAISED, textColor: DIM, fontStyle: "bold" as const, fontSize: 7 },
     alternateRowStyles: { fillColor: [17, 19, 23] as RGB },
     willDrawPage: (d: { pageNumber: number }) => {
       // autoTable's own new pages: paint them dark and add the header before the rows draw.
@@ -237,11 +311,29 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
       }
     },
     margin: { left: M, right: M, top: 64, bottom: 44 },
+  });
+  const legend = (x: number, y: number, items: [string, RGB, boolean?][]) => {
+    let lx = x;
+    font(7);
+    for (const [label, c, dashed] of items) {
+      if (dashed) {
+        stroke(c);
+        doc.setLineWidth(1);
+        doc.setLineDashPattern([2, 2], 0);
+        doc.line(lx, y - 2.5, lx + 12, y - 2.5);
+        doc.setLineDashPattern([], 0);
+      } else {
+        fill(c);
+        doc.rect(lx, y - 5, 10, 5, "F");
+      }
+      color(DIM);
+      doc.text(label, lx + 15, y);
+      lx += 15 + doc.getTextWidth(label) + 14;
+    }
   };
 
   // ==== Page 1: cover ===================================================================
   paintBackground();
-  // Hero band
   fill(SURFACE);
   doc.rect(0, 0, W, 214, "F");
   fill(RED);
@@ -254,7 +346,6 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
   font(8);
   doc.text(`PLAYER REPORT  ·  ${fmtDate(report.range.from, { month: "short", year: "numeric" })} – ${fmtDate(report.range.to, { month: "short", year: "numeric" })}`, M + 44, 51);
 
-  // Photo, right, in a card with a red ring
   const photoBox = { x: W - M - 132, y: 24, w: 132, h: 166 };
   card(photoBox.x, photoBox.y, photoBox.w, photoBox.h, RAISED);
   if (photo) {
@@ -267,23 +358,22 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
     }
   } else {
     color(DIM);
-    font(30, "bold");
+    display(30);
     doc.text(initials(name), photoBox.x + photoBox.w / 2, photoBox.y + photoBox.h / 2 + 10, { align: "center" });
   }
   stroke(RED);
   doc.setLineWidth(1.5);
   doc.roundedRect(photoBox.x, photoBox.y, photoBox.w, photoBox.h, 8, 8, "S");
 
-  // Name, number, facts
   let x = M;
   if (jersey) {
     color(RED_LIGHT);
-    font(34, "bold");
+    display(36);
     doc.text(`#${jersey}`, M, 104);
     x = M + doc.getTextWidth(`#${jersey}`) + 10;
   }
   color(TEXT);
-  font(name.length > 18 ? 24 : 30, "bold");
+  display(name.length > 18 ? 25 : 31);
   doc.text(name, x, 104, { maxWidth: photoBox.x - x - 12 });
   const position = p?.position_long || p?.position_short || "";
   const year = p?.academic_year_long || p?.academic_year || "";
@@ -304,7 +394,7 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
     const fx = M + (i % 2) * 175;
     const fy = 146 + Math.floor(i / 2) * 28;
     color(DIM);
-    font(7, "bold");
+    font(6.5, "bold");
     doc.text(k.toUpperCase(), fx, fy);
     color(TEXT);
     font(9.5);
@@ -330,72 +420,206 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
   const tileW = (W - 2 * M - 4 * 8) / 5;
   tiles.forEach(([label, value, c], i) => {
     const tx = M + (i % 5) * (tileW + 8);
-    const ty = y + Math.floor(i / 5) * 58;
-    card(tx, ty, tileW, 50);
+    const ty = y + Math.floor(i / 5) * 56;
+    card(tx, ty, tileW, 48);
     color(DIM);
     font(6.5, "bold");
     doc.text(label.toUpperCase(), tx + 10, ty + 15);
     color(c);
-    font(19, "bold");
-    doc.text(value, tx + 10, ty + 39);
+    display(19);
+    doc.text(value, tx + 10, ty + 38);
   });
-  y += 2 * 58 + 20;
+  y += 2 * 56 + 18;
 
-  // Physical profile
-  y = heading("Physical profile (GPS)", y, "Average per game and season best, against the team. Rank among teammates with enough tracked games.");
+  // Radar (left) and highlights (right)
+  y = heading("Physical profile at a glance", y);
+  const boxH = H - 44 - y - 4;
+  const radarW = 292;
+  card(M, y, radarW, boxH);
+  {
+    const cx = M + radarW / 2;
+    const cy = y + boxH / 2 - 2;
+    const R = Math.min(radarW / 2 - 52, boxH / 2 - 46);
+    const ms = report.physical;
+    const angle = (i: number) => -Math.PI / 2 + (i / ms.length) * Math.PI * 2;
+    const pt = (i: number, r: number): [number, number] => [cx + Math.cos(angle(i)) * r, cy + Math.sin(angle(i)) * r];
+    stroke(BORDER);
+    doc.setLineWidth(0.5);
+    for (const ring of [0.25, 0.5, 0.75, 1]) {
+      const pts = ms.map((_, i) => pt(i, R * ring));
+      for (let i = 0; i < pts.length; i++) doc.line(pts[i][0], pts[i][1], pts[(i + 1) % pts.length][0], pts[(i + 1) % pts.length][1]);
+    }
+    ms.forEach((_, i) => {
+      const [ex, ey] = pt(i, R);
+      doc.line(cx, cy, ex, ey);
+    });
+    const shape = (key: "avg" | "teamAvg", c: RGB, width: number, filled: boolean) => {
+      const pts = ms.map((m, i) => pt(i, R * Math.max(0, Math.min(1, (m[key] ?? 0) / (m.teamBest || 1)))));
+      if (filled) {
+        // a faint fill: draw the polygon with lines and a translucent fill
+        const gs = (doc as unknown as { GState: new (o: object) => unknown }).GState;
+        try {
+          (doc as unknown as { setGState: (g: unknown) => void }).setGState(new gs({ opacity: 0.25 }));
+          fill(c);
+          doc.lines(
+            pts.slice(1).map((p2, i) => [p2[0] - pts[i][0], p2[1] - pts[i][1]]),
+            pts[0][0],
+            pts[0][1],
+            [1, 1],
+            "F",
+            true,
+          );
+          (doc as unknown as { setGState: (g: unknown) => void }).setGState(new gs({ opacity: 1 }));
+        } catch {
+          // no transparency: outline only
+        }
+      }
+      stroke(c);
+      doc.setLineWidth(width);
+      for (let i = 0; i < pts.length; i++) doc.line(pts[i][0], pts[i][1], pts[(i + 1) % pts.length][0], pts[(i + 1) % pts.length][1]);
+    };
+    shape("teamAvg", TEAM_BAR, 1, false);
+    shape("avg", RED_LIGHT, 1.6, true);
+    font(6.5, "bold");
+    ms.forEach((m, i) => {
+      const [lx, ly] = pt(i, R + 12);
+      const a = angle(i);
+      const align = Math.abs(Math.cos(a)) < 0.2 ? "center" : Math.cos(a) > 0 ? "left" : "right";
+      color(rankColor(m.rank));
+      doc.text(m.label.replace("Sprint avg speed", "Sprint speed").replace("Explosive efforts", "Explosive"), lx, ly + 2, { align });
+    });
+    cardTitle(`${first} vs the team`, M + 12, y + 18);
+    legend(M + 12, y + boxH - 12, [
+      [first, RED_LIGHT],
+      ["Team average", TEAM_BAR],
+    ]);
+    color(DIM);
+    font(6);
+    doc.text("Edge = best average on the team", M + radarW - 12, y + boxH - 12, { align: "right" });
+  }
+  const hx = M + radarW + 10;
+  const hw = W - M - hx;
+  card(hx, y, hw, boxH);
+  cardTitle("Highlights", hx + 12, y + 18);
+  let hy = y + 38;
+  for (const h of highlights(report, first)) {
+    fill(h.color);
+    doc.circle(hx + 15, hy - 3, 2.2, "F");
+    color(TEXT);
+    font(8.5);
+    const lines = doc.splitTextToSize(h.text, hw - 36) as string[];
+    doc.text(lines, hx + 24, hy);
+    hy += lines.length * 11 + 7;
+    if (hy > y + boxH - 10) break;
+  }
+  // Per 90 minutes, anchored to the bottom of the highlights card when there's room.
+  const p90 = report.physical.filter((m) => m.per90?.value != null);
+  const p90H = 30 + p90.length * 15;
+  if (p90.length && hy + 10 < y + boxH - p90H) {
+    let py = y + boxH - p90H;
+    stroke(BORDER);
+    doc.setLineWidth(0.5);
+    doc.line(hx + 12, py - 8, hx + hw - 12, py - 8);
+    cardTitle("Per 90 minutes", hx + 12, py + 8);
+    color(DIM);
+    font(6.5, "bold");
+    doc.text(first.toUpperCase(), hx + hw - 104, py + 8, { align: "right" });
+    doc.text("TEAM", hx + hw - 56, py + 8, { align: "right" });
+    doc.text("RANK", hx + hw - 12, py + 8, { align: "right" });
+    py += 24;
+    for (const m of p90) {
+      color(TEXT);
+      font(8);
+      doc.text(m.label, hx + 12, py);
+      font(8, "bold");
+      color(rankColor(m.per90!.rank));
+      doc.text(short(m.per90!.value, m.unit, m.decimals), hx + hw - 104, py, { align: "right" });
+      font(8);
+      color(DIM);
+      doc.text(short(m.per90!.teamValue, m.unit, m.decimals), hx + hw - 56, py, { align: "right" });
+      color(rankColor(m.per90!.rank));
+      doc.text(m.per90!.rank ? `${ordinal(m.per90!.rank)}/${m.per90!.of}` : "–", hx + hw - 12, py, { align: "right" });
+      py += 15;
+    }
+  }
+
+  // ==== Page 2: physical profile + season trends ==========================================
+  y = newPage();
+  const posLabel = report.position ? report.position.label[0].toUpperCase() + report.position.label.slice(1) : null;
+  y = heading(
+    "Physical profile (GPS)",
+    y,
+    `Per game, per 90 minutes, and against the team${posLabel ? ` and the ${report.position!.label}` : ""}. Ranks among teammates with enough tracked games.`,
+  );
   autoTable(doc, {
-    ...darkTable,
+    ...darkTable(),
     startY: y,
-    head: [["", "Avg per game", "Season best", "Team avg", "vs team", "Rank"]],
+    head: [["", "Avg per game", "Per 90", "Season best", "Team avg", ...(posLabel ? [`${posLabel} avg`] : []), "Team rank", ...(posLabel ? ["Pos. rank"] : [])]],
     body: report.physical.map((m) => [
       m.label,
       withUnit(m.avg, m.unit, m.decimals),
-      m.best == null ? "–" : `${short(m.best, m.unit, m.decimals)}${m.bestGame ? `  ·  ${fmtDate(m.bestGame.date)} ${cleanOpponent(m.bestGame.opponent)}` : ""}`,
-      short(m.teamAvg, m.unit, m.decimals),
-      pctText(diffPct(m.avg, m.teamAvg)),
+      m.per90?.value != null ? short(m.per90.value, m.unit, m.decimals) + (m.unit === "mi" ? `\n${fixed(m.per90.value * KM_PER_MI, m.decimals)} km` : "") : "",
+      m.best == null ? "–" : `${short(m.best, m.unit, m.decimals)}${m.unit === "mi" ? ` (${fixed(m.best * KM_PER_MI, m.decimals)} km)` : ""}\n${m.bestGame ? `${fmtDate(m.bestGame.date)} ${cleanOpponent(m.bestGame.opponent)}` : ""}`,
+      `${short(m.teamAvg, m.unit, m.decimals)}  ${pctText(diffPct(m.avg, m.teamAvg))}`,
+      ...(posLabel ? [`${short(m.posAvg, m.unit, m.decimals)}  ${pctText(diffPct(m.avg, m.posAvg))}`] : []),
       m.rank ? `${ordinal(m.rank)} / ${m.of}` : "–",
+      ...(posLabel ? [m.posRank ? `${ordinal(m.posRank)} / ${m.posOf}` : "–"] : []),
     ]),
-    columnStyles: { 0: { fontStyle: "bold", cellWidth: 92 }, 4: { halign: "right", cellWidth: 48 }, 5: { halign: "center", cellWidth: 60, fontStyle: "bold" } },
+    styles: { ...darkTable().styles, fontSize: 7.5, cellPadding: 3.5 },
+    columnStyles: { 0: { fontStyle: "bold", cellWidth: 82 }, 2: { cellWidth: 52 } },
     didParseCell: (c: CellHookData) => {
       if (c.section !== "body") return;
       const m = report.physical[c.row.index];
-      if (c.column.index === 4) c.cell.styles.textColor = pctColor(diffPct(m.avg, m.teamAvg));
-      if (c.column.index === 5 && m.rank) c.cell.styles.textColor = m.rank <= 3 ? GOLD : m.rank <= 5 ? TEAL : TEXT;
+      const rankCol = posLabel ? 6 : 5;
+      if (c.column.index === rankCol) {
+        c.cell.styles.textColor = rankColor(m.rank);
+        c.cell.styles.fontStyle = "bold";
+        c.cell.styles.halign = "center";
+      }
+      if (posLabel && c.column.index === 7) {
+        c.cell.styles.textColor = rankColor(m.posRank);
+        c.cell.styles.fontStyle = "bold";
+        c.cell.styles.halign = "center";
+      }
+      if (c.column.index === 2 && m.per90?.rank) c.cell.styles.textColor = rankColor(m.per90.rank);
     },
   });
+  y = lastY() + 9;
+  color(DIM);
+  font(6.5);
+  doc.text(
+    "Per 90: games where the player played 45+ minutes, scaled to 90. GPS totals include warm-ups, so per-90 figures run a little high for everyone; compare them with the team's. Team and position averages count only games where players got minutes.",
+    M,
+    y,
+    { maxWidth: W - 2 * M },
+  );
+  y += 22;
 
-  // ==== Page 2: season trends + game by game ================================================
-  y = newPage();
-  y = heading("Season trends", y, "His number each game (red) against the team average that game (grey, dashed).");
+  y = heading("Season trends", y + 4, `${first}'s number each game (red) against the rest of the squad's average that game (grey, dashed).`);
   const trend = report.gpsGames.filter((g) => !g.glitch);
-  const charts = ["distance_mi", "top_speed_mph", "sprints_count", "load"]
-    .map((k) => report.physical.find((m) => m.key === k))
-    .filter((m): m is PlayerReport["physical"][number] => !!m);
+  const charts = ["distance_mi", "top_speed_mph", "sprints_count", "load"].map((k) => report.physical.find((m) => m.key === k)).filter((m): m is Metric => !!m);
   const cw = (W - 2 * M - 12) / 2;
-  const ch = 132;
+  const ch = Math.min(130, (H - 44 - y - 12) / 2);
   charts.forEach((m, i) => {
     const cx = M + (i % 2) * (cw + 12);
     const cy = y + Math.floor(i / 2) * (ch + 12);
     card(cx, cy, cw, ch);
-    color(TEXT);
-    font(9, "bold");
-    doc.text(m.label, cx + 12, cy + 18);
+    cardTitle(m.label, cx + 12, cy + 18);
     color(DIM);
     font(7);
     doc.text(`avg ${short(m.avg, m.unit, m.decimals)}  ·  team ${short(m.teamAvg, m.unit, m.decimals)}`, cx + cw - 12, cy + 18, { align: "right" });
     const px = cx + 30;
-    const py = cy + 30;
+    const py = cy + 28;
     const pw = cw - 44;
-    const ph = ch - 56;
+    const ph = ch - 52;
     const vals = trend.flatMap((g) => [g.metrics[m.key]?.value, g.metrics[m.key]?.teamAvg]).filter((v): v is number => v != null);
     if (vals.length < 2) {
       color(DIM);
       doc.text("Not enough games yet.", cx + 12, cy + 60);
       return;
     }
-    let lo = Math.min(...vals);
+    const lo = m.key === "top_speed_mph" ? Math.floor(Math.min(...vals) - 1) : 0;
     let hi = Math.max(...vals);
-    lo = m.key === "top_speed_mph" ? Math.floor(lo - 1) : 0;
     hi = hi + (hi - lo) * 0.1 || 1;
     const sx = (gi: number) => px + (trend.length === 1 ? pw / 2 : (gi / (trend.length - 1)) * pw);
     const sy = (v: number) => py + ph - ((v - lo) / (hi - lo)) * ph;
@@ -419,9 +643,9 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
           prev = null;
           return;
         }
-        const pt: [number, number] = [sx(gi), sy(v)];
-        if (prev) doc.line(prev[0], prev[1], pt[0], pt[1]);
-        prev = pt;
+        const ptv: [number, number] = [sx(gi), sy(v)];
+        if (prev) doc.line(prev[0], prev[1], ptv[0], ptv[1]);
+        prev = ptv;
       });
       doc.setLineDashPattern([], 0);
     };
@@ -437,12 +661,95 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
     doc.text(fmtDate(trend[0].game_date), px, py + ph + 10);
     doc.text(fmtDate(trend[trend.length - 1].game_date), px + pw, py + ph + 10, { align: "right" });
   });
-  y += 2 * (ch + 12) + 18;
 
-  // Game by game: everything together
+  // ==== Page 3: match involvement + game by game ===========================================
+  y = newPage();
+  y = heading("Match involvement", y, "Minutes each game (red = started), with goals and assists above, and shots.");
+  const mg = report.match.games;
+  {
+    const ch2 = 150;
+    card(M, y, W - 2 * M, ch2);
+    const px = M + 34;
+    const py = y + 30;
+    const pw = W - 2 * M - 48;
+    const ph = ch2 - 62;
+    const n = Math.max(1, mg.length);
+    const slot = pw / n;
+    const bw = Math.min(16, slot * 0.6);
+    const maxMin = Math.max(90, ...mg.map((g) => g.minutes ?? 0));
+    stroke(BORDER);
+    doc.setLineWidth(0.4);
+    for (const v of [0, 45, 90]) {
+      const yy = py + ph - (v / maxMin) * ph;
+      doc.line(px, yy, px + pw, yy);
+      color(DIM);
+      font(6);
+      doc.text(`${v}'`, px - 4, yy + 2, { align: "right" });
+    }
+    mg.forEach((g, i) => {
+      const bx = px + i * slot + (slot - bw) / 2;
+      const h = ((g.minutes ?? 0) / maxMin) * ph;
+      fill(g.started ? RED_LIGHT : TEAM_BAR);
+      doc.rect(bx, py + ph - h, bw, h, "F");
+      let my = py + ph - h - 5;
+      for (let k = 0; k < g.goals; k++, my -= 7) {
+        fill(GOLD);
+        doc.circle(bx + bw / 2, my, 2.6, "F");
+      }
+      for (let k = 0; k < g.assists; k++, my -= 7) {
+        fill(TEAL);
+        doc.circle(bx + bw / 2, my, 2.6, "F");
+      }
+      color(DIM);
+      font(5.5);
+      doc.text(initials(cleanOpponent(g.opponent)), bx + bw / 2, py + ph + 9, { align: "center" });
+    });
+    cardTitle("Minutes, goals and assists", M + 12, y + 18);
+    legend(M + 210, y + 18, [
+      ["Started", RED_LIGHT],
+      ["Off the bench", TEAM_BAR],
+      ["Goal", GOLD],
+      ["Assist", TEAL],
+    ]);
+    color(DIM);
+    font(6);
+    doc.text(`${fmtDate(mg[0]?.game_date ?? report.range.from)} – ${fmtDate(mg[mg.length - 1]?.game_date ?? report.range.to)}`, M + W - 2 * M - 12, y + ch2 - 10, { align: "right" });
+    y += ch2 + 10;
+
+    const ch3 = 110;
+    card(M, y, W - 2 * M, ch3);
+    cardTitle("Shots and shots on goal", M + 12, y + 18);
+    legend(M + 210, y + 18, [
+      ["Shots", TEAM_BAR],
+      ["On goal", RED_LIGHT],
+    ]);
+    const qy = y + 28;
+    const qh = ch3 - 46;
+    const maxShots = Math.max(2, ...mg.map((g) => g.shots));
+    for (const v of [0, Math.ceil(maxShots / 2), maxShots]) {
+      const yy = qy + qh - (v / maxShots) * qh;
+      stroke(BORDER);
+      doc.line(px, yy, px + pw, yy);
+      color(DIM);
+      font(6);
+      doc.text(String(v), px - 4, yy + 2, { align: "right" });
+    }
+    mg.forEach((g, i) => {
+      const bx = px + i * slot + (slot - bw) / 2;
+      fill(TEAM_BAR);
+      doc.rect(bx, qy + qh - (g.shots / maxShots) * qh, bw, (g.shots / maxShots) * qh, "F");
+      fill(RED_LIGHT);
+      doc.rect(bx + bw * 0.2, qy + qh - (g.shots_on_goal / maxShots) * qh, bw * 0.6, (g.shots_on_goal / maxShots) * qh, "F");
+      color(DIM);
+      font(5.5);
+      doc.text(initials(cleanOpponent(g.opponent)), bx + bw / 2, qy + qh + 9, { align: "center" });
+    });
+    y += ch3 + 20;
+  }
+
   y = heading("Game by game", y, "Match stats and GPS for every game in one place.");
   const gps = new Map(report.gpsGames.map((g) => [g.game_date, g]));
-  const dates = [...new Set([...report.match.games.map((g) => g.game_date), ...report.gpsGames.map((g) => g.game_date)])].sort();
+  const dates = [...new Set([...mg.map((g) => g.game_date), ...report.gpsGames.map((g) => g.game_date)])].sort();
   const val = (d: string, k: string, dec: number) => {
     const s = gps.get(d);
     if (!s) return "";
@@ -451,11 +758,11 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
   };
   const phys = (k: string) => report.physical.find((m) => m.key === k);
   autoTable(doc, {
-    ...darkTable,
+    ...darkTable(),
     startY: y,
     head: [["Date", "", "Opponent", "Res", "Min", "G", "A", "Dist mi", "Top mph", "Sprints", "Spr yd", "Accel", "Decel", "Expl", "Load"]],
     body: dates.map((d) => {
-      const g = report.match.games.find((x) => x.game_date === d);
+      const g = mg.find((x) => x.game_date === d);
       const s = gps.get(d);
       return [
         fmtDate(d),
@@ -495,9 +802,9 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
       ],
     ],
     showFoot: "lastPage",
-    styles: { ...darkTable.styles, fontSize: 7, cellPadding: 3, halign: "center" },
-    headStyles: { ...darkTable.headStyles, fontSize: 6.5, halign: "center" },
-    footStyles: { fillColor: RAISED, textColor: GOLD, fontStyle: "bold", fontSize: 6.5, halign: "center" },
+    styles: { ...darkTable().styles, fontSize: 7, cellPadding: 3, halign: "center" },
+    headStyles: { ...darkTable().headStyles, fontSize: 6.5, halign: "center" },
+    footStyles: { font: BODY, fillColor: RAISED, textColor: GOLD, fontStyle: "bold", fontSize: 6.5, halign: "center" },
     columnStyles: { 0: { halign: "left", cellWidth: 34 }, 1: { cellWidth: 16 }, 2: { halign: "left", cellWidth: 82 }, 3: { halign: "left", cellWidth: 36 } },
     didParseCell: (c: CellHookData) => {
       if (c.section !== "body") return;
@@ -507,14 +814,14 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
         c.cell.styles.fontStyle = "bold";
       }
       if ((c.column.index === 5 || c.column.index === 6) && Number(c.cell.raw) > 0) {
-        c.cell.styles.textColor = RED_LIGHT;
+        c.cell.styles.textColor = c.column.index === 5 ? GOLD : TEAL;
         c.cell.styles.fontStyle = "bold";
       }
     },
     didDrawCell: (c: CellHookData) => {
       if (c.section === "body" && c.column.index === 1) {
         const d = dates[c.row.index];
-        const g = report.match.games.find((x) => x.game_date === d);
+        const g = mg.find((x) => x.game_date === d);
         const s = gps.get(d);
         teamLogo(logoByDate.get(d), g?.opponent ?? s?.opponent ?? null, c.cell.x + 2, c.cell.y + (c.cell.height - 11) / 2, 11);
       }
@@ -527,85 +834,82 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
     doc.text("* tracker glitch that game (an impossible top speed): left out of averages.", M, y);
   }
 
-  // ==== Game pages: two games a page ========================================================
-  const perPage = 2;
-  const top0 = 72;
-  const cardH = (H - top0 - 44 - 14) / perPage;
-  report.gpsGames.forEach((g, i) => {
-    if (i % perPage === 0) newPage();
-    const cy = top0 + (i % perPage) * (cardH + 14);
-    card(M, cy, W - 2 * M, cardH);
-    // Card header: logo, opponent, date, result, minutes, goals/assists
-    teamLogo(g.opponent_logo_url ?? logoByDate.get(g.game_date), g.opponent, M + 14, cy + 14, 34);
+  // ==== A page per game ===================================================================
+  const SQUAD_CHARTS = ["distance_mi", "top_speed_mph", "sprints_count", "load"];
+  report.gpsGames.forEach((g: GpsGame) => {
+    newPage();
+    const top = 72;
+    // Header card: logo, opponent, date, result, minutes, goals/assists
+    const headH = 66;
+    card(M, top, W - 2 * M, headH);
+    teamLogo(g.opponent_logo_url ?? logoByDate.get(g.game_date), g.opponent, M + 14, top + 14, 38);
     color(TEXT);
-    font(15, "bold");
-    doc.text(`vs ${cleanOpponent(g.opponent)}`, M + 58, cy + 30);
+    display(17);
+    doc.text(`vs ${cleanOpponent(g.opponent)}`, M + 62, top + 32);
     color(DIM);
     font(8);
     const sub = [
       fmtDate(g.game_date, { weekday: "short", month: "short", day: "numeric", year: "numeric" }),
-      g.minutes != null ? `${Math.round(g.minutes)} min${g.started ? " · started" : ""}` : null,
+      g.minutes != null ? `${Math.round(g.minutes)} min${g.started ? " · started" : " · off the bench"}` : null,
       g.goals ? `${g.goals} goal${g.goals > 1 ? "s" : ""}` : null,
       g.assists ? `${g.assists} assist${g.assists > 1 ? "s" : ""}` : null,
     ]
       .filter(Boolean)
       .join("   ·   ");
-    doc.text(sub, M + 58, cy + 44);
+    doc.text(sub, M + 62, top + 48);
     if (g.result) {
       const rc = g.result.startsWith("W") ? TEAL : g.result.startsWith("L") ? RED_LIGHT : GOLD;
-      font(10, "bold");
-      const rw = doc.getTextWidth(g.result) + 18;
+      display(11);
+      const rw = doc.getTextWidth(g.result) + 20;
       fill(RAISED);
       stroke(rc);
       doc.setLineWidth(1);
-      doc.roundedRect(W - M - 14 - rw, cy + 16, rw, 20, 10, 10, "FD");
+      doc.roundedRect(W - M - 14 - rw, top + 20, rw, 22, 11, 11, "FD");
       color(rc);
-      doc.text(g.result, W - M - 14 - rw / 2, cy + 30, { align: "center" });
+      doc.text(g.result, W - M - 14 - rw / 2, top + 35, { align: "center" });
     }
     if (g.glitch) {
       color(GOLD);
       font(7.5, "bold");
-      doc.text("Tracker glitch this game (impossible top speed): not counted in averages.", M + 58, cy + 56);
+      doc.text("Tracker glitch this game (impossible top speed): not counted in averages.", M + 62, top + 60);
     }
-    // Legend
-    const ly = cy + 68;
-    fill(RED_LIGHT);
-    doc.rect(M + 14, ly - 5, 10, 5, "F");
-    color(DIM);
-    font(7);
-    doc.text(name.split(" ")[0], M + 28, ly);
-    const lx = M + 28 + doc.getTextWidth(name.split(" ")[0]) + 14;
-    fill(TEAM_BAR);
-    doc.rect(lx, ly - 5, 10, 5, "F");
-    doc.text("Team average this game", lx + 14, ly);
-    // Bars: one row per metric, him vs the team
+
+    // Him vs the rest of the squad's average, every metric
+    const by = top + headH + 10;
+    const bh = 262;
+    card(M, by, W - 2 * M, bh);
+    cardTitle(`${first} vs the rest of the squad`, M + 14, by + 18);
+    legend(M + 210, by + 18, [
+      [first, RED_LIGHT],
+      ["Squad average this game", TEAM_BAR],
+    ]);
     const rows = report.physical;
-    const top = ly + 8;
-    const rowH = (cardH - (top - cy) - 12) / rows.length;
+    const rTop = by + 28;
+    const rowH = (bh - 36) / rows.length;
     const labelW = 96;
     const barX = M + 14 + labelW;
-    const pctW = 44;
-    const valW = 74;
-    const barW = W - 2 * M - 28 - labelW - pctW - valW;
+    const tailW = 132;
+    const barW = W - 2 * M - 28 - labelW - tailW;
     rows.forEach((m, r) => {
-      const ry = top + r * rowH;
-      const v = g.metrics[m.key]?.value ?? null;
-      const tv = g.metrics[m.key]?.teamAvg ?? null;
+      const ry = rTop + r * rowH;
+      const gm = g.metrics[m.key];
+      const v = gm?.value ?? null;
+      const tv = gm?.teamAvg ?? null;
       const max = Math.max(v ?? 0, tv ?? 0) * 1.08 || 1;
       const mid = ry + rowH / 2;
       color(TEXT);
       font(7.5, "bold");
       doc.text(m.label, M + 14, mid + 2.5);
-      const bh = Math.max(3, Math.min(6, rowH / 2 - 2.5));
+      const bH = Math.max(3, Math.min(6, rowH / 2 - 2.5));
       fill(RAISED);
-      doc.rect(barX, mid - bh - 1, barW, bh * 2 + 2, "F");
+      doc.rect(barX, mid - bH - 1, barW, bH * 2 + 2, "F");
       if (v != null) {
         fill(RED_LIGHT);
-        doc.rect(barX, mid - bh - 0.5, Math.max(1, (v / max) * barW), bh, "F");
+        doc.rect(barX, mid - bH - 0.5, Math.max(1, (v / max) * barW), bH, "F");
       }
       if (tv != null) {
         fill(TEAM_BAR);
-        doc.rect(barX, mid + 0.5, Math.max(1, (tv / max) * barW), bh, "F");
+        doc.rect(barX, mid + 0.5, Math.max(1, (tv / max) * barW), bH, "F");
       }
       color(TEXT);
       font(7, "bold");
@@ -616,7 +920,65 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
       const pc = diffPct(v, tv);
       color(pctColor(pc));
       font(8, "bold");
-      doc.text(pctText(pc), W - M - 14, mid + 2.5, { align: "right" });
+      doc.text(pctText(pc), W - M - 58, mid + 2.5, { align: "right" });
+      if (gm?.rank) {
+        color(rankColor(gm.rank));
+        font(7.5, "bold");
+        doc.text(`${ordinal(gm.rank)}/${gm.of}`, W - M - 14, mid + 2.5, { align: "right" });
+      }
+    });
+
+    // Where he ranked in the squad: every player's number (anonymous), his in red
+    const sy0 = by + bh + 10;
+    const sh = (H - 44 - sy0 - 10) / 2;
+    const sw = (W - 2 * M - 10) / 2;
+    color(DIM);
+    font(6.5);
+    SQUAD_CHARTS.forEach((key, i) => {
+      const m = report.physical.find((x) => x.key === key);
+      const gm = g.metrics[key];
+      if (!m || !gm) return;
+      const cx = M + (i % 2) * (sw + 10);
+      const cy = sy0 + Math.floor(i / 2) * (sh + 10);
+      card(cx, cy, sw, sh);
+      cardTitle(m.label, cx + 12, cy + 16);
+      color(rankColor(gm.rank));
+      font(8, "bold");
+      doc.text(gm.rank ? `${ordinal(gm.rank)} of ${gm.of}` : "–", cx + sw - 12, cy + 16, { align: "right" });
+      const values = gm.squad;
+      if (!values.length) return;
+      const px = cx + 12;
+      const py = cy + 24;
+      const pw = sw - 24;
+      const ph = sh - 42;
+      const lo = key === "top_speed_mph" ? Math.max(0, Math.floor(Math.min(...values) - 2)) : 0;
+      const hi = Math.max(...values) * 1.05 || 1;
+      const slot = pw / values.length;
+      const bw2 = Math.min(18, slot * 0.72);
+      let marked = false;
+      values.forEach((v, j) => {
+        const isHim = !marked && gm.value != null && v === gm.value;
+        if (isHim) marked = true;
+        const h2 = ((v - lo) / (hi - lo)) * ph;
+        fill(isHim ? RED_LIGHT : TEAM_BAR);
+        doc.rect(px + j * slot + (slot - bw2) / 2, py + ph - h2, bw2, h2, "F");
+        if (isHim) {
+          color(TEXT);
+          font(6.5, "bold");
+          doc.text(short(v, "", m.decimals), px + j * slot + slot / 2, py + ph - h2 - 3, { align: "center" });
+        }
+      });
+      if (gm.teamAvg != null) {
+        const ay = py + ph - ((gm.teamAvg - lo) / (hi - lo)) * ph;
+        stroke(DIM);
+        doc.setLineWidth(0.7);
+        doc.setLineDashPattern([2, 2], 0);
+        doc.line(px, ay, px + pw, ay);
+        doc.setLineDashPattern([], 0);
+      }
+      color(DIM);
+      font(6);
+      doc.text(`Squad, most to least  ·  dashed = squad average ${short(gm.teamAvg, m.unit, m.decimals)}`, px, cy + sh - 7);
     });
   });
 
