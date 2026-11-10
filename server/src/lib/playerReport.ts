@@ -17,19 +17,20 @@ export interface ReportMetric {
   label: string;
   unit: string;
   decimals: number;
+  group: "volume" | "speed" | "intensity";
 }
 
-/** The physical numbers in the report, in order (higher is better for all of them). */
+/** The physical numbers in the report, in order: volume, then speed, then intensity (higher is better for all of them). */
 export const REPORT_METRICS: ReportMetric[] = [
-  { key: "distance_mi", label: "Distance", unit: "mi", decimals: 2 },
-  { key: "top_speed_mph", label: "Top speed", unit: "mph", decimals: 1 },
-  { key: "sprints_count", label: "Sprints", unit: "", decimals: 0 },
-  { key: "sprints_distance_yd", label: "Sprint distance", unit: "yd", decimals: 0 },
-  { key: "sprints_avg_topspeed_mph", label: "Sprint avg speed", unit: "mph", decimals: 1 },
-  { key: "peak_accel", label: "Peak accel", unit: "m/s²", decimals: 2 },
-  { key: "peak_decel", label: "Peak decel", unit: "m/s²", decimals: 2 },
-  { key: "explosiveness_count", label: "Explosive efforts", unit: "", decimals: 0 },
-  { key: "load", label: "Load", unit: "", decimals: 0 },
+  { key: "distance_mi", label: "Distance", unit: "mi", decimals: 2, group: "volume" },
+  { key: "sprints_distance_yd", label: "Sprint distance", unit: "yd", decimals: 0, group: "volume" },
+  { key: "load", label: "Load", unit: "", decimals: 0, group: "volume" },
+  { key: "top_speed_mph", label: "Top speed", unit: "mph", decimals: 1, group: "speed" },
+  { key: "sprints_count", label: "Sprints", unit: "", decimals: 0, group: "speed" },
+  { key: "sprints_avg_topspeed_mph", label: "Sprint avg speed", unit: "mph", decimals: 1, group: "speed" },
+  { key: "peak_accel", label: "Peak accel", unit: "m/s²", decimals: 2, group: "intensity" },
+  { key: "peak_decel", label: "Peak decel", unit: "m/s²", decimals: 2, group: "intensity" },
+  { key: "explosiveness_count", label: "Explosive efforts", unit: "", decimals: 0, group: "intensity" },
 ];
 
 export const GLITCH_TOP_SPEED_MPH = 25;
@@ -101,6 +102,24 @@ const playedOrUnknown = (s: ReportSession) => valid(s) && (s.minutes_played == n
 /** Played, with minutes from the box score: what season averages and ranks are built on. */
 const playedKnown = (s: ReportSession) => valid(s) && s.minutes_played != null && s.minutes_played > 0;
 const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
+/**
+ * Where a value sits among the ranked players' values, 0–100: the best player is 100, the
+ * lowest 0, and a value between two players is placed proportionally between them. So a
+ * player's percentile is (players he's ahead of) ÷ (other players), and the team and position
+ * averages land on the same scale.
+ */
+export function percentileIn(v: number | null, values: number[]): number | null {
+  if (v === null || values.length < 2) return null;
+  const xs = [...values].sort((a, b) => a - b);
+  if (v <= xs[0]) return 0;
+  if (v >= xs[xs.length - 1]) return 100;
+  let i = 0;
+  while (xs[i + 1] < v) i++;
+  // Ties: the middle of the run of equal values.
+  const lo = xs.indexOf(v);
+  if (lo !== -1) return (((lo + xs.lastIndexOf(v)) / 2) / (xs.length - 1)) * 100;
+  return ((i + (v - xs[i]) / (xs[i + 1] - xs[i])) / (xs.length - 1)) * 100;
+}
 
 /** Aug 1 of the season the date falls in (the season runs Aug–Dec). */
 export function seasonStart(date: string): string {
@@ -156,7 +175,7 @@ export function buildPlayerReport(input: ReportInput) {
   const rankIn = (rows: { pid: number; v: number | null }[]) => {
     const ranked = rows.filter((r): r is { pid: number; v: number } => r.v !== null).sort((a, b) => b.v - a.v);
     const at = ranked.findIndex((r) => r.pid === input.player.id);
-    return { rank: at >= 0 ? at + 1 : null, of: ranked.length, best: ranked[0]?.v ?? null };
+    return { rank: at >= 0 ? at + 1 : null, of: ranked.length, best: ranked[0]?.v ?? null, values: ranked.map((r) => r.v) };
   };
   const physical = REPORT_METRICS.map((m) => {
     const avg = mean(vals(mineCounted, m.key));
@@ -167,7 +186,17 @@ export function buildPlayerReport(input: ReportInput) {
     const posPlayers = myGroup ? players.filter(([pid]) => groupOf(pid) === myGroup) : [];
     const posRank = myGroup ? rankIn(posPlayers.map(([pid, ss]) => ({ pid, v: mean(vals(ss, m.key)) }))) : null;
     const posSessions = myGroup ? team.filter((s) => groupOf(s.player_id) === myGroup) : [];
-    let per90: null | { value: number | null; teamValue: number | null; rank: number | null; of: number } = null;
+    const posAvg = myGroup ? mean(vals(posSessions, m.key)) : null;
+    // Percentiles among the ranked teammates: his, and where the team and position averages fall.
+    const pct = { value: percentileIn(avg, teamRank.values), team: percentileIn(teamAvg, teamRank.values), pos: percentileIn(posAvg, teamRank.values) };
+    let per90: null | {
+      value: number | null;
+      teamValue: number | null;
+      posValue: number | null;
+      rank: number | null;
+      of: number;
+      pct: { value: number | null; team: number | null; pos: number | null };
+    } = null;
     if (PER90.has(m.key)) {
       const mine90 = per90Of(mineCounted, m.key);
       const team90 = per90Of(team, m.key);
@@ -177,7 +206,19 @@ export function buildPlayerReport(input: ReportInput) {
           return { pid, v: r && r.games >= minGames ? r.value : null };
         }),
       );
-      per90 = { value: mine90?.value ?? null, teamValue: team90?.value ?? null, rank: ranked90.rank, of: ranked90.of };
+      const pos90 = myGroup ? per90Of(posSessions, m.key) : null;
+      per90 = {
+        value: mine90?.value ?? null,
+        teamValue: team90?.value ?? null,
+        posValue: pos90?.value ?? null,
+        rank: ranked90.rank,
+        of: ranked90.of,
+        pct: {
+          value: percentileIn(mine90?.value ?? null, ranked90.values),
+          team: percentileIn(team90?.value ?? null, ranked90.values),
+          pos: percentileIn(pos90?.value ?? null, ranked90.values),
+        },
+      };
     }
     return {
       ...m,
@@ -188,7 +229,8 @@ export function buildPlayerReport(input: ReportInput) {
       teamBest: teamRank.best, // the best average on the team (for the radar chart's scale)
       rank: teamRank.rank,
       of: teamRank.of,
-      posAvg: myGroup ? mean(vals(posSessions, m.key)) : null,
+      posAvg,
+      pct,
       posRank: posRank?.rank ?? null,
       posOf: posRank?.of ?? 0,
       per90,
