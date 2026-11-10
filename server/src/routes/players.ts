@@ -160,7 +160,11 @@ export function playerReportFor(playerId: number, from: unknown, to: unknown) {
        LEFT JOIN minutes_played mp ON mp.game_id = s.game_id AND mp.player_id = s.player_id`,
     )
     .all() as ReportSession[];
+  const positions = Object.fromEntries(
+    (getDb().prepare(`SELECT p.id, pos.position FROM players p ${POSITION_SUBQUERY}`).all() as { id: number; position: string | null }[]).map((r) => [r.id, r.position]),
+  );
   return buildPlayerReport({
+    positions,
     player: detail.player as ReportInput["player"],
     profile: detail.profile as Record<string, unknown> | null,
     sessions: detail.sessions as unknown as ReportSession[],

@@ -33,6 +33,21 @@ export const REPORT_METRICS: ReportMetric[] = [
 export const GLITCH_TOP_SPEED_MPH = 25;
 /** Fewest games a teammate needs in the range to be ranked against. */
 const MIN_GAMES_TO_RANK = 3;
+/** Volume numbers that also get a per-90 figure (speeds and peaks don't scale with minutes). */
+const PER90 = new Set(["distance_mi", "sprints_count", "sprints_distance_yd", "explosiveness_count", "load"]);
+/** Games shorter than this are left out of per-90 figures: GPS totals include warm-ups, which would blow up a short appearance. */
+const PER90_MIN_MINUTES = 45;
+const GROUP_LABEL: Record<string, string> = { gk: "goalkeepers", def: "defenders", mid: "midfielders", fwd: "forwards" };
+/** fwd / mid / def / gk from the stored position (box score or roster). */
+export function positionGroup(pos: string | null | undefined): string | null {
+  const p = (pos ?? "").toLowerCase();
+  if (!p) return null;
+  if (p.startsWith("g")) return "gk";
+  if (p.startsWith("d") || p.includes("back")) return "def";
+  if (p.startsWith("m")) return "mid";
+  if (p.startsWith("f") || p.includes("wing") || p.includes("striker")) return "fwd";
+  return null;
+}
 
 export interface ReportSession {
   player_id: number;
@@ -71,6 +86,7 @@ export interface ReportInput {
   sessions: ReportSession[]; // this player's GPS sessions
   gameStats: ReportGameStat[]; // this player's box score lines
   teamSessions: ReportSession[]; // every player's GPS sessions (for team averages and ranks)
+  positions?: Record<number, string | null>; // every player's position (fwd / mid / def / gk), for position comparisons
   from: string;
   to: string;
   generated: string; // YYYY-MM-DD
@@ -116,36 +132,68 @@ export function buildPlayerReport(input: ReportInput) {
     },
   };
 
-  // Physical: his average and best over the range, the team's average, and his rank on the team by average.
+  // Physical: his average, per-90 and best over the range, against the team and his position group, with ranks.
   const mineCounted = mine.filter(counts);
+  const myGroup = positionGroup(input.player.position);
+  const groupOf = (pid: number) => positionGroup(input.positions?.[pid] ?? null);
   const byPlayer = new Map<number, ReportSession[]>();
   for (const s of team) byPlayer.set(s.player_id, [...(byPlayer.get(s.player_id) ?? []), s]);
+  const minGames = Math.min(MIN_GAMES_TO_RANK, mineCounted.length || 1);
+  const vals = (ss: ReportSession[], k: string) => ss.map((s) => num(s[k])).filter((v): v is number => v !== null);
+  const per90Of = (ss: ReportSession[], k: string) => {
+    const usable = ss.filter((s) => (s.minutes_played ?? 0) >= PER90_MIN_MINUTES && num(s[k]) !== null);
+    const minutes = usable.reduce((n, s) => n + (s.minutes_played as number), 0);
+    return usable.length && minutes ? { value: (usable.reduce((n, s) => n + (num(s[k]) as number), 0) / minutes) * 90, games: usable.length } : null;
+  };
+  const rankIn = (rows: { pid: number; v: number | null }[]) => {
+    const ranked = rows.filter((r): r is { pid: number; v: number } => r.v !== null).sort((a, b) => b.v - a.v);
+    const at = ranked.findIndex((r) => r.pid === input.player.id);
+    return { rank: at >= 0 ? at + 1 : null, of: ranked.length, best: ranked[0]?.v ?? null };
+  };
   const physical = REPORT_METRICS.map((m) => {
-    const vals = mineCounted.map((s) => num(s[m.key])).filter((v): v is number => v !== null);
-    const avg = mean(vals);
+    const avg = mean(vals(mineCounted, m.key));
     const bestSession = mineCounted.reduce<ReportSession | null>((b, s) => ((num(s[m.key]) ?? -Infinity) > (b ? (num(b[m.key]) ?? -Infinity) : -Infinity) ? s : b), null);
-    const teamAvg = mean(team.map((s) => num(s[m.key])).filter((v): v is number => v !== null));
-    const averages = [...byPlayer.entries()]
-      .map(([pid, ss]) => ({ pid, n: ss.length, avg: mean(ss.map((s) => num(s[m.key])).filter((v): v is number => v !== null)) }))
-      .filter((p) => p.avg !== null && p.n >= Math.min(MIN_GAMES_TO_RANK, mineCounted.length || 1));
-    const ranked = averages.sort((a, b) => (b.avg as number) - (a.avg as number));
-    const at = ranked.findIndex((p) => p.pid === input.player.id);
+    const teamAvg = mean(vals(team, m.key));
+    const players = [...byPlayer.entries()].filter(([, ss]) => ss.length >= minGames);
+    const teamRank = rankIn(players.map(([pid, ss]) => ({ pid, v: mean(vals(ss, m.key)) })));
+    const posPlayers = myGroup ? players.filter(([pid]) => groupOf(pid) === myGroup) : [];
+    const posRank = myGroup ? rankIn(posPlayers.map(([pid, ss]) => ({ pid, v: mean(vals(ss, m.key)) }))) : null;
+    const posSessions = myGroup ? team.filter((s) => groupOf(s.player_id) === myGroup) : [];
+    let per90: null | { value: number | null; teamValue: number | null; rank: number | null; of: number } = null;
+    if (PER90.has(m.key)) {
+      const mine90 = per90Of(mineCounted, m.key);
+      const team90 = per90Of(team, m.key);
+      const ranked90 = rankIn(
+        [...byPlayer.entries()].map(([pid, ss]) => {
+          const r = per90Of(ss, m.key);
+          return { pid, v: r && r.games >= minGames ? r.value : null };
+        }),
+      );
+      per90 = { value: mine90?.value ?? null, teamValue: team90?.value ?? null, rank: ranked90.rank, of: ranked90.of };
+    }
     return {
       ...m,
       avg,
       best: bestSession ? num(bestSession[m.key]) : null,
       bestGame: bestSession ? { date: bestSession.game_date, opponent: bestSession.opponent } : null,
       teamAvg,
-      rank: at >= 0 ? at + 1 : null,
-      of: ranked.length,
+      teamBest: teamRank.best, // the best average on the team (for the radar chart's scale)
+      rank: teamRank.rank,
+      of: teamRank.of,
+      posAvg: myGroup ? mean(vals(posSessions, m.key)) : null,
+      posRank: posRank?.rank ?? null,
+      posOf: posRank?.of ?? 0,
+      per90,
     };
   });
 
-  // Game by game GPS, each metric next to the team's average in that game.
+  // Game by game GPS: each metric next to the team's average that game, his rank in the squad that game,
+  // and every teammate's number (anonymous) for the squad charts.
   const teamByGame = new Map<number, ReportSession[]>();
   for (const s of team) teamByGame.set(s.game_id, [...(teamByGame.get(s.game_id) ?? []), s]);
   const gpsGames = mine.map((s) => {
-    const others = teamByGame.get(s.game_id) ?? [];
+    const squad = teamByGame.get(s.game_id) ?? [];
+    const others = squad.filter((o) => o.player_id !== input.player.id);
     const line = games.find((g) => g.game_date === s.game_date); // his box score line that day, if any
     return {
       game_date: s.game_date,
@@ -158,8 +206,13 @@ export function buildPlayerReport(input: ReportInput) {
       started: s.started ?? null,
       glitch: !valid(s),
       metrics: Object.fromEntries(
-        REPORT_METRICS.map((m) => [m.key, { value: num(s[m.key]), teamAvg: mean(others.map((o) => num(o[m.key])).filter((v): v is number => v !== null)) }]),
-      ) as Record<string, { value: number | null; teamAvg: number | null }>,
+        REPORT_METRICS.map((m) => {
+          const value = num(s[m.key]);
+          const squadValues = vals(squad.some((o) => o.player_id === input.player.id) ? squad : [...squad, s], m.key).sort((a, b) => b - a);
+          const rank = value === null ? null : squadValues.indexOf(value) + 1 || null;
+          return [m.key, { value, teamAvg: mean(vals(others.length ? others : squad, m.key)), rank, of: squadValues.length, squad: squadValues }];
+        }),
+      ) as Record<string, { value: number | null; teamAvg: number | null; rank: number | null; of: number; squad: number[] }>,
     };
   });
 
@@ -172,6 +225,7 @@ export function buildPlayerReport(input: ReportInput) {
     physical,
     gpsGames,
     trackedGames: mineCounted.length,
+    position: myGroup ? { group: myGroup, label: GROUP_LABEL[myGroup] } : null,
   };
 }
 
