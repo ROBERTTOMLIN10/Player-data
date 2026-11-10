@@ -5,9 +5,11 @@
  * average and where he ranks on the team. Pure (no database), so the app
  * preview builds the same report in the browser.
  *
- * Team comparisons use sessions where the player got minutes (or where minutes
- * aren't known), so bench warm-ups don't drag the team average down, and leave
- * out tracker glitches (an impossible top speed).
+ * Season averages, team averages and ranks count only games where the player
+ * got minutes in the box score, so bench warm-ups and exhibitions (where nobody's
+ * minutes are known and every tracker counts) don't skew them. If no game in the
+ * range has minutes (preseason only), sessions with unknown minutes count instead.
+ * Tracker glitches (an impossible top speed) are always left out.
  */
 
 export interface ReportMetric {
@@ -94,7 +96,10 @@ export interface ReportInput {
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const valid = (s: ReportSession) => !(num(s.top_speed_mph) !== null && (s.top_speed_mph as number) > GLITCH_TOP_SPEED_MPH);
-const counts = (s: ReportSession) => valid(s) && (s.minutes_played == null || s.minutes_played > 0);
+/** Played in that game (or minutes unknown): who appears in a game's squad comparison. */
+const playedOrUnknown = (s: ReportSession) => valid(s) && (s.minutes_played == null || s.minutes_played > 0);
+/** Played, with minutes from the box score: what season averages and ranks are built on. */
+const playedKnown = (s: ReportSession) => valid(s) && s.minutes_played != null && s.minutes_played > 0;
 const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
 
 /** Aug 1 of the season the date falls in (the season runs Aug–Dec). */
@@ -106,7 +111,10 @@ export function seasonStart(date: string): string {
 export function buildPlayerReport(input: ReportInput) {
   const inRange = (d: string) => d >= input.from && d <= input.to;
   const mine = input.sessions.filter((s) => inRange(s.game_date)).sort((a, b) => a.game_date.localeCompare(b.game_date));
-  const team = input.teamSessions.filter((s) => inRange(s.game_date) && counts(s));
+  const teamInRange = input.teamSessions.filter((s) => inRange(s.game_date));
+  const counts = teamInRange.some((s) => s.minutes_played != null) ? playedKnown : playedOrUnknown;
+  const team = teamInRange.filter(counts); // season comparisons
+  const gameSquads = teamInRange.filter(playedOrUnknown); // each game's squad
   const games = input.gameStats.filter((g) => inRange(g.game_date)).sort((a, b) => a.game_date.localeCompare(b.game_date));
 
   // Match stats: season totals from the box scores.
@@ -190,7 +198,7 @@ export function buildPlayerReport(input: ReportInput) {
   // Game by game GPS: each metric next to the team's average that game, his rank in the squad that game,
   // and every teammate's number (anonymous) for the squad charts.
   const teamByGame = new Map<number, ReportSession[]>();
-  for (const s of team) teamByGame.set(s.game_id, [...(teamByGame.get(s.game_id) ?? []), s]);
+  for (const s of gameSquads) teamByGame.set(s.game_id, [...(teamByGame.get(s.game_id) ?? []), s]);
   const gpsGames = mine.map((s) => {
     const squad = teamByGame.get(s.game_id) ?? [];
     const others = squad.filter((o) => o.player_id !== input.player.id);
