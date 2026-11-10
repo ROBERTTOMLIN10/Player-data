@@ -1,17 +1,19 @@
 import { jsPDF } from "jspdf";
 import autoTable, { type CellHookData } from "jspdf-autotable";
-import type { PlayerReport } from "../types";
+import type { PlayerReport, ReportPercentiles as ReportPct } from "../types";
 
 /**
  * The player's season report as a PDF, styled like the app (dark pages, Owl red,
  * gold and teal, the site's Space Grotesk and Inter fonts), to send to coaches
  * and agents:
- *  1. Cover: photo and profile, match-stat tiles, a radar of the physical profile
- *     against the team, and highlights in plain words.
- *  2. Physical profile (per game, per 90, against the team and the position) and
+ *  1. Cover: photo and profile, match-stat tiles, a percentile radar of the
+ *     physical profile, and highlights in plain words.
+ *  2. Percentile profile: per-game and per-90 radars (grouped into volume, speed
+ *     and intensity, with the team and position averages) and percentile bars.
+ *  3. Physical profile (per game, per 90, against the team and the position) and
  *     season trend charts.
- *  3. Match involvement charts and the full game-by-game table.
- *  4. A page per game: the player against the rest of the squad, and where the
+ *  4. Match involvement charts and the full game-by-game table.
+ *  5. A page per game: the player against the rest of the squad, and where the
  *     player ranked in the squad that game (teammates anonymous).
  * Built in the browser; photos and logos come through the server when the
  * browser can't read them directly.
@@ -332,6 +334,161 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
     }
   };
 
+  // ---- Percentile radar --------------------------------------------------------------
+  const GROUPS: { key: Metric["group"]; label: string; tint: RGB }[] = [
+    { key: "volume", label: "VOLUME", tint: [96, 165, 250] },
+    { key: "speed", label: "SPEED", tint: [192, 132, 252] },
+    { key: "intensity", label: "INTENSITY", tint: [251, 146, 60] },
+  ];
+  const posName = report.position ? report.position.label[0].toUpperCase() + report.position.label.slice(1) : null;
+  const pctText = (p: number | null | undefined) => (p == null ? "–" : ordinal(Math.round(p)));
+  /** One metric's percentiles for the chosen basis (per 90 falls back to per game for speed and intensity, which don't scale with minutes). */
+  const pctFor = (m: Metric, basis: "game" | "p90") => (basis === "p90" && m.per90 ? m.per90.pct : m.pct);
+  const valueFor = (m: Metric, basis: "game" | "p90") => (basis === "p90" && m.per90 ? m.per90.value : m.avg);
+  const withAlpha = (opacity: number, draw: () => void) => {
+    const GState = (doc as unknown as { GState: new (o: object) => unknown }).GState;
+    const set = (doc as unknown as { setGState: (g: unknown) => void }).setGState.bind(doc);
+    try {
+      set(new GState({ opacity }));
+      draw();
+    } catch {
+      // no transparency support: skip the fill
+    } finally {
+      try {
+        set(new GState({ opacity: 1 }));
+      } catch {
+        // ignore
+      }
+    }
+  };
+  const polygon = (pts: [number, number][], style: "F" | "S") =>
+    doc.lines(
+      pts.slice(1).map((p2, i) => [p2[0] - pts[i][0], p2[1] - pts[i][1]]),
+      pts[0][0],
+      pts[0][1],
+      [1, 1],
+      style,
+      true,
+    );
+  /**
+   * Percentile radar: each spoke is a physical number, 0 (centre) to 100 (edge = best on the
+   * team), grouped into volume, speed and intensity. His shape is red, the team average grey,
+   * his position's average dashed teal. Every spoke prints his number and percentile.
+   */
+  const drawRadar = (x: number, y: number, w: number, h: number, basis: "game" | "p90", title: string) => {
+    card(x, y, w, h);
+    cardTitle(title, x + 12, y + 18);
+    const ms = report.physical;
+    if (basis === "p90" && !ms.some((m) => m.per90?.pct.value != null)) {
+      color(DIM);
+      font(8);
+      doc.text(
+        [`No per-90 numbers yet.`, ``, `Per 90 only counts games where ${first} played 45+ minutes, and there aren't enough in this date range.`],
+        x + w / 2,
+        y + h / 2 - 10,
+        { align: "center", maxWidth: w - 60 },
+      );
+      return;
+    }
+    const n = ms.length;
+    const cx = x + w / 2;
+    const cy = y + 30 + (h - 30 - 26) / 2;
+    const R = Math.min(w / 2 - 62, (h - 30 - 26) / 2 - 28);
+    const angle = (i: number) => -Math.PI / 2 + (i / n) * Math.PI * 2;
+    const at = (a: number, r: number): [number, number] => [cx + Math.cos(a) * r, cy + Math.sin(a) * r];
+    const radius = (p: number | null) => R * (0.06 + 0.94 * Math.max(0, Math.min(100, p ?? 0)) / 100);
+    const step = (Math.PI * 2) / n;
+
+    // Group wedges, tinted, with their names just outside the ring.
+    for (const g of GROUPS) {
+      const idx = ms.map((m, i) => (m.group === g.key ? i : -1)).filter((i) => i >= 0);
+      if (!idx.length) continue;
+      const a0 = angle(idx[0]) - step / 2;
+      const a1 = angle(idx[idx.length - 1]) + step / 2;
+      const arc: [number, number][] = [[cx, cy]];
+      for (let k = 0; k <= 16; k++) arc.push(at(a0 + ((a1 - a0) * k) / 16, R));
+      withAlpha(0.11, () => {
+        fill(g.tint);
+        polygon(arc, "F");
+      });
+    }
+    // Rings at 25 / 50 / 75 / 100 and the spokes.
+    stroke(BORDER);
+    doc.setLineWidth(0.5);
+    for (const ring of [25, 50, 75, 100]) {
+      const pts: [number, number][] = [];
+      for (let k = 0; k <= 48; k++) pts.push(at((k / 48) * Math.PI * 2, radius(ring)));
+      polygon(pts, "S");
+    }
+    ms.forEach((_, i) => {
+      const [ex, ey] = at(angle(i), R);
+      doc.line(cx, cy, ex, ey);
+    });
+    // Group key, top right.
+    {
+      let gx = x + w - 12;
+      font(6, "bold");
+      for (const g of [...GROUPS].reverse()) {
+        const tw = doc.getTextWidth(g.label);
+        color(g.tint);
+        doc.text(g.label, gx, y + 18, { align: "right" });
+        fill(g.tint);
+        doc.rect(gx - tw - 9, y + 13.5, 5, 5, "F");
+        gx -= tw + 18;
+      }
+    }
+    color(DIM);
+    font(5);
+    for (const ring of [50, 100]) doc.text(String(ring), cx + 2, cy - radius(ring) + 6);
+
+    const shape = (key: "value" | "team" | "pos", c: RGB, width: number, opts: { fill?: boolean; dashed?: boolean } = {}) => {
+      const vals = ms.map((m) => pctFor(m, basis)[key]);
+      if (vals.every((v) => v == null)) return;
+      const pts = ms.map((_, i) => at(angle(i), radius(vals[i])));
+      if (opts.fill)
+        withAlpha(0.28, () => {
+          fill(c);
+          polygon(pts, "F");
+        });
+      stroke(c);
+      doc.setLineWidth(width);
+      if (opts.dashed) doc.setLineDashPattern([2.5, 2], 0);
+      polygon(pts, "S");
+      doc.setLineDashPattern([], 0);
+      if (key === "value")
+        pts.forEach(([px, py]) => {
+          fill(c);
+          doc.circle(px, py, 1.6, "F");
+        });
+    };
+    shape("team", TEAM_BAR, 1);
+    if (posName) shape("pos", TEAL, 1, { dashed: true });
+    shape("value", RED_LIGHT, 1.6, { fill: true });
+
+    // Spoke labels: name, then his number and percentile.
+    ms.forEach((m, i) => {
+      const a = angle(i);
+      const [lx, ly] = at(a, R + 10);
+      const align = Math.abs(Math.cos(a)) < 0.25 ? "center" : Math.cos(a) > 0 ? "left" : "right";
+      const dy = Math.sin(a) < -0.5 ? -8 : Math.sin(a) > 0.5 ? 4 : -2;
+      const p = pctFor(m, basis);
+      const v = valueFor(m, basis);
+      const sameAsGame = basis === "p90" && !m.per90;
+      color(TEXT);
+      font(6.5, "bold");
+      doc.text(m.label.replace("Sprint avg speed", "Sprint speed").replace("Explosive efforts", "Explosive"), lx, ly + dy, { align });
+      font(6);
+      color(p.value == null ? DIM : p.value >= 75 ? GOLD : p.value >= 50 ? TEAL : DIM);
+      doc.text(`${short(v, m.unit, m.decimals)}  ·  ${pctText(p.value)}${sameAsGame ? "*" : ""}`, lx, ly + dy + 8, { align });
+    });
+
+    legend(x + 12, y + h - 12, [
+      [first, RED_LIGHT],
+      ["Team avg", TEAM_BAR],
+      ...(posName ? ([[`${posName} avg`, TEAL, true]] as [string, RGB, boolean][]) : []),
+    ]);
+  };
+
   // ==== Page 1: cover ===================================================================
   paintBackground();
   fill(SURFACE);
@@ -435,68 +592,7 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
   y = heading("Physical profile at a glance", y);
   const boxH = H - 44 - y - 4;
   const radarW = 292;
-  card(M, y, radarW, boxH);
-  {
-    const cx = M + radarW / 2;
-    const cy = y + boxH / 2 - 2;
-    const R = Math.min(radarW / 2 - 52, boxH / 2 - 46);
-    const ms = report.physical;
-    const angle = (i: number) => -Math.PI / 2 + (i / ms.length) * Math.PI * 2;
-    const pt = (i: number, r: number): [number, number] => [cx + Math.cos(angle(i)) * r, cy + Math.sin(angle(i)) * r];
-    stroke(BORDER);
-    doc.setLineWidth(0.5);
-    for (const ring of [0.25, 0.5, 0.75, 1]) {
-      const pts = ms.map((_, i) => pt(i, R * ring));
-      for (let i = 0; i < pts.length; i++) doc.line(pts[i][0], pts[i][1], pts[(i + 1) % pts.length][0], pts[(i + 1) % pts.length][1]);
-    }
-    ms.forEach((_, i) => {
-      const [ex, ey] = pt(i, R);
-      doc.line(cx, cy, ex, ey);
-    });
-    const shape = (key: "avg" | "teamAvg", c: RGB, width: number, filled: boolean) => {
-      const pts = ms.map((m, i) => pt(i, R * Math.max(0, Math.min(1, (m[key] ?? 0) / (m.teamBest || 1)))));
-      if (filled) {
-        // a faint fill: draw the polygon with lines and a translucent fill
-        const gs = (doc as unknown as { GState: new (o: object) => unknown }).GState;
-        try {
-          (doc as unknown as { setGState: (g: unknown) => void }).setGState(new gs({ opacity: 0.25 }));
-          fill(c);
-          doc.lines(
-            pts.slice(1).map((p2, i) => [p2[0] - pts[i][0], p2[1] - pts[i][1]]),
-            pts[0][0],
-            pts[0][1],
-            [1, 1],
-            "F",
-            true,
-          );
-          (doc as unknown as { setGState: (g: unknown) => void }).setGState(new gs({ opacity: 1 }));
-        } catch {
-          // no transparency: outline only
-        }
-      }
-      stroke(c);
-      doc.setLineWidth(width);
-      for (let i = 0; i < pts.length; i++) doc.line(pts[i][0], pts[i][1], pts[(i + 1) % pts.length][0], pts[(i + 1) % pts.length][1]);
-    };
-    shape("teamAvg", TEAM_BAR, 1, false);
-    shape("avg", RED_LIGHT, 1.6, true);
-    font(6.5, "bold");
-    ms.forEach((m, i) => {
-      const [lx, ly] = pt(i, R + 12);
-      const a = angle(i);
-      const align = Math.abs(Math.cos(a)) < 0.2 ? "center" : Math.cos(a) > 0 ? "left" : "right";
-      color(rankColor(m.rank));
-      doc.text(m.label.replace("Sprint avg speed", "Sprint speed").replace("Explosive efforts", "Explosive"), lx, ly + 2, { align });
-    });
-    cardTitle(`${first} vs the team`, M + 12, y + 18);
-    legend(M + 12, y + boxH - 12, [
-      [first, RED_LIGHT],
-      ["Team average", TEAM_BAR],
-    ]);
-    color(DIM);
-    font(6);
-    doc.text("Edge = best average on the team", M + radarW - 12, y + boxH - 12, { align: "right" });
-  }
+  drawRadar(M, y, radarW, boxH, "game", `${first}'s percentiles, per game`);
   const hx = M + radarW + 10;
   const hw = W - M - hx;
   card(hx, y, hw, boxH);
@@ -543,7 +639,136 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
     }
   }
 
-  // ==== Page 2: physical profile + season trends ==========================================
+  // ==== Page 2: percentile profile ===========================================================
+  y = newPage();
+  y = heading(
+    "Percentile profile",
+    y,
+    `Where ${first} ranks among teammates with 3+ games played: 100 = best on the team, 0 = lowest, 50 = the middle. Grey and dashed shapes show where the team${posName ? ` and ${report.position!.label}` : ""} averages fall on the same scale.`,
+  );
+  y += 8;
+  {
+    const rw = (W - 2 * M - 10) / 2;
+    const rh = 292;
+    drawRadar(M, y, rw, rh, "game", "Per game");
+    drawRadar(M + rw + 10, y, rw, rh, "p90", "Per 90 minutes");
+    y += rh + 6;
+    color(DIM);
+    font(6.5);
+    doc.text(
+      "* Speed and intensity numbers don't grow with minutes, so the per-90 radar uses the per-game figure for them. Per 90 counts games of 45+ minutes.",
+      M,
+      y + 4,
+      { maxWidth: W - 2 * M },
+    );
+    y += 18;
+
+    // Percentile bars: per game and per 90, grouped.
+    const rowH = 19;
+    const th = 30 + GROUPS.length * 15 + report.physical.length * rowH + 22;
+    card(M, y, W - 2 * M, th);
+    const c0 = M + 12; // metric
+    const c1 = M + 110; // per game value
+    const b1 = M + 170; // per game bar
+    const bw = 140;
+    const c2 = b1 + bw + 46; // per 90 value
+    const b2 = c2 + 60; // per 90 bar
+    const bw2 = W - M - 12 - 34 - b2;
+    let ty = y + 18;
+    color(DIM);
+    font(6.5, "bold");
+    doc.text("PER GAME", c1, ty);
+    doc.text("PERCENTILE", b1, ty);
+    doc.text("PER 90", c2, ty);
+    doc.text("PERCENTILE", b2, ty);
+    ty += 12;
+    const bar = (bx: number, w: number, by: number, p: ReportPct) => {
+      fill(RAISED);
+      doc.roundedRect(bx, by - 5, w, 6, 2, 2, "F");
+      if (p.value != null) {
+        fill(p.value >= 75 ? GOLD : p.value >= 50 ? TEAL : RED_LIGHT);
+        doc.roundedRect(bx, by - 5, Math.max(2, (w * p.value) / 100), 6, 2, 2, "F");
+      }
+      doc.setLineWidth(1.2);
+      if (p.team != null) {
+        stroke(TEXT);
+        doc.line(bx + (w * p.team) / 100, by - 7, bx + (w * p.team) / 100, by + 3);
+      }
+      if (p.pos != null && posName) {
+        stroke(TEAL);
+        doc.setLineDashPattern([1.5, 1], 0);
+        doc.line(bx + (w * p.pos) / 100, by - 7, bx + (w * p.pos) / 100, by + 3);
+        doc.setLineDashPattern([], 0);
+      }
+      color(p.value == null ? DIM : TEXT);
+      font(7.5, "bold");
+      doc.text(pctText(p.value), bx + w + 6, by + 1);
+    };
+    for (const g of GROUPS) {
+      const rows = report.physical.filter((m) => m.group === g.key);
+      if (!rows.length) continue;
+      fill(g.tint);
+      doc.rect(c0, ty - 5, 2, 7, "F");
+      color(g.tint);
+      font(6.5, "bold");
+      doc.text(g.label, c0 + 6, ty + 1);
+      ty += 15;
+      for (const m of rows) {
+        color(TEXT);
+        font(7.5);
+        doc.text(m.label, c0, ty);
+        color(TEXT);
+        doc.text(short(m.avg, m.unit, m.decimals), c1, ty);
+        bar(b1, bw, ty - 1, m.pct);
+        if (m.per90) {
+          doc.text(short(m.per90.value, m.unit, m.decimals), c2, ty);
+          bar(b2, bw2, ty - 1, m.per90.pct);
+        } else {
+          color(DIM);
+          font(6.5);
+          doc.text("same as per game", c2, ty);
+        }
+        ty += rowH;
+      }
+    }
+    // Key
+    let kx = c0;
+    const ky = y + th - 10;
+    font(6.5);
+    const key = (label: string, drawMark: (x: number) => void) => {
+      drawMark(kx);
+      color(DIM);
+      doc.text(label, kx + 10, ky);
+      kx += 10 + doc.getTextWidth(label) + 16;
+    };
+    key("75th+", (x) => {
+      fill(GOLD);
+      doc.rect(x, ky - 5, 7, 5, "F");
+    });
+    key("50th–74th", (x) => {
+      fill(TEAL);
+      doc.rect(x, ky - 5, 7, 5, "F");
+    });
+    key("Below 50th", (x) => {
+      fill(RED_LIGHT);
+      doc.rect(x, ky - 5, 7, 5, "F");
+    });
+    key("Team average", (x) => {
+      stroke(TEXT);
+      doc.setLineWidth(1.2);
+      doc.line(x + 3, ky - 7, x + 3, ky + 1);
+    });
+    if (posName)
+      key(`${posName} average`, (x) => {
+        stroke(TEAL);
+        doc.setLineWidth(1.2);
+        doc.setLineDashPattern([1.5, 1], 0);
+        doc.line(x + 3, ky - 7, x + 3, ky + 1);
+        doc.setLineDashPattern([], 0);
+      });
+  }
+
+  // ==== Page 3: physical profile + season trends ==========================================
   y = newPage();
   const posLabel = report.position ? report.position.label[0].toUpperCase() + report.position.label.slice(1) : null;
   y = heading(
@@ -662,7 +887,7 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
     doc.text(fmtDate(trend[trend.length - 1].game_date), px + pw, py + ph + 10, { align: "right" });
   });
 
-  // ==== Page 3: match involvement + game by game ===========================================
+  // ==== Page 4: match involvement + game by game ===========================================
   y = newPage();
   y = heading("Match involvement", y, "Minutes each game (red = started), with goals and assists above, and shots.");
   const mg = report.match.games;

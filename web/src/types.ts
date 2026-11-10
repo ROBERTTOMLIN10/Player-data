@@ -1060,6 +1060,12 @@ export interface CareAlertsResponse {
 }
 
 /** A player's season report (the downloadable PDF): see server/src/lib/playerReport.ts. */
+export interface ReportPercentiles {
+  value: number | null;
+  team: number | null;
+  pos: number | null;
+}
+
 export interface PlayerReport {
   generated: string;
   range: { from: string; to: string };
@@ -1103,6 +1109,7 @@ export interface PlayerReport {
     label: string;
     unit: string;
     decimals: number;
+    group: "volume" | "speed" | "intensity";
     avg: number | null;
     best: number | null;
     bestGame: { date: string; opponent: string | null } | null;
@@ -1113,7 +1120,16 @@ export interface PlayerReport {
     posAvg: number | null;
     posRank: number | null;
     posOf: number;
-    per90: { value: number | null; teamValue: number | null; rank: number | null; of: number } | null;
+    /** Percentiles (0–100) among ranked teammates: his, and where the team and position averages fall. */
+    pct: ReportPercentiles;
+    per90: {
+      value: number | null;
+      teamValue: number | null;
+      posValue: number | null;
+      rank: number | null;
+      of: number;
+      pct: ReportPercentiles;
+    } | null;
   }[];
   gpsGames: {
     game_date: string;
