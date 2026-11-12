@@ -744,7 +744,7 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
 
   // ==== Page 3: match involvement + game by game ===========================================
   y = newPage();
-  y = heading("Match involvement", y, "Minutes each game (red = started), with goals and assists above, and shots.");
+  y = heading("Match involvement", y, "Minutes each game (red = started), with goals and assists above.");
   const mg = report.match.games;
   {
     const ch2 = 156;
@@ -794,35 +794,7 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
     color(DIM);
     font(6);
     doc.text(`${fmtDate(mg[0]?.game_date ?? report.range.from)} – ${fmtDate(mg[mg.length - 1]?.game_date ?? report.range.to)}`, M + W - 2 * M - 12, y + ch2 - 10, { align: "right" });
-    y += ch2 + 10;
-
-    const ch3 = 116;
-    card(M, y, W - 2 * M, ch3);
-    cardTitle("Shots and shots on goal", M + 12, y + 18);
-    legend(M + 210, y + 18, [
-      ["Shots", TEAM_BAR],
-      ["On goal", RED_LIGHT],
-    ]);
-    const qy = y + 28;
-    const qh = ch3 - 54;
-    const maxShots = Math.max(2, ...mg.map((g) => g.shots));
-    for (const v of [0, Math.ceil(maxShots / 2), maxShots]) {
-      const yy = qy + qh - (v / maxShots) * qh;
-      stroke(BORDER);
-      doc.line(px, yy, px + pw, yy);
-      color(DIM);
-      font(6);
-      doc.text(String(v), px - 4, yy + 2, { align: "right" });
-    }
-    mg.forEach((g, i) => {
-      const bx = px + i * slot + (slot - bw) / 2;
-      fill(TEAM_BAR);
-      doc.rect(bx, qy + qh - (g.shots / maxShots) * qh, bw, (g.shots / maxShots) * qh, "F");
-      fill(RED_LIGHT);
-      doc.rect(bx + bw * 0.2, qy + qh - (g.shots_on_goal / maxShots) * qh, bw * 0.6, (g.shots_on_goal / maxShots) * qh, "F");
-      teamLogo(g.opponent_logo_url, g.opponent, bx + bw / 2 - logoS / 2, qy + qh + 3, logoS);
-    });
-    y += ch3 + 20;
+    y += ch2 + 20;
   }
 
   y = heading("Game by game", y, "Match stats and GPS for every game in one place. Season averages count games played (box-score minutes), so exhibitions without minutes are left out.");
