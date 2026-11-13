@@ -7,6 +7,7 @@ import { Segmented } from "../components/SeasonStats";
 import { TeamLogo } from "../components/TeamLogo";
 import { gamePath, NcaaStatTable, Rpi, StandingsTable, TeamLink, updatedLabel } from "../components/ncaa";
 import { formatDateLong } from "../lib/format";
+import { FAU_LOGO_URL } from "../lib/fau";
 import type { ScheduleGame } from "../types";
 
 function resultBadgeClass(status: string | null): string {
@@ -71,9 +72,14 @@ export default function HomeView() {
     <div className="flex flex-col gap-8">
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card className="sm:col-span-1">
-          <div className="text-xs font-medium uppercase tracking-wide text-text-dim">Season Record</div>
-          <div className="mt-2 font-display text-3xl font-bold">{recordLabel}</div>
-          <div className="mt-1 text-xs text-text-dim">Wins–Losses–Ties</div>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-xs font-medium uppercase tracking-wide text-text-dim">Season Record</div>
+              <div className="mt-2 font-display text-3xl font-bold">{recordLabel}</div>
+              <div className="mt-1 text-xs text-text-dim">Wins–Losses–Ties</div>
+            </div>
+            <TeamLogo name="Florida Atlantic" url={teamStats?.logo ?? FAU_LOGO_URL} size="lg" />
+          </div>
         </Card>
 
         <Card className="sm:col-span-2">
