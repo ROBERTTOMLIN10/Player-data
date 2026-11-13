@@ -57,6 +57,9 @@ const pctText = (p: number | null) => (p == null ? "" : p === 0 ? "even" : `${p 
 const pctColor = (p: number | null): RGB => (p == null || p === 0 ? DIM : p > 0 ? TEAL : RED_LIGHT);
 const ordinal = (n: number) => `${n}${["th", "st", "nd", "rd"][n % 100 > 10 && n % 100 < 14 ? 0 : n % 10] ?? "th"}`;
 const rankColor = (r: number | null): RGB => (r == null ? DIM : r <= 3 ? GOLD : r <= 5 ? TEAL : TEXT);
+/** FAU's own logo (the same NCAA.com image the NCAA pages use); the server passes it through for the PDF. */
+const FAU_LOGO_URL = "https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/fla-atlantic.svg";
+
 const initials = (name: string) =>
   name
     .replace(/^(No\.\s*\d+|RV)\s+/i, "")
@@ -204,6 +207,7 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
 
   // Images first (photo + every opponent logo, each fetched once).
   const photo = await loadImage(p?.photo_url, opts.imageProxy);
+  const fauLogoImg = await loadImage(FAU_LOGO_URL, opts.imageProxy);
   const logoUrls = [
     ...new Set([...report.match.games.map((g) => g.opponent_logo_url), ...report.gpsGames.map((g) => g.opponent_logo_url)].filter((u): u is string => !!u)),
   ];
@@ -243,6 +247,18 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
     doc.text("FAU", x + s / 2, y + s * 0.56, { align: "center" });
     fill([255, 160, 175]);
     doc.rect(x + s * 0.28, y + s * 0.68, s * 0.44, s * 0.04, "F");
+  };
+  /** FAU's logo in an s-by-s box (nothing if it couldn't be loaded). Returns whether it was drawn. */
+  const fauLogo = (x: number, y: number, s: number): boolean => {
+    if (!fauLogoImg) return false;
+    try {
+      const { width, height } = doc.getImageProperties(fauLogoImg);
+      const k = Math.min(s / width, s / height);
+      doc.addImage(fauLogoImg, x + (s - width * k) / 2, y + (s - height * k) / 2, width * k, height * k, undefined, "FAST");
+      return true;
+    } catch {
+      return false;
+    }
   };
   /** An opponent's logo, or their initials in a rounded tile like the site's fallback. */
   const teamLogo = (url: string | null | undefined, opponent: string | null, x: number, y: number, s: number) => {
@@ -289,7 +305,10 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
     doc.text("FAU MEN'S SOCCER  ·  PLAYER REPORT", M + 30, 32);
     color(TEXT);
     display(11);
-    doc.text(`${jersey ? `#${jersey}  ` : ""}${name}`, W - M, 32, { align: "right" });
+    const who = `${jersey ? `#${jersey}  ` : ""}${name}`;
+    doc.text(who, W - M, 32, { align: "right" });
+    // FAU's logo just before the player's number and name.
+    fauLogo(W - M - doc.getTextWidth(who) - 8 - 26, 17, 26);
     fill(RED);
     doc.rect(M, 46, W - 2 * M, 1.2, "F");
   };
@@ -506,16 +525,25 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
   doc.setLineWidth(1.5);
   doc.roundedRect(photoBox.x, photoBox.y, photoBox.w, photoBox.h, 8, 8, "S");
 
-  let x = M;
+  // FAU's logo in the bio, just before the number and name.
+  const nameX0 = fauLogo(M, 66, 46) ? M + 58 : M;
+  let x = nameX0;
   if (jersey) {
     color(RED_LIGHT);
     display(36);
-    doc.text(`#${jersey}`, M, 104);
-    x = M + doc.getTextWidth(`#${jersey}`) + 10;
+    doc.text(`#${jersey}`, nameX0, 104);
+    x = nameX0 + doc.getTextWidth(`#${jersey}`) + 10;
   }
   color(TEXT);
-  display(name.length > 18 ? 25 : 31);
-  doc.text(name, x, 104, { maxWidth: photoBox.x - x - 12 });
+  // The biggest size the name fits at, so the logo never pushes it onto a second line.
+  const nameRoom = photoBox.x - x - 12;
+  let nameSize = name.length > 18 ? 25 : 31;
+  display(nameSize);
+  while (nameSize > 16 && doc.getTextWidth(name) > nameRoom) {
+    nameSize -= 1;
+    display(nameSize);
+  }
+  doc.text(name, x, 104, { maxWidth: nameRoom });
   const position = p?.position_long || p?.position_short || "";
   const year = p?.academic_year_long || p?.academic_year || "";
   color(RED_LIGHT);
@@ -889,24 +917,53 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
   {
     const counted = report.gpsGames.filter((g) => !g.glitch);
     const sum = (k: string) => counted.reduce((n, g) => n + (g.metrics[k]?.value ?? 0), 0);
-    const totalTiles: [string, string, RGB][] = [
-      ["Total distance", `${fixed(sum("distance_mi"), 1)} mi`, TEXT],
-      ["Total sprint distance", `${fixed(sum("sprints_distance_yd"), 0)} yd`, TEXT],
-      ["Total load", fixed(sum("load"), 0), GOLD],
+    const miles = sum("distance_mi");
+    const sprintYd = sum("sprints_distance_yd");
+    // Distances in miles, kilometres and yards; load is a single number.
+    const totalTiles: { label: string; lines: [string, string][]; c: RGB }[] = [
+      {
+        label: "Total distance",
+        lines: [[fixed(miles, 1), "mi"], [fixed(miles * 1.609344, 1), "km"], [fixed(miles * 1760, 0), "yd"]],
+        c: TEXT,
+      },
+      {
+        label: "Total sprint distance",
+        lines: [[fixed(sprintYd / 1760, 2), "mi"], [fixed(sprintYd * 0.0009144, 2), "km"], [fixed(sprintYd, 0), "yd"]],
+        c: TEXT,
+      },
+      { label: "Total load", lines: [[fixed(sum("load"), 0), ""]], c: GOLD },
     ];
-    const tileH = 66;
-    if (counted.length && y + 40 + tileH <= H - 44) {
-      y = heading("Season totals", y + 10,`Added up over the ${counted.length} games tracked with GPS.`);
+    const bottom = H - 44;
+    if (counted.length && y + 10 + 24 + 100 <= bottom) {
+      y = heading("Season totals", y + 10, `Added up over the ${counted.length} games tracked with GPS.`);
+      const tileH = bottom - y - 4; // down to the bottom of the page
       const tw = (W - 2 * M - 2 * 10) / 3;
-      totalTiles.forEach(([label, value, c], i) => {
+      totalTiles.forEach(({ label, lines, c }, i) => {
         const tx = M + i * (tw + 10);
         card(tx, y, tw, tileH);
         color(DIM);
         font(7, "bold");
         doc.text(label.toUpperCase(), tx + 14, y + 20);
-        color(c);
-        display(26);
-        doc.text(value, tx + 14, y + 50);
+        const avail = tileH - 34;
+        if (lines.length === 1) {
+          const fs = Math.min(40, avail * 0.5);
+          color(c);
+          display(fs);
+          doc.text(lines[0][0], tx + 14, y + 34 + avail / 2 + fs * 0.35);
+          return;
+        }
+        const lineH = avail / lines.length;
+        const fs = Math.min(24, lineH * 0.62);
+        lines.forEach(([num, unit], k) => {
+          const base = y + 34 + lineH * (k + 1) - lineH * 0.3;
+          color(c);
+          display(fs);
+          doc.text(num, tx + 14, base);
+          const nw = doc.getTextWidth(num);
+          color(DIM);
+          font(fs * 0.45, "bold");
+          doc.text(unit, tx + 14 + nw + 5, base);
+        });
       });
       y += tileH + 10;
     }

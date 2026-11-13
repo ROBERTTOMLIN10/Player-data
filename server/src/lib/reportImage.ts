@@ -1,5 +1,7 @@
 import type { Request, Response } from "express";
 import { getDb } from "../db/connection.js";
+import { ncaaLogoUrl } from "../ncaa/client.js";
+import { OUR_TEAM } from "./follows.js";
 
 /**
  * Roster photos and opponent logos for the player report PDF. The browser can't
@@ -9,12 +11,15 @@ import { getDb } from "../db/connection.js";
  */
 export async function sendReportImage(req: Request, res: Response) {
   const src = typeof req.query.src === "string" ? req.query.src : "";
-  const known = getDb()
-    .prepare(
-      `SELECT 1 FROM roster_players WHERE photo_url = @src
+  // FAU's own logo (the NCAA.com image the NCAA pages use) is also allowed.
+  const known =
+    src === ncaaLogoUrl(OUR_TEAM) ||
+    getDb()
+      .prepare(
+        `SELECT 1 FROM roster_players WHERE photo_url = @src
        UNION SELECT 1 FROM schedule_games WHERE opponent_logo_url = @src LIMIT 1`,
-    )
-    .get({ src });
+      )
+      .get({ src });
   if (!/^https?:\/\//.test(src) || !known) return res.status(404).json({ error: "Unknown image." });
   try {
     const r = await fetch(src, { signal: AbortSignal.timeout(8000) });
