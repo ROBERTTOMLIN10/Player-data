@@ -837,3 +837,91 @@ export interface FollowsResponse {
   publicKey: string;
   follows: FollowedTeam[];
 }
+
+/** A player's season report (the downloadable PDF): see server/src/lib/playerReport.ts. */
+export interface ReportPercentiles {
+  value: number | null;
+  team: number | null;
+  pos: number | null;
+}
+
+export interface PlayerReport {
+  generated: string;
+  range: { from: string; to: string };
+  player: { id: number; canonical_name: string; position: string | null; jersey_number: string | null };
+  profile: PlayerProfile | null;
+  match: {
+    games: {
+      game_date: string;
+      opponent: string;
+      result: string;
+      minutes: number | null;
+      started: number;
+      goals: number;
+      assists: number;
+      points: number;
+      shots: number;
+      shots_on_goal: number;
+      yellow_cards: number;
+      red_cards: number;
+      is_goalie?: number;
+      saves?: number | null;
+      goals_allowed?: number | null;
+      opponent_logo_url?: string | null;
+    }[];
+    totals: {
+      played: number;
+      started: number;
+      minutes: number;
+      goals: number;
+      assists: number;
+      points: number;
+      shots: number;
+      shots_on_goal: number;
+      yellow_cards: number;
+      red_cards: number;
+      saves: number | null;
+    };
+  };
+  physical: {
+    key: string;
+    label: string;
+    unit: string;
+    decimals: number;
+    group: "volume" | "speed" | "intensity";
+    avg: number | null;
+    best: number | null;
+    bestGame: { date: string; opponent: string | null } | null;
+    teamAvg: number | null;
+    teamBest: number | null;
+    rank: number | null;
+    of: number;
+    posAvg: number | null;
+    posRank: number | null;
+    posOf: number;
+    /** Percentiles (0–100) among ranked teammates: his, and where the team and position averages fall. */
+    pct: ReportPercentiles;
+    per90: {
+      value: number | null;
+      teamValue: number | null;
+      posValue: number | null;
+      rank: number | null;
+      of: number;
+      pct: ReportPercentiles;
+    } | null;
+  }[];
+  gpsGames: {
+    game_date: string;
+    opponent: string | null;
+    opponent_logo_url: string | null;
+    result: string;
+    goals: number | null;
+    assists: number | null;
+    minutes: number | null;
+    started: number | null;
+    glitch: boolean;
+    metrics: Record<string, { value: number | null; teamAvg: number | null; rank: number | null; of: number; squad: number[] }>;
+  }[];
+  trackedGames: number;
+  position: { group: string; label: string } | null;
+}

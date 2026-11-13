@@ -4,6 +4,7 @@
 import raw from "./data.json";
 import { handlePreviewUpload, listUploads } from "./uploads";
 import { applyPendingUploads, applyUpload, rowsFromWorkbook } from "./liveUploads";
+import { buildPlayerReport, seasonStart } from "../../server/src/lib/playerReport";
 
 const data: Record<string, any> = raw as any;
 export type DemoRole = "player" | "coach" | null;
@@ -139,6 +140,25 @@ function compare(ids: number[]) {
   return { sessions, seasonAverages, teamAverages: data["/api/team/summary"].seasonAverages };
 }
 
+/** The player report (PDF) from the captured player pages, with the same builder as the server. */
+function playerReport(id: number, q: URLSearchParams) {
+  const d = data[`/api/players/${id}`];
+  if (!d) return null;
+  const teamSessions = (data["/api/players"] ?? []).flatMap((p: any) => data[`/api/players/${p.id}`]?.sessions ?? []);
+  const iso = (v: string | null) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+  return buildPlayerReport({
+    player: d.player,
+    profile: d.profile,
+    sessions: d.sessions,
+    gameStats: d.gameStats ?? [],
+    teamSessions,
+    positions: Object.fromEntries((data["/api/players"] ?? []).map((p: any) => [p.id, p.position ?? null])),
+    from: iso(q.get("from")) ?? seasonStart(TODAY),
+    to: iso(q.get("to")) ?? TODAY,
+    generated: TODAY,
+  });
+}
+
 function nowSql() {
   return new Date().toISOString().replace("T", " ").slice(0, 19);
 }
@@ -172,6 +192,14 @@ function route(method: string, path: string, q: URLSearchParams, body: any): Res
     return json(role === "coach" ? data.coachMe : data.playerMe);
   }
   if (!role) return json({ error: "Sign in required." }, 401);
+
+  // ---- player report (PDF) ----
+  if (path === "/api/me/report") return json(playerReport(PLAYER_ID, q));
+  const reportMatch = path.match(/^\/api\/players\/(\d+)\/report$/);
+  if (reportMatch && role === "coach") {
+    const r = playerReport(Number(reportMatch[1]), q);
+    return r ? json(r) : json({ error: "player not found" }, 404);
+  }
 
   // ---- player ----
   if (path === "/api/me/readiness/today") {
@@ -359,6 +387,18 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const method = (init?.method ?? "GET").toUpperCase();
   const ncaa = method === "GET" ? (await ncaaTeamRoute(url.pathname)) ?? (await ncaaGameRoute(url.pathname)) : null;
   if (ncaa) return ncaa;
+  // The PDF asks the server for FAU's logo (an NCAA.com image): answer from the embedded copy.
+  if (method === "GET" && url.pathname === "/api/players/report-image") {
+    const team = /\/([a-z0-9-]+)\.svg$/.exec(url.searchParams.get("src") ?? "")?.[1];
+    const raw = team ? teamLogo(team) : "";
+    const uri = LOGOS[raw] ?? raw;
+    const m = /^data:([^;,]+)((?:;[^,]*)?),(.*)$/s.exec(uri);
+    if (m) {
+      const bytes = m[2].includes("base64") ? Uint8Array.from(atob(m[3]), (c) => c.charCodeAt(0)) : new TextEncoder().encode(decodeURIComponent(m[3]));
+      return new Response(bytes, { status: 200, headers: { "Content-Type": m[1] } });
+    }
+    return json({ error: "Unknown image." }, 404);
+  }
   if (url.pathname === "/api/admin/upload-titan" && init?.body instanceof FormData) {
     const file = init.body.get("file");
     if (!(file instanceof File)) return json({ status: "error", filename: "", message: "No file chosen.", warnings: [] }, 400);
