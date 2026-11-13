@@ -146,7 +146,14 @@ function playerReport(id: number, q: URLSearchParams) {
   if (!d) return null;
   const teamSessions = (data["/api/players"] ?? []).flatMap((p: any) => data[`/api/players/${p.id}`]?.sessions ?? []);
   const iso = (v: string | null) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+  // Each opponent's NCAA.com logo by game date, as in the real app (crisp, transparent).
+  const opponentLogos = Object.fromEntries(
+    (data["/api/schedule"] ?? [])
+      .filter((g: any) => g.opponent_seo)
+      .map((g: any) => [String(g.game_date).slice(0, 10), `https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/${g.opponent_seo}.svg`]),
+  );
   return buildPlayerReport({
+    opponentLogos,
     player: d.player,
     profile: d.profile,
     sessions: d.sessions,
@@ -389,9 +396,12 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   if (ncaa) return ncaa;
   // The PDF asks the server for FAU's logo (an NCAA.com image): answer from the embedded copy.
   if (method === "GET" && url.pathname === "/api/players/report-image") {
-    const team = /\/([a-z0-9-]+)\.svg$/.exec(url.searchParams.get("src") ?? "")?.[1];
+    const src = url.searchParams.get("src") ?? "";
+    const team = /\/([a-z0-9-]+)\.svg$/.exec(src)?.[1];
+    // The original SVG (sharp at any size), falling back to the small embedded copy.
+    const large: string | undefined = data.__logosLarge?.[src];
     const raw = team ? teamLogo(team) : "";
-    const uri = LOGOS[raw] ?? raw;
+    const uri = large ?? LOGOS[raw] ?? raw;
     const m = /^data:([^;,]+)((?:;[^,]*)?),(.*)$/s.exec(uri);
     if (m) {
       const bytes = m[2].includes("base64") ? Uint8Array.from(atob(m[3]), (c) => c.charCodeAt(0)) : new TextEncoder().encode(decodeURIComponent(m[3]));
