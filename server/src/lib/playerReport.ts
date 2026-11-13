@@ -165,7 +165,10 @@ export function buildPlayerReport(input: ReportInput) {
   const groupOf = (pid: number) => positionGroup(input.positions?.[pid] ?? null);
   const byPlayer = new Map<number, ReportSession[]>();
   for (const s of team) byPlayer.set(s.player_id, [...(byPlayer.get(s.player_id) ?? []), s]);
-  const minGames = Math.min(MIN_GAMES_TO_RANK, mineCounted.length || 1);
+  // Everyone is ranked against the same pool (teammates with 3+ games), so "of 21" means the same
+  // thing in every report; early in a season, before anyone has 3 games, the pool is whoever has the most.
+  const mostGames = Math.max(0, ...[...byPlayer.values()].map((ss) => ss.length));
+  const minGames = Math.max(1, Math.min(MIN_GAMES_TO_RANK, mostGames));
   const vals = (ss: ReportSession[], k: string) => ss.map((s) => num(s[k])).filter((v): v is number => v !== null);
   const per90Of = (ss: ReportSession[], k: string) => {
     const usable = ss.filter((s) => (s.minutes_played ?? 0) >= PER90_MIN_MINUTES && num(s[k]) !== null);
