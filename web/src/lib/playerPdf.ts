@@ -882,6 +882,34 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
     color(DIM);
     font(6.5);
     doc.text("* tracker glitch that game (an impossible top speed): left out of averages.", M, y);
+    y += 14;
+  }
+
+  // Season totals under the table: distance, sprint distance and load across every tracked game.
+  {
+    const counted = report.gpsGames.filter((g) => !g.glitch);
+    const sum = (k: string) => counted.reduce((n, g) => n + (g.metrics[k]?.value ?? 0), 0);
+    const totalTiles: [string, string, RGB][] = [
+      ["Total distance", `${fixed(sum("distance_mi"), 1)} mi`, TEXT],
+      ["Total sprint distance", `${fixed(sum("sprints_distance_yd"), 0)} yd`, TEXT],
+      ["Total load", fixed(sum("load"), 0), GOLD],
+    ];
+    const tileH = 66;
+    if (counted.length && y + 40 + tileH <= H - 44) {
+      y = heading("Season totals", y + 10,`Added up over the ${counted.length} games tracked with GPS.`);
+      const tw = (W - 2 * M - 2 * 10) / 3;
+      totalTiles.forEach(([label, value, c], i) => {
+        const tx = M + i * (tw + 10);
+        card(tx, y, tw, tileH);
+        color(DIM);
+        font(7, "bold");
+        doc.text(label.toUpperCase(), tx + 14, y + 20);
+        color(c);
+        display(26);
+        doc.text(value, tx + 14, y + 50);
+      });
+      y += tileH + 10;
+    }
   }
 
   // ==== A page per game ===================================================================
@@ -938,7 +966,7 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
     const rowH = (bh - 36) / rows.length;
     const labelW = 96;
     const barX = M + 14 + labelW;
-    const tailW = 132;
+    const tailW = 104;
     const barW = W - 2 * M - 28 - labelW - tailW;
     rows.forEach((m, r) => {
       const ry = rTop + r * rowH;
@@ -967,10 +995,6 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
       color(DIM);
       font(6.5);
       doc.text(short(tv, m.unit, m.decimals), barX + barW + 6, mid + 6.5);
-      const pc = diffPct(v, tv);
-      color(pctColor(pc));
-      font(8, "bold");
-      doc.text(pctText(pc), W - M - 58, mid + 2.5, { align: "right" });
       if (gm?.rank) {
         color(rankColor(gm.rank));
         font(7.5, "bold");
