@@ -9,7 +9,7 @@ import type { PlayerReport } from "../types";
  *  1. Cover: photo and profile, match-stat tiles, a percentile radar of the
  *     physical profile (grouped into volume, speed and intensity, with the team
  *     and position averages), and highlights in plain words.
- *  2. Physical profile (per game, per 90, against the team and the position) and
+ *  2. Physical profile (per game, against the team and the position) and
  *     season trend charts.
  *  3. Match involvement charts and the full game-by-game table.
  *  4. A page per game: the player against the rest of the squad, and where the
@@ -55,7 +55,13 @@ function diffPct(v: number | null, team: number | null): number | null {
 }
 const pctText = (p: number | null) => (p == null ? "" : p === 0 ? "even" : `${p > 0 ? "+" : ""}${p}%`);
 const pctColor = (p: number | null): RGB => (p == null || p === 0 ? DIM : p > 0 ? TEAL : RED_LIGHT);
-const ordinal = (n: number) => `${n}${["th", "st", "nd", "rd"][n % 100 > 10 && n % 100 < 14 ? 0 : n % 10] ?? "th"}`;
+/** 1st, 2nd, 3rd, 4th ... 11th, 12th, 13th, 21st (and a sensible suffix even for 0 or a negative number). */
+const ordinal = (n: number) => {
+  const v = Math.round(n);
+  const a = Math.abs(v);
+  const suffix = a % 100 >= 11 && a % 100 <= 13 ? "th" : (["th", "st", "nd", "rd"][a % 10] ?? "th");
+  return `${v}${suffix}`;
+};
 const rankColor = (r: number | null): RGB => (r == null ? DIM : r <= 3 ? GOLD : r <= 5 ? TEAL : TEXT);
 /** FAU's own logo (the same NCAA.com image the NCAA pages use); the server passes it through for the PDF. */
 const FAU_LOGO_URL = "https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/fla-atlantic.svg";
@@ -149,10 +155,6 @@ function highlights(report: PlayerReport, first: string): { text: string; color:
   const byRank = [...report.physical].filter((m) => m.rank && m.rank <= 3).sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99));
   for (const m of byRank.slice(0, 3)) {
     out.push({ text: `${ordinal(m.rank!)} on the team in ${m.label.toLowerCase()} (${short(m.avg, m.unit, m.decimals)} a game)`, color: GOLD });
-    named.add(m.key);
-  }
-  for (const m of report.physical.filter((x) => x.per90?.rank && x.per90.rank <= 3 && !named.has(x.key)).slice(0, 2)) {
-    out.push({ text: `${ordinal(m.per90!.rank!)} on the team per 90 minutes in ${m.label.toLowerCase()}`, color: GOLD });
     named.add(m.key);
   }
   if (pos) {
@@ -359,7 +361,7 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
     { key: "intensity", label: "INTENSITY", tint: [251, 146, 60] },
   ];
   const posName = report.position ? report.position.label[0].toUpperCase() + report.position.label.slice(1) : null;
-  const pctText = (p: number | null | undefined) => (p == null ? "–" : ordinal(Math.round(p)));
+  const percentileText = (p: number | null | undefined) => (p == null ? "–" : ordinal(Math.round(p)));
   const withAlpha = (opacity: number, draw: () => void) => {
     const GState = (doc as unknown as { GState: new (o: object) => unknown }).GState;
     const set = (doc as unknown as { setGState: (g: unknown) => void }).setGState.bind(doc);
@@ -482,7 +484,7 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
       doc.text(m.label.replace("Sprint avg speed", "Sprint speed").replace("Explosive efforts", "Explosive"), lx, ly + dy, { align });
       font(6);
       color(p.value == null ? DIM : p.value >= 75 ? GOLD : p.value >= 50 ? TEAL : DIM);
-      doc.text(`${short(v, m.unit, m.decimals)}  ·  ${pctText(p.value)}`, lx, ly + dy + 8, { align });
+      doc.text(`${short(v, m.unit, m.decimals)}  ·  ${percentileText(p.value)}`, lx, ly + dy + 8, { align });
     });
 
     legend(x + 12, y + h - 12, [
@@ -620,33 +622,34 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
     hy += lines.length * 11 + 7;
     if (hy > y + boxH - 10) break;
   }
-  // Per 90 minutes, anchored to the bottom of the highlights card when there's room.
-  const p90 = report.physical.filter((m) => m.per90?.value != null);
-  const p90H = 30 + p90.length * 15;
-  if (p90.length && hy + 10 < y + boxH - p90H) {
-    let py = y + boxH - p90H;
+  // Per game (his average, the team's, and his rank), anchored to the bottom of the highlights card when there's room.
+  const PER_GAME_KEYS = ["distance_mi", "sprints_distance_yd", "load", "sprints_count", "explosiveness_count"];
+  const perGame = report.physical.filter((m) => PER_GAME_KEYS.includes(m.key) && m.avg != null);
+  const perGameH = 30 + perGame.length * 15;
+  if (perGame.length && hy + 10 < y + boxH - perGameH) {
+    let py = y + boxH - perGameH;
     stroke(BORDER);
     doc.setLineWidth(0.5);
     doc.line(hx + 12, py - 8, hx + hw - 12, py - 8);
-    cardTitle("Per 90 minutes", hx + 12, py + 8);
+    cardTitle("Per game", hx + 12, py + 8);
     color(DIM);
     font(6.5, "bold");
     doc.text(first.toUpperCase(), hx + hw - 104, py + 8, { align: "right" });
     doc.text("TEAM", hx + hw - 56, py + 8, { align: "right" });
     doc.text("RANK", hx + hw - 12, py + 8, { align: "right" });
     py += 24;
-    for (const m of p90) {
+    for (const m of perGame) {
       color(TEXT);
       font(8);
       doc.text(m.label, hx + 12, py);
       font(8, "bold");
-      color(rankColor(m.per90!.rank));
-      doc.text(short(m.per90!.value, m.unit, m.decimals), hx + hw - 104, py, { align: "right" });
+      color(rankColor(m.rank));
+      doc.text(short(m.avg, m.unit, m.decimals), hx + hw - 104, py, { align: "right" });
       font(8);
       color(DIM);
-      doc.text(short(m.per90!.teamValue, m.unit, m.decimals), hx + hw - 56, py, { align: "right" });
-      color(rankColor(m.per90!.rank));
-      doc.text(m.per90!.rank ? `${ordinal(m.per90!.rank)}/${m.per90!.of}` : "–", hx + hw - 12, py, { align: "right" });
+      doc.text(short(m.teamAvg, m.unit, m.decimals), hx + hw - 56, py, { align: "right" });
+      color(rankColor(m.rank));
+      doc.text(m.rank ? `${ordinal(m.rank)}/${m.of}` : "–", hx + hw - 12, py, { align: "right" });
       py += 15;
     }
   }
@@ -657,16 +660,15 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
   y = heading(
     "Physical profile (GPS)",
     y,
-    `Per game, per 90 minutes, and against the team${posLabel ? ` and the ${report.position!.label}` : ""}. Counts games played (box-score minutes); ranked against teammates with 3+ games.`,
+    `Per game, and against the team${posLabel ? ` and the ${report.position!.label}` : ""}. Counts games played (box-score minutes); ranked against teammates with 3+ games.`,
   );
   autoTable(doc, {
     ...darkTable(),
     startY: y,
-    head: [["", "Avg per game", "Per 90", "Season best", "Team avg", ...(posLabel ? [`${posLabel} avg`] : []), "Team rank", ...(posLabel ? ["Pos. rank"] : [])]],
+    head: [["", "Avg per game", "Season best", "Team avg", ...(posLabel ? [`${posLabel} avg`] : []), "Team rank", ...(posLabel ? ["Pos. rank"] : [])]],
     body: report.physical.map((m) => [
       m.label,
       withUnit(m.avg, m.unit, m.decimals),
-      m.per90?.value != null ? short(m.per90.value, m.unit, m.decimals) + (m.unit === "mi" ? `\n${fixed(m.per90.value * KM_PER_MI, m.decimals)} km` : "") : "",
       m.best == null ? "–" : `${short(m.best, m.unit, m.decimals)}${m.unit === "mi" ? ` (${fixed(m.best * KM_PER_MI, m.decimals)} km)` : ""}\n${m.bestGame ? `${fmtDate(m.bestGame.date)} ${cleanOpponent(m.bestGame.opponent)}` : ""}`,
       `${short(m.teamAvg, m.unit, m.decimals)}  ${pctText(diffPct(m.avg, m.teamAvg))}`,
       ...(posLabel ? [`${short(m.posAvg, m.unit, m.decimals)}  ${pctText(diffPct(m.avg, m.posAvg))}`] : []),
@@ -674,29 +676,28 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
       ...(posLabel ? [m.posRank ? `${ordinal(m.posRank)} / ${m.posOf}` : "–"] : []),
     ]),
     styles: { ...darkTable().styles, fontSize: 7.5, cellPadding: 3.5 },
-    columnStyles: { 0: { fontStyle: "bold", cellWidth: 82 }, 2: { cellWidth: 52 } },
+    columnStyles: { 0: { fontStyle: "bold", cellWidth: 82 } },
     didParseCell: (c: CellHookData) => {
       if (c.section !== "body") return;
       const m = report.physical[c.row.index];
-      const rankCol = posLabel ? 6 : 5;
+      const rankCol = posLabel ? 5 : 4;
       if (c.column.index === rankCol) {
         c.cell.styles.textColor = rankColor(m.rank);
         c.cell.styles.fontStyle = "bold";
         c.cell.styles.halign = "center";
       }
-      if (posLabel && c.column.index === 7) {
+      if (posLabel && c.column.index === 6) {
         c.cell.styles.textColor = rankColor(m.posRank);
         c.cell.styles.fontStyle = "bold";
         c.cell.styles.halign = "center";
       }
-      if (c.column.index === 2 && m.per90?.rank) c.cell.styles.textColor = rankColor(m.per90.rank);
     },
   });
   y = lastY() + 9;
   color(DIM);
   font(6.5);
   doc.text(
-    "Per 90: games where the player played 45+ minutes, scaled to 90. GPS totals include warm-ups, so per-90 figures run a little high for everyone; compare them with the team's. Team and position averages count only games where players got minutes.",
+    "GPS totals include warm-ups, so compare players' per-game numbers with the team's rather than with a 90-minute figure. Team and position averages count only games where players got minutes.",
     M,
     y,
     { maxWidth: W - 2 * M },
