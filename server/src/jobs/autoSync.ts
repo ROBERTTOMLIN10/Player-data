@@ -10,7 +10,7 @@ import { shiftDate, teamClock } from "../lib/readiness.js";
 // upserts (keyed by date/opponent/player), so re-running them on a timer is
 // safe. Only GPS file imports remain manual, since those come from files the
 // coach uploads (Titan exports), not something published on the web.
-const INTERVAL_MINUTES = Number(process.env.AUTO_SYNC_INTERVAL_MINUTES) || 30;
+const INTERVAL_MINUTES = Number(process.env.AUTO_SYNC_INTERVAL_MINUTES) || 10;
 // After an FAU game, check far more often until its result and box score are in.
 const GAME_INTERVAL_MINUTES = 5;
 const INITIAL_DELAY_MS = 15_000; // let the server finish booting first
@@ -121,6 +121,11 @@ export function startAutoSync() {
     void runOnce();
     setInterval(tick, 60_000);
   }, INITIAL_DELAY_MS);
+}
+
+/** Re-checks fausports.com right away (e.g. just after a GPS file is uploaded) instead of waiting for the timer. */
+export function syncSoon() {
+  void runOnce();
 }
 
 export function getAutoSyncStatus() {

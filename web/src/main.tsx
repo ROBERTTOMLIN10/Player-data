@@ -16,7 +16,9 @@ const queryClient: QueryClient = new QueryClient({
     },
   }),
   defaultOptions: {
-    queries: { retry: (count, err) => !(err instanceof AuthError) && count < 2 },
+    // Every open page re-checks for new data each minute (and whenever the tab
+    // regains focus), so new stats, results and uploads show up without a refresh.
+    queries: { retry: (count, err) => !(err instanceof AuthError) && count < 2, refetchInterval: 60_000 },
   },
 });
 
