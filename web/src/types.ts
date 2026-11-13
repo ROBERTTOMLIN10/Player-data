@@ -269,7 +269,7 @@ export interface CompareResult {
   teamAverages: Record<string, number>;
 }
 
-export type Role = "coach" | "player";
+export type Role = "coach" | "player" | "trainer"; // trainer = athletic trainer (AT view)
 
 export interface Me {
   role: Role;
@@ -393,6 +393,7 @@ export interface AccountsList {
     last_login_at: string | null;
   }>;
   coaches: Array<{ user_id: number; email: string; last_login_at: string | null }>;
+  trainers?: Array<{ user_id: number; email: string; last_login_at: string | null }>;
   envCoach: string | null;
 }
 
@@ -836,4 +837,312 @@ export interface FollowsResponse {
   signedIn: boolean; // false for the local no-login mode (nowhere to save)
   publicKey: string;
   follows: FollowedTeam[];
+}
+
+// ---- Player care (AT view) ----------------------------------------------------
+
+export type PlayLevel = "full" | "as_tolerated" | "limited" | "rehab" | "out";
+export type RtpStage = "rehab" | "running" | "modified" | "full" | "match_ready";
+export type IssueCategory = "injury" | "gen_med" | "ppe";
+export type Side = "left" | "right" | "both";
+
+export interface Availability {
+  player_id: number;
+  status_date: string; // when it was set (it carries forward)
+  level: PlayLevel;
+  practice_note: string | null;
+  bike: string | null;
+  jogging: string | null;
+  running: string | null;
+  set_by: string | null;
+  updated_at: string;
+}
+
+export type AppointmentKind = "check" | "proactive" | "treatment" | "rehab" | "other";
+
+export interface Treatment {
+  id: number;
+  player_id: number;
+  treat_date: string;
+  treat_time: string | null; // HH:MM
+  kind: AppointmentKind;
+  reason: string | null; // what it's for
+  instructions: string | null;
+  status: "pending" | "booked" | "attended" | "missed" | "declined" | "cancelled";
+  awaiting: "player" | "trainer" | null; // whose answer a pending one needs
+  requested_by: "trainer" | "player";
+  player_note: string | null;
+  injury_id: number | null;
+  injury?: string | null; // the injury's description
+  attended_marked_by?: string | null;
+  confirmed_by?: string | null;
+  confirmed_at: string | null; // the AT confirmed they came in
+  created_by?: string | null;
+  updated_at?: string;
+}
+
+export interface CareNote {
+  id: number;
+  player_id: number;
+  note_date: string;
+  author_email: string | null;
+  author_role: Role;
+  body: string;
+  created_at: string;
+}
+
+export interface Issue {
+  id: number;
+  player_id: number;
+  category: IssueCategory;
+  description: string;
+  region: string | null;
+  side: Side | null;
+  injury_date: string | null;
+  expected_return: string | null;
+  stage: RtpStage;
+  closed_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  player_name?: string;
+  last_log_date?: string | null;
+}
+
+export interface RehabLog {
+  id: number;
+  injury_id: number;
+  log_date: string;
+  activities: string;
+  minutes: number | null;
+  notes: string | null;
+  created_by: string | null;
+}
+
+export interface OpenIssue extends Issue {
+  days: number | null;
+  latestLog: { log_date: string; activities: string; notes: string | null } | null;
+}
+
+export interface CareDayPlayer {
+  player_id: number;
+  name: string;
+  position: string | null;
+  availability: Availability | null;
+  treatments: Treatment[];
+  notes: CareNote[];
+  messages: CareMessage[];
+  issues: OpenIssue[];
+}
+
+export interface CareDay {
+  today: string;
+  date: string;
+  players: CareDayPlayer[];
+}
+
+export interface PlayerCare {
+  date: string;
+  day: CareDayPlayer | null;
+  history: Availability[];
+  pastIssues: Issue[];
+  recentNotes: CareNote[];
+  treatments: Treatment[];
+  prehab: PrehabLog[];
+}
+
+export interface PrehabLog {
+  id: number;
+  player_id: number;
+  injury_id: number | null;
+  injury: string | null;
+  log_date: string;
+  activities: string;
+  minutes: number | null;
+  status: "pending" | "confirmed" | "rejected";
+  confirmed_by: string | null;
+  confirmed_at: string | null;
+  created_at: string;
+}
+
+export interface ToConfirm {
+  today: string;
+  visits: (Treatment & { player_name: string })[];
+  prehab: (PrehabLog & { player_name: string })[];
+}
+
+export interface IssueDetail {
+  today: string;
+  issue: Issue;
+  player: { id: number; name: string };
+  stages: { id: number; stage: RtpStage; stage_date: string; set_by: string | null }[];
+  logs: RehabLog[];
+  painTrend: { date: string; readiness: number; muscle_soreness: number; pain: number | null }[];
+  availability: Availability[];
+}
+
+export interface MyCare {
+  today: string;
+  availability: Pick<Availability, "level" | "practice_note" | "bike" | "jogging" | "running"> | null;
+  issues: Pick<Issue, "id" | "category" | "description" | "side" | "injury_date" | "expected_return" | "stage" | "closed_at">[];
+  treatments: Omit<Treatment, "player_id" | "attended_marked_by" | "created_by" | "updated_at">[];
+  log: Omit<Treatment, "player_id" | "attended_marked_by" | "created_by" | "updated_at">[];
+  prehab: PrehabLog[];
+  messages: CareMessage[];
+  check: { appointment_id: number | null; decision: PlayLevel | null; decision_note: string | null } | null;
+}
+
+export interface CareMessage {
+  id: number;
+  player_id: number;
+  msg_date: string;
+  author_role: "player" | "trainer" | "coach";
+  author_email: string | null;
+  body: string;
+  quick: string | null;
+  created_at: string;
+}
+
+export interface TrainingCheck {
+  player_id: number;
+  check_date: string;
+  flagged: number;
+  flag_note: string | null;
+  flagged_by: string | null;
+  appointment_id: number | null;
+  cleared_by: string | null;
+  cleared_at: string | null;
+  recommendation: PlayLevel | null;
+  rec_note: string | null;
+  recommended_by: string | null;
+  recommended_at: string | null;
+  decision: PlayLevel | null;
+  decision_note: string | null;
+  decided_by: string | null;
+  decided_at: string | null;
+  kept_same: number;
+}
+
+export type CheckStage = "flagged" | "called_in" | "awaiting_coach" | "decided" | "cleared";
+export type ReasonKind = "severe" | "injury_area" | "low" | "restricted" | "manual";
+
+export interface BeforeTrainingItem {
+  player_id: number;
+  name: string;
+  reasons: { kind: ReasonKind; label: string }[];
+  checkin: { readiness_score: number; notes: string | null; submitted_at: string; soreness: { region: string; severity: Severity; note: string | null }[] } | null;
+  availability: Availability | null;
+  check: TrainingCheck | null;
+  appointment: Treatment | null;
+  appointments: Treatment[];
+  messages: CareMessage[];
+  stage: CheckStage;
+}
+
+export interface BeforeTrainingResponse {
+  today: string;
+  date: string;
+  threshold: number;
+  items: BeforeTrainingItem[];
+}
+
+export interface CareAlertPrefs {
+  severe: boolean;
+  moderate: boolean;
+  low_readiness: boolean;
+  readiness_below: number;
+}
+export interface CareAlertsResponse {
+  signedIn: boolean;
+  prefs: CareAlertPrefs | null;
+  thresholds: number[];
+  publicKey: string;
+}
+
+/** A player's season report (the downloadable PDF): see server/src/lib/playerReport.ts. */
+export interface ReportPercentiles {
+  value: number | null;
+  team: number | null;
+  pos: number | null;
+}
+
+export interface PlayerReport {
+  generated: string;
+  range: { from: string; to: string };
+  player: { id: number; canonical_name: string; position: string | null; jersey_number: string | null };
+  profile: PlayerProfile | null;
+  match: {
+    games: {
+      game_date: string;
+      opponent: string;
+      result: string;
+      minutes: number | null;
+      started: number;
+      goals: number;
+      assists: number;
+      points: number;
+      shots: number;
+      shots_on_goal: number;
+      yellow_cards: number;
+      red_cards: number;
+      is_goalie?: number;
+      saves?: number | null;
+      goals_allowed?: number | null;
+      opponent_logo_url?: string | null;
+    }[];
+    totals: {
+      played: number;
+      started: number;
+      minutes: number;
+      goals: number;
+      assists: number;
+      points: number;
+      shots: number;
+      shots_on_goal: number;
+      yellow_cards: number;
+      red_cards: number;
+      saves: number | null;
+    };
+  };
+  physical: {
+    key: string;
+    label: string;
+    unit: string;
+    decimals: number;
+    group: "volume" | "speed" | "intensity";
+    avg: number | null;
+    best: number | null;
+    bestGame: { date: string; opponent: string | null } | null;
+    teamAvg: number | null;
+    teamBest: number | null;
+    rank: number | null;
+    of: number;
+    posAvg: number | null;
+    posRank: number | null;
+    posOf: number;
+    /** Percentiles (0–100) among ranked teammates: his, and where the team and position averages fall. */
+    pct: ReportPercentiles;
+    per90: {
+      value: number | null;
+      teamValue: number | null;
+      posValue: number | null;
+      rank: number | null;
+      of: number;
+      pct: ReportPercentiles;
+    } | null;
+  }[];
+  gpsGames: {
+    game_date: string;
+    opponent: string | null;
+    opponent_logo_url: string | null;
+    result: string;
+    goals: number | null;
+    assists: number | null;
+    minutes: number | null;
+    started: number | null;
+    glitch: boolean;
+    metrics: Record<string, { value: number | null; teamAvg: number | null; rank: number | null; of: number; squad: number[] }>;
+  }[];
+  trackedGames: number;
+  position: { group: string; label: string } | null;
 }

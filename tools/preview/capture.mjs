@@ -41,6 +41,30 @@ const syncStatus = await get(coach, "/api/admin/sync-status");
 syncStatus.intervalMinutes = 30; // the test server runs with auto-sync effectively off; show the real default
 syncStatus.nextRunAt = null;
 await get(coach, "/api/admin/accounts");
+// Athletic trainer care: the roster (from the care day) and the raw care tables, so the
+// preview can answer care requests and changes without a server (tools/preview/careMock.ts).
+out.trainerMe = { role: "trainer", email: "at@fau.edu", playerId: null, playerName: null, authRequired: true };
+{
+  const day = await get(coach, "/api/care/day");
+  out.careRoster = day.players.map((p) => ({ player_id: p.player_id, name: p.name, position: p.position }));
+  const { default: Database } = await import("better-sqlite3");
+  const db = new Database(process.env.DB_PATH, { readonly: true });
+  const all = (sql) => db.prepare(sql).all();
+  out.careRaw = {
+    availability: all("SELECT * FROM player_availability"),
+    treatments: all("SELECT * FROM treatments"),
+    notes: all("SELECT * FROM care_notes"),
+    issues: all("SELECT * FROM injuries"),
+    stages: all("SELECT * FROM injury_stage_history"),
+    logs: all("SELECT * FROM rehab_logs"),
+    messages: all("SELECT * FROM care_messages"),
+    checks: all("SELECT * FROM training_checks"),
+    prehab: all("SELECT * FROM prehab_logs"),
+  };
+  db.close();
+  out.carePain = {};
+  for (const i of out.careRaw.issues) out.carePain[i.id] = (await (await fetch(`${B}/api/care/issues/${i.id}`, { headers: { cookie: coach } })).json()).painTrend;
+}
 await get(coach, "/api/admin/reminders");
 // NCAA D1
 const board = await get(coach, "/api/ncaa/scoreboard");
@@ -133,7 +157,19 @@ Object.entries(logos).forEach(([url, dataUri], i) => {
     embedded[token] = dataUri;
   }
 });
-json = json.slice(0, -1) + `,"__logos":${JSON.stringify(embedded)}}`;
+// Crisp logos for the player PDF: the original SVG of FAU and of each opponent on our schedule
+// (about 16 small files), so preview PDFs match the real app instead of using the 64px copies.
+const snapshotLarge = process.env.SNAPSHOT_FILE && fs.existsSync(process.env.SNAPSHOT_FILE)
+  ? JSON.parse(fs.readFileSync(process.env.SNAPSHOT_FILE, "utf-8")).logosLarge ?? {}
+  : {};
+const reportSeos = new Set(["fla-atlantic", ...(out["/api/schedule"] ?? []).map((g) => g.opponent_seo).filter(Boolean)]);
+const largeForReport = {};
+for (const [url, svg] of Object.entries(snapshotLarge)) {
+  const m = /\/bgl\/([a-z0-9-]+)\.svg$/.exec(url);
+  if (m && reportSeos.has(m[1])) largeForReport[url] = svg;
+}
+json = json.slice(0, -1) + `,"__logos":${JSON.stringify(embedded)},"__logosLarge":${JSON.stringify(largeForReport)}}`;
+console.log(Object.keys(largeForReport).length, "full-size logos embedded for the PDF");
 fs.writeFileSync(process.argv[2], json);
 console.log(Object.keys(embedded).length, "logos embedded");
 console.log(Object.keys(out).length, "responses,", (JSON.stringify(out).length / 1024).toFixed(0), "KB");

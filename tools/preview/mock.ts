@@ -4,9 +4,11 @@
 import raw from "./data.json";
 import { handlePreviewUpload, listUploads } from "./uploads";
 import { applyPendingUploads, applyUpload, rowsFromWorkbook } from "./liveUploads";
+import { createCareMock } from "./careMock";
+import { buildPlayerReport, seasonStart } from "../../server/src/lib/playerReport";
 
 const data: Record<string, any> = raw as any;
-export type DemoRole = "player" | "coach" | null;
+export type DemoRole = "player" | "coach" | "trainer" | null;
 export const demo = { role: "player" as DemoRole };
 
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
@@ -17,6 +19,7 @@ const GAME = data["/api/me/readiness/today"].game;
 let myEntry: any = null;
 let pushOn = false;
 const squad = clone(data["/api/readiness/squad"]);
+const care = createCareMock(data, TODAY, PLAYER_ID);
 const reminders = clone(data["/api/admin/reminders"]);
 const accounts = clone(data["/api/admin/accounts"]);
 
@@ -77,7 +80,19 @@ function recomputeSquad() {
   squad.regionCounts = rc;
 }
 
+/** The board with each player's care as it stands now (care changes while clicking around). */
+// Before training is worked out from each player's check-in on the board.
+care.setEntries((date) =>
+  squadOn(date)
+    .players.filter((p: any) => p.entry)
+    .map((p: any) => ({ player_id: p.player_id, readiness_score: p.entry.readiness_score, notes: p.entry.notes, submitted_at: p.entry.updated_at ?? p.entry.submitted_at, soreness: p.entry.soreness ?? [] })),
+);
+
 function squadFor(date: string | null) {
+  return squadOn(date);
+}
+
+function squadOn(date: string | null) {
   if (!date || date === TODAY) return squad;
   // Other days: roster with nobody checked in (the preview only has today's data).
   return {
@@ -139,6 +154,32 @@ function compare(ids: number[]) {
   return { sessions, seasonAverages, teamAverages: data["/api/team/summary"].seasonAverages };
 }
 
+/** The player report (PDF) from the captured player pages, with the same builder as the server. */
+function playerReport(id: number, q: URLSearchParams) {
+  const d = data[`/api/players/${id}`];
+  if (!d) return null;
+  const teamSessions = (data["/api/players"] ?? []).flatMap((p: any) => data[`/api/players/${p.id}`]?.sessions ?? []);
+  const iso = (v: string | null) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+  // Each opponent's NCAA.com logo by game date, as in the real app (crisp, transparent).
+  const opponentLogos = Object.fromEntries(
+    (data["/api/schedule"] ?? [])
+      .filter((g: any) => g.opponent_seo)
+      .map((g: any) => [String(g.game_date).slice(0, 10), `https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/${g.opponent_seo}.svg`]),
+  );
+  return buildPlayerReport({
+    opponentLogos,
+    player: d.player,
+    profile: d.profile,
+    sessions: d.sessions,
+    gameStats: d.gameStats ?? [],
+    teamSessions,
+    positions: Object.fromEntries((data["/api/players"] ?? []).map((p: any) => [p.id, p.position ?? null])),
+    from: iso(q.get("from")) ?? seasonStart(TODAY),
+    to: iso(q.get("to")) ?? TODAY,
+    generated: TODAY,
+  });
+}
+
 function nowSql() {
   return new Date().toISOString().replace("T", " ").slice(0, 19);
 }
@@ -160,8 +201,9 @@ function route(method: string, path: string, q: URLSearchParams, body: any): Res
   const key = path + (q.toString() ? `?${q.toString()}` : "");
 
   if (path === "/api/auth/login" && method === "POST") {
-    demo.role = String(body?.email ?? "").toLowerCase().includes("coach") ? "coach" : "player";
-    return json(demo.role === "coach" ? data.coachMe : data.playerMe);
+    const email = String(body?.email ?? "").toLowerCase();
+    demo.role = email.includes("coach") ? "coach" : email.startsWith("at@") || email.includes("trainer") ? "trainer" : "player";
+    return json(demo.role === "coach" ? data.coachMe : demo.role === "trainer" ? data.trainerMe : data.playerMe);
   }
   if (path === "/api/auth/logout") {
     demo.role = null;
@@ -169,9 +211,17 @@ function route(method: string, path: string, q: URLSearchParams, body: any): Res
   }
   if (path === "/api/auth/me") {
     if (!role) return json({ error: "Sign in required." }, 401);
-    return json(role === "coach" ? data.coachMe : data.playerMe);
+    return json(role === "coach" ? data.coachMe : role === "trainer" ? data.trainerMe : data.playerMe);
   }
   if (!role) return json({ error: "Sign in required." }, 401);
+
+  // ---- player report (PDF) ----
+  if (path === "/api/me/report") return json(playerReport(PLAYER_ID, q));
+  const reportMatch = path.match(/^\/api\/players\/(\d+)\/report$/);
+  if (reportMatch && role === "coach") {
+    const r = playerReport(Number(reportMatch[1]), q);
+    return r ? json(r) : json({ error: "player not found" }, 404);
+  }
 
   // ---- player ----
   if (path === "/api/me/readiness/today") {
@@ -198,6 +248,7 @@ function route(method: string, path: string, q: URLSearchParams, body: any): Res
       const row = squad.players.find((p: any) => p.player_id === PLAYER_ID);
       if (row) Object.assign(row, { entry: myEntry }, flag(myEntry, row.baseline));
       recomputeSquad();
+      care.onCheckin(PLAYER_ID, myEntry);
     }
     return json({ date: TODAY, game: GAME, entry: myEntry });
   }
@@ -217,6 +268,8 @@ function route(method: string, path: string, q: URLSearchParams, body: any): Res
   }
 
   // ---- coach ----
+  const careResponse = care.route(method, path, q, body ?? {}, role ?? "");
+  if (careResponse) return careResponse;
   if (path === "/api/readiness/squad") return json(squadFor(q.get("date")));
   if (path.startsWith("/api/readiness/player/")) {
     const id = Number(path.split("/").pop());
@@ -359,6 +412,21 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const method = (init?.method ?? "GET").toUpperCase();
   const ncaa = method === "GET" ? (await ncaaTeamRoute(url.pathname)) ?? (await ncaaGameRoute(url.pathname)) : null;
   if (ncaa) return ncaa;
+  // The PDF asks the server for FAU's logo (an NCAA.com image): answer from the embedded copy.
+  if (method === "GET" && url.pathname === "/api/players/report-image") {
+    const src = url.searchParams.get("src") ?? "";
+    const team = /\/([a-z0-9-]+)\.svg$/.exec(src)?.[1];
+    // The original SVG (sharp at any size), falling back to the small embedded copy.
+    const large: string | undefined = data.__logosLarge?.[src];
+    const raw = team ? teamLogo(team) : "";
+    const uri = large ?? LOGOS[raw] ?? raw;
+    const m = /^data:([^;,]+)((?:;[^,]*)?),(.*)$/s.exec(uri);
+    if (m) {
+      const bytes = m[2].includes("base64") ? Uint8Array.from(atob(m[3]), (c) => c.charCodeAt(0)) : new TextEncoder().encode(decodeURIComponent(m[3]));
+      return new Response(bytes, { status: 200, headers: { "Content-Type": m[1] } });
+    }
+    return json({ error: "Unknown image." }, 404);
+  }
   if (url.pathname === "/api/admin/upload-titan" && init?.body instanceof FormData) {
     const file = init.body.get("file");
     if (!(file instanceof File)) return json({ status: "error", filename: "", message: "No file chosen.", warnings: [] }, 400);
@@ -378,6 +446,11 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
   await new Promise((r) => setTimeout(r, 120));
   return route(method, url.pathname, url.searchParams, body);
+};
+
+/** The phone alert this view would have received (check-in alerts to the AT), if any. */
+export const demoAlerts = {
+  take: (role: DemoRole) => (role ? care.takeAlert(role) : null),
 };
 
 export const demoPush = {

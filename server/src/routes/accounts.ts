@@ -4,7 +4,7 @@ import { getDb } from "../db/connection.js";
 import { destroySessionsForUser, hashPassword } from "../lib/auth.js";
 import { POSITION_SUBQUERY } from "./players.js";
 
-/** Coach-only management of player and coach logins (mounted under /api/admin/accounts). */
+/** Coach-only management of player, coach and athletic trainer logins (mounted under /api/admin/accounts). */
 export const accountsRouter = Router();
 
 const MIN_PASSWORD = 6;
@@ -26,12 +26,16 @@ accountsRouter.get("/", (_req, res) => {
   const coaches = db
     .prepare("SELECT id AS user_id, email, last_login_at FROM users WHERE role = 'coach' ORDER BY email")
     .all();
-  res.json({ players, coaches, envCoach: process.env.ADMIN_USER ?? null });
+  const trainers = db
+    .prepare("SELECT id AS user_id, email, last_login_at FROM users WHERE role = 'trainer' ORDER BY email")
+    .all();
+  res.json({ players, coaches, trainers, envCoach: process.env.ADMIN_USER ?? null });
 });
 
 const createSchema = z.discriminatedUnion("role", [
   z.object({ role: z.literal("player"), email, password, playerId: z.number().int() }),
   z.object({ role: z.literal("coach"), email, password }),
+  z.object({ role: z.literal("trainer"), email, password }), // athletic trainer: the AT view
 ]);
 
 accountsRouter.post("/", (req, res) => {

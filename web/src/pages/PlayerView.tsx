@@ -9,6 +9,7 @@ import { RangePicker, ReadinessHistory } from "../components/ReadinessHistory";
 import { RpeHistory } from "../components/RpeHistory";
 import { PlayerProfileHeader } from "../components/PlayerProfileHeader";
 import { PlayerPhoto } from "../components/PlayerPhoto";
+import { PlayerReportButton } from "../components/PlayerReportButton";
 import { formatDate } from "../lib/format";
 import { positionGroup, ROSTER_SECTIONS } from "../lib/positions";
 import { OpponentLink } from "../components/ncaa";
@@ -102,13 +103,17 @@ export default function PlayerView() {
         onBack={() => navigate("/players")}
       />
 
-      <div className="-mt-4 flex justify-center">
+      <div className="-mt-4 flex flex-wrap items-center justify-center gap-3 sm:justify-between">
+        <span className="hidden w-32 sm:block" />
         <Segmented
           value={section}
           options={PLAYER_SECTIONS}
           onChange={(v) => setParams(v === "stats" ? {} : { section: v }, { replace: true })}
           label="Player sections"
         />
+        <div className="flex sm:w-32 sm:justify-end">
+          <PlayerReportButton playerId={selectedId} />
+        </div>
       </div>
 
       {section === "readiness" && <PlayerReadinessSection playerId={selectedId} />}

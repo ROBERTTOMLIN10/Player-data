@@ -27,7 +27,7 @@ const val = (s: GpsSession, key: string) => (s as unknown as Record<string, numb
 /** Two-to-four option segmented control (quicker than a dropdown). */
 export function Segmented<T extends string>({ value, options, onChange, label }: {
   value: T;
-  options: { key: T; label: string }[];
+  options: { key: T; label: string; dot?: boolean }[];
   onChange: (v: T) => void;
   label: string;
 }) {
@@ -44,6 +44,7 @@ export function Segmented<T extends string>({ value, options, onChange, label }:
           }`}
         >
           {o.label}
+          {o.dot && <span className="ml-1 inline-block h-1.5 w-1.5 -translate-y-1.5 rounded-full bg-gold" aria-label="needs your answer" />}
         </button>
       ))}
     </div>

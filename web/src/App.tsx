@@ -13,10 +13,12 @@ import TeamView from "./pages/TeamView";
 import PlayersTabView from "./pages/PlayersTabView";
 import AdminView from "./pages/AdminView";
 import ReadinessView from "./pages/ReadinessView";
+import { useAtNeedsAnswer } from "./components/AthleticTraining";
 import RpeView from "./pages/RpeView";
 import LoginView from "./pages/LoginView";
 import ReadinessTabView from "./pages/player/ReadinessTabView";
 import MyGpsView from "./pages/player/MyGpsView";
+import InjuriesView from "./pages/InjuriesView";
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   `shrink-0 px-2 py-2 text-xs font-medium tracking-wide uppercase transition-colors sm:px-3 sm:text-sm ${
@@ -35,7 +37,9 @@ export default function App() {
     );
   }
   if (!me) return <LoginView />;
-  return me.role === "player" ? <PlayerApp me={me} /> : <CoachApp me={me} />;
+  if (me.role === "player") return <PlayerApp me={me} />;
+  if (me.role === "trainer") return <TrainerApp me={me} />;
+  return <CoachApp me={me} />;
 }
 
 function CoachApp({ me }: { me: Me }) {
@@ -83,6 +87,44 @@ function CoachApp({ me }: { me: Me }) {
         <Route path="/players/:playerId" element={<PlayersTabView />} />
         <Route path="/compare" element={<Navigate to="/players?view=compare" replace />} />
         <Route path="/data" element={<AdminView />} />
+        <Route path="/injuries" element={<InjuriesView />} />
+        <Route path="/injuries/:id" element={<InjuriesView />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Shell>
+  );
+}
+
+/**
+ * The athletic trainer's view: Injuries first (who to see before practice: Pre practice, then
+ * the recovery tracker), the morning Readiness board (each player's care panel and
+ * the live injury report), and RPE trends.
+ */
+function TrainerApp({ me }: { me: Me }) {
+  return (
+    <Shell
+      me={me}
+      subtitle="Athletic Training"
+      nav={
+        <>
+          <NavLink to="/injuries" className={navLinkClass}>
+            Injuries
+          </NavLink>
+          <NavLink to="/readiness" className={navLinkClass}>
+            Readiness
+          </NavLink>
+          <NavLink to="/rpe" className={navLinkClass}>
+            RPE
+          </NavLink>
+        </>
+      }
+    >
+      <Routes>
+        <Route path="/" element={<Navigate to="/injuries" replace />} />
+        <Route path="/readiness" element={<ReadinessView />} />
+        <Route path="/injuries" element={<InjuriesView />} />
+        <Route path="/injuries/:id" element={<InjuriesView />} />
+        <Route path="/rpe" element={<RpeView trendsOnly />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Shell>
@@ -90,6 +132,7 @@ function CoachApp({ me }: { me: Me }) {
 }
 
 function PlayerApp({ me }: { me: Me }) {
+  const atNeedsAnswer = useAtNeedsAnswer();
   return (
     <Shell
       me={me}
@@ -100,7 +143,10 @@ function PlayerApp({ me }: { me: Me }) {
             Home
           </NavLink>
           <NavLink to="/" end className={navLinkClass}>
-            Readiness
+            <span className="relative">
+              Readiness
+              {atNeedsAnswer && <span className="absolute -right-2 -top-0.5 h-2 w-2 rounded-full bg-gold" aria-label="Needs your answer" />}
+            </span>
           </NavLink>
           <NavLink to="/my-gps" className={navLinkClass}>
             My GPS
@@ -130,7 +176,7 @@ function PlayerApp({ me }: { me: Me }) {
 function Shell({ me, subtitle, nav, children }: { me: Me; subtitle: string; nav: ReactNode; children: ReactNode }) {
   const queryClient = useQueryClient();
   // In local no-password mode there's nothing to sign out of for coaches.
-  const canSignOut = me.authRequired || me.role === "player";
+  const canSignOut = me.authRequired || me.role !== "coach";
 
   async function handleSignOut() {
     await logout().catch(() => undefined);

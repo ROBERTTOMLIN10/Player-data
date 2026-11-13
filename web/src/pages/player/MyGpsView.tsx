@@ -3,6 +3,7 @@ import { Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis
 import { useMetrics, useMyFitness, useMyGameGps, useMyProfile } from "../../api/client";
 import { FitnessCard } from "../../components/Fitness";
 import { PlayerProfileHeader } from "../../components/PlayerProfileHeader";
+import { PlayerReportButton } from "../../components/PlayerReportButton";
 import { TeamLogo } from "../../components/TeamLogo";
 import { useOpponentLogos } from "../../components/DateLogoTick";
 import { Card, SectionHeading } from "../../components/Card";
@@ -56,6 +57,9 @@ export default function MyGpsView() {
         profile={profile.profile}
         subtitle={`${profile.seasonTotals.games_played ?? 0} game${profile.seasonTotals.games_played === 1 ? "" : "s"} played · ${sessions.length} tracked session${sessions.length === 1 ? "" : "s"} · compared against the squad (teammates stay anonymous)`}
       />
+      <div className="-mt-4 flex justify-end">
+        <PlayerReportButton />
+      </div>
 
       {fitness?.you && <FitnessCard you={fitness.you} thresholds={fitness.thresholds} asOf={fitness.asOf} title="Your Fitness vs Match Group" />}
 

@@ -15,7 +15,7 @@
 import fs from "node:fs";
 import { getDb } from "../../server/src/db/connection.js";
 import { migrate } from "../../server/src/db/migrate.js";
-import { syncSchedule } from "../../server/src/import/syncSchedule.js";
+import { dropRenamedScheduleRows, syncSchedule } from "../../server/src/import/syncSchedule.js";
 import { syncMinutes } from "../../server/src/import/importMinutes.js";
 import { syncSeason, syncStatsAndRankings } from "../../server/src/jobs/ncaaSync.js";
 import { syncAllTeams } from "../../server/src/teams/sync.js";
@@ -207,7 +207,8 @@ if (mode === "export") {
       }
       if (sharp) {
         bytes = photos.has(url)
-          ? await sharp(bytes).resize(192, 240, { fit: "cover", position: "top" }).webp({ quality: 72 }).toBuffer()
+          ? // Our own players' headshots stay large and sharp: the player PDF draws them at full size (about 30 photos).
+            await sharp(bytes).resize(800, 1000, { fit: "cover", position: "top", withoutEnlargement: true }).webp({ quality: 86 }).toBuffer()
           : squadPhotos.has(url)
             ? await sharp(bytes).resize(64, 80, { fit: "cover", position: "top" }).webp({ quality: 55 }).toBuffer()
           : await sharp(bytes).resize(64, 64, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).webp({ quality: 80 }).toBuffer();
@@ -274,6 +275,8 @@ if (mode === "export") {
       if (game) insert("minutes_played", { ...row, game_id: game.id, player_id: playerId(_player) }, "game_id, player_id");
     }
   })();
+  // Snapshots saved before the fix can carry a game twice under an old name.
+  dropRenamedScheduleRows(db);
   // Snapshots from before rank history existed: seed it from their cached
   // tables, dated (team timezone) by when each table was fetched.
   if (!snap.ncaaRankHistory?.length) {

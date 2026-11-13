@@ -39,6 +39,7 @@ readinessRouter.get("/squad", (req, res) => {
     )
     .all() as Array<{ player_id: number; name: string; position: string | null; user_id: number | null }>;
 
+
   const players = roster
     .filter((p) => p.user_id !== null || byPlayer.has(p.player_id))
     .map((p) => {

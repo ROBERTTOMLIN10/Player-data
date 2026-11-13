@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { saveRpe, submitRpeSession, useRpeSession, useRpeSessions, useRpeTrends } from "../api/client";
+import { saveRpe, submitRpeSession, useRpeSession, useRpeSessions, useRpeTrends, useMe } from "../api/client";
 import { Card, SectionHeading } from "../components/Card";
 import { RpePill, sessionLabel } from "../components/RpeHistory";
 import { Segmented } from "../components/SeasonStats";
@@ -51,9 +51,10 @@ const jersey = (n: string | null) => (n ? <span className="mr-1.5 text-xs font-n
  * 7-day and Last Month averages, flags for planning the next session, and the
  * squad's average over the last month.
  */
-export default function RpeView() {
+export default function RpeView({ trendsOnly = false }: { trendsOnly?: boolean }) {
   const [params, setParams] = useSearchParams();
-  const view: View = params.get("view") === "trends" ? "trends" : "log";
+  // The athletic trainer's view shows only the trends (logging RPE is for coaches).
+  const view: View = trendsOnly || params.get("view") === "trends" ? "trends" : "log";
   const set = (next: Record<string, string | null>) => {
     const merged = Object.fromEntries(params.entries());
     for (const [k, v] of Object.entries(next)) if (v === null) delete merged[k];
@@ -63,9 +64,11 @@ export default function RpeView() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex justify-center">
-        <Segmented value={view} options={VIEWS} onChange={(v) => set({ view: v === "log" ? null : v, sd: null, s: null })} label="RPE" />
-      </div>
+      {!trendsOnly && (
+        <div className="flex justify-center">
+          <Segmented value={view} options={VIEWS} onChange={(v) => set({ view: v === "log" ? null : v, sd: null, s: null })} label="RPE" />
+        </div>
+      )}
       {view === "trends" ? (
         <Trends
           open={params.get("sd") ? { date: params.get("sd")!, session: params.get("s") === "2" ? 2 : 1 } : null}
@@ -558,6 +561,9 @@ function ScoreTable({
   rows: (RpeSessionPlayer | RpeSessionKeeper)[];
   link?: boolean;
 }) {
+  // Player pages are for coaches; the athletic trainer sees plain names.
+  const { data: me } = useMe();
+  link = link && me?.role === "coach";
   return (
     <section>
       <div className="mb-2 flex items-baseline gap-2">

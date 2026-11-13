@@ -1,0 +1,33 @@
+# FAU Men's Soccer dashboard: rules for the player PDF reports
+
+These are standing rules from Rob (assistant coach). Follow them on every change to the PDFs, the report data, the GPS/minutes data, or the logos and photos.
+
+## Data must be right (check before you finish)
+
+- **Run `npm run check:reports`** after any change to the report (`server/src/lib/playerReport.ts`, `server/src/routes/players.ts`, `web/src/lib/playerPdf.ts`), to the GPS/minutes data, or after a sync. It recomputes every player's averages, ranks, match totals, GPS game counts and opponent logos from the raw database and fails if anything differs. Fix what it reports; don't loosen the check.
+- **Per game, never per 90.** GPS totals include about 2.6 miles of warm-up running, so per-90 figures inflate short appearances. The PDFs show per-game averages and ranks only.
+- **One ranking pool.** Everyone is ranked against teammates with 3+ games (so "of 21" means the same in every report). Players with fewer GPS games show "–", not a rank against a smaller pool.
+- **Glitched sessions** (top speed above 25 mph, `GLITCH_TOP_SPEED_MPH`) are left out of averages and ranks, and the game page says so. Don't invent or patch the numbers; a corrected Titan export can be uploaded on the Data page with Replace.
+- **Season totals** on page 3 (distance, sprint distance, load) add up exactly the games in the game-by-game table, with distances in miles, kilometres and yards.
+- **Spelling and numbers:** every rank uses `ordinal()` from `web/src/lib/ordinal.ts` (1st, 2nd, 3rd, 4th, 11th, 12th, 13th, 21st; never "3th"). Percent differences read `+25%`, `-12%` or `even`, never an ordinal. Read every word of visible text for typos.
+- Never show an average, rank or total you haven't verified against the raw data.
+
+## Logos and photos: crisp, sharp, no background
+
+- **Opponents:** every NCAA D1 opponent uses its NCAA.com logo (transparent SVG, `ncaaLogoUrl(seo)`), matched by game date through `ncaa_games` (see `opponentLogos` in `playerReportFor`). Never use the schedule's fausports.com PNGs (small, some with white backgrounds). Non-D1 opponents (e.g. Miami Dade, PBA) show the initials tile.
+- **FAU's own logo** is the NCAA.com `fla-atlantic` logo: in the bio on page 1 just before the number and name, and in the header of every other page just before the number and name.
+- **Resolution:** SVG logos are rasterised large (FAU 1000px, opponents 700px) so they stay sharp at every size. Player photos stay at full detail (up to 1600px, high-quality JPEG); never shrink a photo to a thumbnail.
+- The image route (`/api/players/report-image`) only passes through roster photos, schedule logos, and NCAA.com logos for teams the app has a game for.
+- In the preview build (`tools/preview/`), our players' headshots are kept at 800x1000 and the FAU/opponent logos are embedded so preview PDFs match.
+
+## Layout rules already agreed
+
+- Page 3: no shots chart; season totals (distance, sprint distance in mi/km/yd, and load) fill the space under the game-by-game table down to the footer.
+- Game pages (6 onward): no percent-vs-squad column before the yellow team rank.
+- Page 1 "Per game" box (distance, sprint distance, load, sprints, explosive efforts: his number, the team's, his rank). No per-90 anywhere.
+
+## After a PDF change
+
+1. `npm run build`, restart the dashboard, generate a real PDF and look at it (pages 1, 2, 3 and a game page).
+2. Commit and push to **both** `player-report-pdf` and `claude/friendly-dijkstra-s2fxp1` (the hourly preview refresh builds from the second).
+3. Update the preview (the `update-preview` skill).
