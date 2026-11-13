@@ -332,12 +332,12 @@ function route(method: string, path: string, q: URLSearchParams, body: any): Res
     return json({ ...base, date: q.get("date") ?? base.date, games: [], updatedAt: null });
   }
   if (path.startsWith("/api/ncaa/stats/") && data[key] === undefined) return json({ error: "Not loaded yet." }, 404);
-  if (data[key] !== undefined) return json(data[key]);
-  if (path === "/api/team/stats" && data[path] !== undefined) {
-    // FAU's logo on the home page: the original SVG, so it's sharp at any size.
+  if (path === "/api/team/stats" && data[key] !== undefined) {
+    // FAU's logo on the home page: the original SVG (not the 64px copy), so it's sharp at any size.
     const big = Object.entries((data.__logosLarge ?? {}) as Record<string, string>).find(([u]) => u.endsWith("/fla-atlantic.svg"))?.[1];
-    return json(big ? { ...data[path], logo: big } : data[path]);
+    return json(big ? { ...data[key], logo: big } : data[key]);
   }
+  if (data[key] !== undefined) return json(data[key]);
   if (data[path] !== undefined) return json(data[path]);
   return json({ error: "Not found." }, 404);
 }
