@@ -90,6 +90,7 @@ export interface ReportInput {
   gameStats: ReportGameStat[]; // this player's box score lines
   teamSessions: ReportSession[]; // every player's GPS sessions (for team averages and ranks)
   positions?: Record<number, string | null>; // every player's position (fwd / mid / def / gk), for position comparisons
+  opponentLogos?: Record<string, string>; // game date -> the opponent's NCAA.com logo (crisp, no background), preferred over the schedule's small PNG
   from: string;
   to: string;
   generated: string; // YYYY-MM-DD
@@ -135,6 +136,7 @@ export function buildPlayerReport(input: ReportInput) {
   const team = teamInRange.filter(counts); // season comparisons
   const gameSquads = teamInRange.filter(playedOrUnknown); // each game's squad
   const games = input.gameStats.filter((g) => inRange(g.game_date)).sort((a, b) => a.game_date.localeCompare(b.game_date));
+  const logoFor = (date: string, fallback?: string | null) => input.opponentLogos?.[date.slice(0, 10)] ?? fallback ?? null;
 
   // Match stats: season totals from the box scores.
   const played = games.filter((g) => (g.minutes ?? 0) > 0 || g.started);
@@ -142,6 +144,7 @@ export function buildPlayerReport(input: ReportInput) {
   const match = {
     games: games.map((g) => ({
       ...g,
+      opponent_logo_url: logoFor(g.game_date, g.opponent_logo_url),
       result: g.status && g.team_score != null && g.opponent_score != null ? `${g.status} ${g.team_score}-${g.opponent_score}` : (g.status ?? ""),
     })),
     totals: {
@@ -251,7 +254,7 @@ export function buildPlayerReport(input: ReportInput) {
     return {
       game_date: s.game_date,
       opponent: s.opponent,
-      opponent_logo_url: line?.opponent_logo_url ?? null,
+      opponent_logo_url: logoFor(s.game_date, line?.opponent_logo_url),
       result: line?.status && line.team_score != null && line.opponent_score != null ? `${line.status} ${line.team_score}-${line.opponent_score}` : (line?.status ?? ""),
       goals: line?.goals ?? null,
       assists: line?.assists ?? null,

@@ -6,6 +6,8 @@ import { withFlags } from "../lib/sessionFlags.js";
 import { buildPlayerReport, seasonStart, type ReportGameStat, type ReportInput, type ReportSession } from "../lib/playerReport.js";
 import { teamToday } from "../lib/readiness.js";
 import { sendReportImage } from "../lib/reportImage.js";
+import { OUR_TEAM } from "../lib/follows.js";
+import { ncaaLogoUrl } from "../ncaa/client.js";
 import { PROFILE_COLUMNS } from "../import/sidearmRoster.js";
 
 export const playersRouter = Router();
@@ -163,8 +165,23 @@ export function playerReportFor(playerId: number, from: unknown, to: unknown) {
   const positions = Object.fromEntries(
     (getDb().prepare(`SELECT p.id, pos.position FROM players p ${POSITION_SUBQUERY}`).all() as { id: number; position: string | null }[]).map((r) => [r.id, r.position]),
   );
+  // Each opponent's NCAA.com logo (transparent vector), matched by game date: the schedule's own
+  // fausports.com logos are small PNGs, some with white backgrounds.
+  const opponentLogos = Object.fromEntries(
+    (
+      getDb()
+        .prepare(
+          `SELECT substr(game_date, 1, 10) AS day, CASE WHEN home_seo = @us THEN away_seo ELSE home_seo END AS seo
+           FROM ncaa_games WHERE home_seo = @us OR away_seo = @us`,
+        )
+        .all({ us: OUR_TEAM }) as { day: string; seo: string | null }[]
+    )
+      .filter((r) => r.seo)
+      .map((r) => [r.day, ncaaLogoUrl(r.seo as string)]),
+  );
   return buildPlayerReport({
     positions,
+    opponentLogos,
     player: detail.player as ReportInput["player"],
     profile: detail.profile as Record<string, unknown> | null,
     sessions: detail.sessions as unknown as ReportSession[],
