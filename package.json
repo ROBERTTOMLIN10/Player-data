@@ -13,6 +13,7 @@
     "start": "npm run start --workspace=server",
     "import:titan": "npm run import:titan --workspace=server",
     "import:minutes": "npm run import:minutes --workspace=server",
-    "db:migrate": "npm run db:migrate --workspace=server"
+    "db:migrate": "npm run db:migrate --workspace=server",
+    "check:reports": "tsx tools/check-reports.ts"
   }
 }
