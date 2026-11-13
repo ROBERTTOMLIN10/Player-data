@@ -157,7 +157,19 @@ Object.entries(logos).forEach(([url, dataUri], i) => {
     embedded[token] = dataUri;
   }
 });
-json = json.slice(0, -1) + `,"__logos":${JSON.stringify(embedded)}}`;
+// Crisp logos for the player PDF: the original SVG of FAU and of each opponent on our schedule
+// (about 16 small files), so preview PDFs match the real app instead of using the 64px copies.
+const snapshotLarge = process.env.SNAPSHOT_FILE && fs.existsSync(process.env.SNAPSHOT_FILE)
+  ? JSON.parse(fs.readFileSync(process.env.SNAPSHOT_FILE, "utf-8")).logosLarge ?? {}
+  : {};
+const reportSeos = new Set(["fla-atlantic", ...(out["/api/schedule"] ?? []).map((g) => g.opponent_seo).filter(Boolean)]);
+const largeForReport = {};
+for (const [url, svg] of Object.entries(snapshotLarge)) {
+  const m = /\/bgl\/([a-z0-9-]+)\.svg$/.exec(url);
+  if (m && reportSeos.has(m[1])) largeForReport[url] = svg;
+}
+json = json.slice(0, -1) + `,"__logos":${JSON.stringify(embedded)},"__logosLarge":${JSON.stringify(largeForReport)}}`;
+console.log(Object.keys(largeForReport).length, "full-size logos embedded for the PDF");
 fs.writeFileSync(process.argv[2], json);
 console.log(Object.keys(embedded).length, "logos embedded");
 console.log(Object.keys(out).length, "responses,", (JSON.stringify(out).length / 1024).toFixed(0), "KB");
