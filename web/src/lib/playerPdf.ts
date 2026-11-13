@@ -93,23 +93,34 @@ async function blobToDataUrl(blob: Blob): Promise<string | null> {
   });
 }
 
-/** PNG/JPEG go in as they are; anything else (SVG, WebP) is redrawn as a PNG in the browser. */
-async function toPdfImage(dataUrl: string): Promise<string | null> {
+interface ImageOptions {
+  /** Longest side, in pixels, to draw SVGs at (they scale up cleanly) or to keep photos at (never scaled up). */
+  size?: number;
+  /** Save as high-quality JPEG (photos) instead of PNG (logos keep their transparent background). */
+  jpeg?: boolean;
+}
+
+/** PNG/JPEG go in as they are; anything else (SVG, WebP) is redrawn in the browser at a high resolution. */
+async function toPdfImage(dataUrl: string, { size = 600, jpeg = false }: ImageOptions = {}): Promise<string | null> {
   if (/^data:image\/(png|jpe?g)/i.test(dataUrl)) return dataUrl;
   if (typeof document === "undefined") return null;
+  const vector = /^data:image\/svg/i.test(dataUrl);
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      const size = 400; // drawn big so SVG logos stay sharp at every size in the PDF
-      const scale = Math.min(size / (img.naturalWidth || size), size / (img.naturalHeight || size));
+      const w = img.naturalWidth || size;
+      const h = img.naturalHeight || size;
+      // Vectors are drawn at the full size (sharp at any scale); photos are only ever shrunk, never blown up.
+      const scale = vector ? Math.min(size / w, size / h) : Math.min(1, size / w, size / h);
       const c = document.createElement("canvas");
-      c.width = Math.max(1, Math.round((img.naturalWidth || size) * scale));
-      c.height = Math.max(1, Math.round((img.naturalHeight || size) * scale));
+      c.width = Math.max(1, Math.round(w * scale));
+      c.height = Math.max(1, Math.round(h * scale));
       const ctx = c.getContext("2d");
       if (!ctx) return resolve(null);
+      ctx.imageSmoothingQuality = "high";
       ctx.drawImage(img, 0, 0, c.width, c.height);
       try {
-        resolve(c.toDataURL("image/png"));
+        resolve(jpeg ? c.toDataURL("image/jpeg", 0.92) : c.toDataURL("image/png"));
       } catch {
         resolve(null);
       }
@@ -119,16 +130,16 @@ async function toPdfImage(dataUrl: string): Promise<string | null> {
   });
 }
 
-async function loadImage(url: string | null | undefined, proxy: string | undefined): Promise<string | null> {
+async function loadImage(url: string | null | undefined, proxy: string | undefined, opts: ImageOptions = {}): Promise<string | null> {
   if (!url) return null;
-  if (url.startsWith("data:")) return toPdfImage(url);
+  if (url.startsWith("data:")) return toPdfImage(url, opts);
   for (const src of [url, proxy ? `${proxy}?src=${encodeURIComponent(url)}` : null]) {
     if (!src) continue;
     try {
       const res = await fetch(src, { mode: src === url ? "cors" : "same-origin" });
       if (!res.ok) continue;
       const data = await blobToDataUrl(await res.blob());
-      const img = data ? await toPdfImage(data) : null;
+      const img = data ? await toPdfImage(data, opts) : null;
       if (img) return img;
     } catch {
       // try the next way
@@ -208,12 +219,13 @@ export async function playerReportPdf(report: PlayerReport, opts: { imageProxy?:
   }
 
   // Images first (photo + every opponent logo, each fetched once).
-  const photo = await loadImage(p?.photo_url, opts.imageProxy);
-  const fauLogoImg = await loadImage(FAU_LOGO_URL, opts.imageProxy);
+  // Photo: kept at its full detail (the roster's is 1600x2000) as a high-quality JPEG; logos are vectors drawn big.
+  const photo = await loadImage(p?.photo_url, opts.imageProxy, { size: 1600, jpeg: true });
+  const fauLogoImg = await loadImage(FAU_LOGO_URL, opts.imageProxy, { size: 1000 });
   const logoUrls = [
     ...new Set([...report.match.games.map((g) => g.opponent_logo_url), ...report.gpsGames.map((g) => g.opponent_logo_url)].filter((u): u is string => !!u)),
   ];
-  const logos = new Map<string, string | null>(await Promise.all(logoUrls.map(async (u) => [u, await loadImage(u, opts.imageProxy)] as [string, string | null])));
+  const logos = new Map<string, string | null>(await Promise.all(logoUrls.map(async (u) => [u, await loadImage(u, opts.imageProxy, { size: 700 })] as [string, string | null])));
   const logoByDate = new Map<string, string | null | undefined>();
   for (const g of report.match.games) logoByDate.set(g.game_date, g.opponent_logo_url);
   for (const g of report.gpsGames) if (g.opponent_logo_url) logoByDate.set(g.game_date, g.opponent_logo_url);
