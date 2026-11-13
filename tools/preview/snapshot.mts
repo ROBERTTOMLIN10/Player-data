@@ -207,7 +207,8 @@ if (mode === "export") {
       }
       if (sharp) {
         bytes = photos.has(url)
-          ? await sharp(bytes).resize(192, 240, { fit: "cover", position: "top" }).webp({ quality: 72 }).toBuffer()
+          ? // Our own players' headshots stay large and sharp: the player PDF draws them at full size (about 30 photos).
+            await sharp(bytes).resize(800, 1000, { fit: "cover", position: "top", withoutEnlargement: true }).webp({ quality: 86 }).toBuffer()
           : squadPhotos.has(url)
             ? await sharp(bytes).resize(64, 80, { fit: "cover", position: "top" }).webp({ quality: 55 }).toBuffer()
           : await sharp(bytes).resize(64, 64, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).webp({ quality: 80 }).toBuffer();
