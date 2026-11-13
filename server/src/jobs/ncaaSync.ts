@@ -59,10 +59,10 @@ const SEASON_START_MONTH_DAY = "08-15";
 const REGULAR_SEASON_END_MONTH_DAY = "11-15"; // conference regular seasons finish early November
 
 const TICK_MS = 60_000;
-const IDLE_REFRESH_MS = 15 * 60_000;
-const STATS_REFRESH_MS = 3 * 60 * 60_000;
-const STATS_AFTER_RESULTS_MS = 30 * 60_000; // NCAA.com needs a little time to post new stats
-const STATS_FOLLOW_UP_MS = 3 * 60 * 60_000; // keep re-checking this long after the latest result
+const IDLE_REFRESH_MS = 5 * 60_000;
+const STATS_REFRESH_MS = 60 * 60_000;
+const STATS_AFTER_RESULTS_MS = 10 * 60_000; // NCAA.com needs a little time to post new stats
+const STATS_FOLLOW_UP_MS = 4 * 60 * 60_000; // keep re-checking this long after the latest result
 
 /** Final games today and yesterday: when this goes up, there are new results to refresh stats for. */
 function finalsCount(today: string): number {
@@ -169,7 +169,7 @@ async function tick() {
   running = true;
   const today = teamToday();
   try {
-    if (due("season", 24 * 60 * 60_000)) {
+    if (due("season", 3 * 60 * 60_000)) {
       lastRun.season = Date.now();
       await syncSeason(today);
     }

@@ -5,7 +5,7 @@ import multer from "multer";
 import { DATA_DIR, importTitanFile } from "../import/importTitan.js";
 import { syncMinutes } from "../import/importMinutes.js";
 import { syncSchedule } from "../import/syncSchedule.js";
-import { getAutoSyncStatus } from "../jobs/autoSync.js";
+import { getAutoSyncStatus, syncSoon } from "../jobs/autoSync.js";
 import { getReminderSettings, sendFollowup, updateReminderSettings } from "../jobs/morningReminder.js";
 import { getDb } from "../db/connection.js";
 import { teamToday } from "../lib/readiness.js";
@@ -63,6 +63,10 @@ function handleUpload(req: Request, res: Response) {
     if (result.status === "error") {
       // Clean up the file we just wrote so a bad upload doesn't linger and block a retry.
       fs.rmSync(destPath, { force: true });
+    } else {
+      // The new game's GPS is in; also pull the latest schedule/box score/minutes right now
+      // so the new data lines up with the match stats immediately.
+      syncSoon();
     }
     const httpStatus = result.status === "error" ? 422 : 200;
     res.status(httpStatus).json(result);
