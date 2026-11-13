@@ -405,6 +405,18 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const method = (init?.method ?? "GET").toUpperCase();
   const ncaa = method === "GET" ? (await ncaaTeamRoute(url.pathname)) ?? (await ncaaGameRoute(url.pathname)) : null;
   if (ncaa) return ncaa;
+  // The PDF asks the server for FAU's logo (an NCAA.com image): answer from the embedded copy.
+  if (method === "GET" && url.pathname === "/api/players/report-image") {
+    const team = /\/([a-z0-9-]+)\.svg$/.exec(url.searchParams.get("src") ?? "")?.[1];
+    const raw = team ? teamLogo(team) : "";
+    const uri = LOGOS[raw] ?? raw;
+    const m = /^data:([^;,]+)((?:;[^,]*)?),(.*)$/s.exec(uri);
+    if (m) {
+      const bytes = m[2].includes("base64") ? Uint8Array.from(atob(m[3]), (c) => c.charCodeAt(0)) : new TextEncoder().encode(decodeURIComponent(m[3]));
+      return new Response(bytes, { status: 200, headers: { "Content-Type": m[1] } });
+    }
+    return json({ error: "Unknown image." }, 404);
+  }
   if (url.pathname === "/api/admin/upload-titan" && init?.body instanceof FormData) {
     const file = init.body.get("file");
     if (!(file instanceof File)) return json({ status: "error", filename: "", message: "No file chosen.", warnings: [] }, 400);
