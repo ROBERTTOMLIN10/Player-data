@@ -4,6 +4,8 @@ import { getSessionFlags } from "../lib/sessionFlags.js";
 import { getDb } from "../db/connection.js";
 import { requireCoach } from "../middleware/auth.js";
 import { CORE_METRICS, CORE_METRIC_KEYS } from "../lib/metrics.js";
+import { OUR_TEAM } from "../lib/follows.js";
+import { ncaaLogoUrl } from "../ncaa/client.js";
 
 export const teamRouter = Router();
 
@@ -150,7 +152,7 @@ teamRouter.get("/stats", (_req, res) => {
     )
     .all();
 
-  res.json({ seasonTotals, record, gameLog, topScorers, goalkeepers });
+  res.json({ seasonTotals, record, gameLog, topScorers, goalkeepers, logo: ncaaLogoUrl(OUR_TEAM) });
 });
 
 /** Coaches: every player's load vs the players getting minutes (see lib/fitness.ts). */

@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 import autoTable, { type CellHookData } from "jspdf-autotable";
 import type { PlayerReport } from "../types";
 import { ordinal } from "./ordinal";
+import { FAU_LOGO_URL } from "./fau";
 
 /**
  * The player's season report as a PDF, styled like the app (dark pages, Owl red,
@@ -57,8 +58,6 @@ function diffPct(v: number | null, team: number | null): number | null {
 const pctText = (p: number | null) => (p == null ? "" : p === 0 ? "even" : `${p > 0 ? "+" : ""}${p}%`);
 const pctColor = (p: number | null): RGB => (p == null || p === 0 ? DIM : p > 0 ? TEAL : RED_LIGHT);
 const rankColor = (r: number | null): RGB => (r == null ? DIM : r <= 3 ? GOLD : r <= 5 ? TEAL : TEXT);
-/** FAU's own logo (the same NCAA.com image the NCAA pages use); the server passes it through for the PDF. */
-const FAU_LOGO_URL = "https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/fla-atlantic.svg";
 
 const initials = (name: string) =>
   name

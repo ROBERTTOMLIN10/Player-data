@@ -225,6 +225,7 @@ export interface TeamStats {
     fouls: number;
   };
   record: { wins: number | null; losses: number | null; ties: number | null };
+  logo?: string | null; // FAU's own logo (NCAA.com)
   gameLog: TeamStatsGameLog[];
   topScorers: TeamStatsTopScorer[];
   goalkeepers?: TeamStatsGoalkeeper[];
