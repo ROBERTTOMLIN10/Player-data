@@ -100,7 +100,7 @@ async function toPdfImage(dataUrl: string): Promise<string | null> {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      const size = 240;
+      const size = 400; // drawn big so SVG logos stay sharp at every size in the PDF
       const scale = Math.min(size / (img.naturalWidth || size), size / (img.naturalHeight || size));
       const c = document.createElement("canvas");
       c.width = Math.max(1, Math.round((img.naturalWidth || size) * scale));

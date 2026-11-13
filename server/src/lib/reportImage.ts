@@ -11,9 +11,13 @@ import { OUR_TEAM } from "./follows.js";
  */
 export async function sendReportImage(req: Request, res: Response) {
   const src = typeof req.query.src === "string" ? req.query.src : "";
-  // FAU's own logo (the NCAA.com image the NCAA pages use) is also allowed.
+  // NCAA.com team logos (FAU's and any team the app has a game for) are also allowed.
+  const logoPrefix = ncaaLogoUrl("").slice(0, -".svg".length); // …/logos/schools/bgl/
+  const maybeSeo = src.startsWith(logoPrefix) && src.endsWith(".svg") ? src.slice(logoPrefix.length, -".svg".length) : "";
+  const seo = /^[a-z0-9-]+$/.test(maybeSeo) ? maybeSeo : null;
   const known =
     src === ncaaLogoUrl(OUR_TEAM) ||
+    (!!seo && !!getDb().prepare("SELECT 1 FROM ncaa_games WHERE home_seo = @seo OR away_seo = @seo LIMIT 1").get({ seo })) ||
     getDb()
       .prepare(
         `SELECT 1 FROM roster_players WHERE photo_url = @src
