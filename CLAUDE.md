@@ -26,11 +26,14 @@ These are standing rules from Rob (assistant coach). Follow them on every change
 - Game pages (6 onward): no percent-vs-squad column before the yellow team rank.
 - Page 1 "Per game" box (distance, sprint distance, load, sprints, explosive efforts: his number, the team's, his rank). No per-90 anywhere.
 
-## After a PDF change
+## After every change (so the preview always matches)
 
-1. `npm run build`, restart the dashboard, generate a real PDF and look at it (pages 1, 2, 3 and a game page).
-2. Commit and push to **both** `player-report-pdf` and `claude/friendly-dijkstra-s2fxp1` (the hourly preview refresh builds from the second).
-3. Update the preview (the `update-preview` skill).
+Rob wants to see every change in the preview on the right of the Claude app, at all times. The local folder, GitHub and the preview all use ONE branch: `claude/friendly-dijkstra-s2fxp1` (the hourly preview refresh builds from it). Do not work on any other branch.
+
+1. `npm run build`, restart the dashboard on port 4000, and look at the change in the browser (for a PDF: generate a real one and check pages 1, 2, 3 and a game page; run `npm run check:reports`).
+2. Commit and `git push` (one branch, so one push).
+3. **Update the preview right away** (the `update-preview` skill): build with `tools/preview/build.sh` from a checkout of the pushed branch, publish `app.js`, `app.css` and `games.json`, open the artifact, and tell Rob what to click. Never finish a change without doing this, and never leave the preview behind the local app.
+4. If the first publish is refused because the hourly job just published, read the live `app.js`, then publish again.
 
 # Tables across the site
 
