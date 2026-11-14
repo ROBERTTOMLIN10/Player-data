@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useMetrics, useMyFitness, useMyGameGps, useMyProfile } from "../../api/client";
 import { FitnessCard } from "../../components/Fitness";
+import { MatchStatsTable } from "../../components/MatchStatsTable";
 import { PlayerProfileHeader } from "../../components/PlayerProfileHeader";
 import { PlayerReportButton } from "../../components/PlayerReportButton";
 import { TeamLogo } from "../../components/TeamLogo";
@@ -148,40 +149,7 @@ export default function MyGpsView() {
             title="My Minutes"
             subtitle={`${Math.round(profile.gameStats.reduce((n, g) => n + (g.minutes ?? 0), 0))} minutes · ${profile.gameStats.filter((g) => g.started).length} starts, from the official box scores`}
           />
-          <Card className="overflow-x-auto p-0">
-            <table className="w-full min-w-[420px] text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-dim">
-                  <th className="px-4 py-3 font-medium">Date</th>
-                  <th className="px-4 py-3 font-medium">Opponent</th>
-                  <th className="px-4 py-3 font-medium">Result</th>
-                  <th className="px-4 py-3 font-medium">Min</th>
-                  <th className="px-4 py-3 font-medium">G</th>
-                  <th className="px-4 py-3 font-medium">A</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...profile.gameStats].reverse().map((g) => (
-                  <tr key={g.id} className="border-b border-border/60 last:border-0">
-                    <td className="px-4 py-3 text-text-dim">{formatDate(g.game_date)}</td>
-                    <td className="px-4 py-3 font-medium">
-                      <span className="flex items-center gap-2">
-                        <TeamLogo name={g.opponent} url={g.opponent_logo_url} size="sm" />
-                        <OpponentLink date={g.game_date}>{g.opponent}</OpponentLink>
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-text-dim">{g.status ? `${g.status} ${g.team_score}-${g.opponent_score}` : "—"}</td>
-                    <td className="whitespace-nowrap px-4 py-3">
-                      {g.minutes ? `${g.minutes}'` : <span className="text-text-dim">DNP</span>}
-                      {g.started === 1 && <span className="ml-1.5 text-[10px] uppercase tracking-wide text-teal">GS</span>}
-                    </td>
-                    <td className="px-4 py-3">{g.goals}</td>
-                    <td className="px-4 py-3">{g.assists}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
+          <MatchStatsTable games={profile.gameStats} compact newestFirst />
         </section>
       )}
 

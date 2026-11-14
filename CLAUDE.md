@@ -31,3 +31,9 @@ These are standing rules from Rob (assistant coach). Follow them on every change
 1. `npm run build`, restart the dashboard, generate a real PDF and look at it (pages 1, 2, 3 and a game page).
 2. Commit and push to **both** `player-report-pdf` and `claude/friendly-dijkstra-s2fxp1` (the hourly preview refresh builds from the second).
 3. Update the preview (the `update-preview` skill).
+
+# Tables across the site
+
+- **Every data table sorts on a header click.** Use `useTableSort` (`web/src/lib/useTableSort.ts`) and `SortTh` (`web/src/components/SortTh.tsx`) for any new or changed table: the first click sorts the column highest to lowest (newest first for dates, A to Z for names), the next click flips it, empty values stay at the bottom, and a red arrow marks the active column. Until a column is clicked, rows keep their natural order (e.g. newest first, or furthest behind first).
+- A column's sort must match what is shown (e.g. a "3–2" score sorts by goals scored). Keep one sort key per visible column.
+- Tables already covered: the player's GPS game table and match stats (coach player page and My GPS), team stats (players, goalkeepers, game log), GPS games and squad fitness, readiness, RPE sessions and scores, the home results table, NCAA player game logs, NCAA game lineups, the game roster table and the NCAA team squad.

@@ -3,9 +3,11 @@ import { useNcaaPlayer } from "../api/client";
 import { Card, SectionHeading } from "../components/Card";
 import { gamePath, TeamLink } from "../components/ncaa";
 import { PlayerProfileHeader } from "../components/PlayerProfileHeader";
+import { SortTh } from "../components/SortTh";
 import { TeamLogo } from "../components/TeamLogo";
 import { formatDate } from "../lib/format";
-import type { PlayerProfile } from "../types";
+import { useTableSort } from "../lib/useTableSort";
+import type { NcaaPlayerGame, PlayerProfile } from "../types";
 
 const val = (v: unknown, digits = 0) =>
   v === null || v === undefined || v === "" ? "—" : typeof v === "number" && digits ? v.toFixed(digits) : String(v);
@@ -112,75 +114,124 @@ export default function NcaaPlayerView() {
               {team.covered ? "No appearances yet (or this team's box scores aren't read yet)." : "No game log for this team yet."}
             </Card>
           ) : (
-            <Card className="overflow-x-auto p-0">
-              <table className="w-full min-w-[620px] text-sm tabular-nums">
-                <thead>
-                  <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-text-dim">
-                    <th className="px-3 py-2.5 font-medium">Date</th>
-                    <th className="px-2 py-2.5 font-medium">Opponent</th>
-                    <th className="px-2 py-2.5 font-medium">Result</th>
-                    <th className="px-2 py-2.5 text-center font-medium">Min</th>
-                    {keeper ? (
-                      <>
-                        <th className="px-2 py-2.5 text-center font-medium">Saves</th>
-                        <th className="px-2 py-2.5 text-center font-medium">GA</th>
-                      </>
-                    ) : (
-                      <>
-                        <th className="px-2 py-2.5 text-center font-medium">G</th>
-                        <th className="px-2 py-2.5 text-center font-medium">A</th>
-                        <th className="px-2 py-2.5 text-center font-medium">Sh</th>
-                        <th className="px-2 py-2.5 text-center font-medium">SOG</th>
-                      </>
-                    )}
-                    <th className="px-2 py-2.5 text-center font-medium">Cards</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {games.map((g) => (
-                    <tr key={`${g.game_date}-${g.opponent}`} className="border-b border-border/60 last:border-0">
-                      <td className="whitespace-nowrap px-3 py-2 text-text-dim">{formatDate(g.game_date)}</td>
-                      <td className="whitespace-nowrap px-2 py-2 font-medium">
-                        <span className="mr-1 text-xs font-normal text-text-dim">{g.home_away === "home" ? "vs" : "@"}</span>
-                        <TeamLink seo={g.opponent_seo}>{g.opponent}</TeamLink>
-                        {g.started === 1 && <span className="ml-1.5 text-[10px] uppercase tracking-wide text-teal">GS</span>}
-                      </td>
-                      <td className={`whitespace-nowrap px-2 py-2 font-semibold ${g.result?.startsWith("W") ? "text-teal" : g.result?.startsWith("L") ? "text-owl-red-light" : "text-text-dim"}`}>
-                        {g.game_id ? (
-                          <Link to={gamePath(g.game_id)} className="hover:underline" title="Match stats">
-                            {g.result ?? "—"}
-                          </Link>
-                        ) : (
-                          (g.result ?? "—")
-                        )}
-                      </td>
-                      <td className="px-2 py-2 text-center">{val(g.minutes)}</td>
-                      {keeper ? (
-                        <>
-                          <td className="px-2 py-2 text-center">{val(g.saves)}</td>
-                          <td className="px-2 py-2 text-center">{val(g.goals_allowed)}</td>
-                        </>
-                      ) : (
-                        <>
-                          <td className="px-2 py-2 text-center">{val(g.goals)}</td>
-                          <td className="px-2 py-2 text-center">{val(g.assists)}</td>
-                          <td className="px-2 py-2 text-center text-text-dim">{val(g.shots)}</td>
-                          <td className="px-2 py-2 text-center text-text-dim">{val(g.shots_on_goal)}</td>
-                        </>
-                      )}
-                      <td className="px-2 py-2 text-center">
-                        {(g.yellow_cards ?? 0) > 0 && <span className="mr-1 inline-block h-3 w-2.5 rounded-sm bg-gold" title="Yellow" />}
-                        {(g.red_cards ?? 0) > 0 && <span className="inline-block h-3 w-2.5 rounded-sm bg-owl-red" title="Red" />}
-                        {!g.yellow_cards && !g.red_cards && <span className="text-text-dim">—</span>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </Card>
+            <GameLogTable games={games} keeper={keeper} />
           )}
         </section>
       )}
     </div>
+  );
+}
+
+/** Goal difference from a result like "W 2-1" (our score first); null if there's no result. */
+const resultDifference = (result: string | null | undefined) => {
+  const m = /(\d+)\s*-\s*(\d+)/.exec(result ?? "");
+  return m ? Number(m[1]) - Number(m[2]) : null;
+};
+
+/** The player's game log. Click a column to sort it highest to lowest (click again to flip). */
+function GameLogTable({ games, keeper }: { games: NcaaPlayerGame[]; keeper: boolean }) {
+  const { rows, sort, onSort } = useTableSort(games, {
+    date: (g) => g.game_date,
+    opponent: (g) => g.opponent,
+    result: (g) => resultDifference(g.result),
+    minutes: (g) => g.minutes,
+    saves: (g) => g.saves,
+    ga: (g) => g.goals_allowed,
+    goals: (g) => g.goals,
+    assists: (g) => g.assists,
+    shots: (g) => g.shots,
+    sog: (g) => g.shots_on_goal,
+    cards: (g) => (g.red_cards ?? 0) * 10 + (g.yellow_cards ?? 0),
+  });
+  const th = "px-2 py-2.5 text-center";
+  return (
+    <Card className="overflow-x-auto p-0">
+      <table className="w-full min-w-[620px] text-sm tabular-nums">
+        <thead>
+          <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-text-dim">
+            <SortTh col="date" sort={sort} onSort={onSort} className="px-3 py-2.5">
+              Date
+            </SortTh>
+            <SortTh col="opponent" sort={sort} onSort={onSort} className="px-2 py-2.5">
+              Opponent
+            </SortTh>
+            <SortTh col="result" sort={sort} onSort={onSort} className="px-2 py-2.5">
+              Result
+            </SortTh>
+            <SortTh col="minutes" sort={sort} onSort={onSort} className={th}>
+              Min
+            </SortTh>
+            {keeper ? (
+              <>
+                <SortTh col="saves" sort={sort} onSort={onSort} className={th}>
+                  Saves
+                </SortTh>
+                <SortTh col="ga" sort={sort} onSort={onSort} className={th}>
+                  GA
+                </SortTh>
+              </>
+            ) : (
+              <>
+                <SortTh col="goals" sort={sort} onSort={onSort} className={th}>
+                  G
+                </SortTh>
+                <SortTh col="assists" sort={sort} onSort={onSort} className={th}>
+                  A
+                </SortTh>
+                <SortTh col="shots" sort={sort} onSort={onSort} className={th}>
+                  Sh
+                </SortTh>
+                <SortTh col="sog" sort={sort} onSort={onSort} className={th}>
+                  SOG
+                </SortTh>
+              </>
+            )}
+            <SortTh col="cards" sort={sort} onSort={onSort} className={th}>
+              Cards
+            </SortTh>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((g) => (
+            <tr key={`${g.game_date}-${g.opponent}`} className="border-b border-border/60 last:border-0">
+              <td className="whitespace-nowrap px-3 py-2 text-text-dim">{formatDate(g.game_date)}</td>
+              <td className="whitespace-nowrap px-2 py-2 font-medium">
+                <span className="mr-1 text-xs font-normal text-text-dim">{g.home_away === "home" ? "vs" : "@"}</span>
+                <TeamLink seo={g.opponent_seo}>{g.opponent}</TeamLink>
+                {g.started === 1 && <span className="ml-1.5 text-[10px] uppercase tracking-wide text-teal">GS</span>}
+              </td>
+              <td className={`whitespace-nowrap px-2 py-2 font-semibold ${g.result?.startsWith("W") ? "text-teal" : g.result?.startsWith("L") ? "text-owl-red-light" : "text-text-dim"}`}>
+                {g.game_id ? (
+                  <Link to={gamePath(g.game_id)} className="hover:underline" title="Match stats">
+                    {g.result ?? "—"}
+                  </Link>
+                ) : (
+                  (g.result ?? "—")
+                )}
+              </td>
+              <td className="px-2 py-2 text-center">{val(g.minutes)}</td>
+              {keeper ? (
+                <>
+                  <td className="px-2 py-2 text-center">{val(g.saves)}</td>
+                  <td className="px-2 py-2 text-center">{val(g.goals_allowed)}</td>
+                </>
+              ) : (
+                <>
+                  <td className="px-2 py-2 text-center">{val(g.goals)}</td>
+                  <td className="px-2 py-2 text-center">{val(g.assists)}</td>
+                  <td className="px-2 py-2 text-center text-text-dim">{val(g.shots)}</td>
+                  <td className="px-2 py-2 text-center text-text-dim">{val(g.shots_on_goal)}</td>
+                </>
+              )}
+              <td className="px-2 py-2 text-center">
+                {(g.yellow_cards ?? 0) > 0 && <span className="mr-1 inline-block h-3 w-2.5 rounded-sm bg-gold" title="Yellow" />}
+                {(g.red_cards ?? 0) > 0 && <span className="inline-block h-3 w-2.5 rounded-sm bg-owl-red" title="Red" />}
+                {!g.yellow_cards && !g.red_cards && <span className="text-text-dim">—</span>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Card>
   );
 }

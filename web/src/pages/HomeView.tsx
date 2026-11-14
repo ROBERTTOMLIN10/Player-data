@@ -4,9 +4,11 @@ import { useNcaaConference, useSchedule, useTeamStats } from "../api/client";
 import { Card, SectionHeading } from "../components/Card";
 import { ScheduleCalendar } from "../components/ScheduleCalendar";
 import { Segmented } from "../components/SeasonStats";
+import { SortTh } from "../components/SortTh";
 import { TeamLogo } from "../components/TeamLogo";
 import { gamePath, NcaaStatTable, Rpi, StandingsTable, TeamLink, updatedLabel } from "../components/ncaa";
 import { formatDateLong } from "../lib/format";
+import { useTableSort } from "../lib/useTableSort";
 import { FAU_LOGO_URL } from "../lib/fau";
 import type { ScheduleGame } from "../types";
 
@@ -170,63 +172,87 @@ export default function HomeView() {
         {results.length === 0 ? (
           <Card className="text-center text-sm text-text-dim">No completed games yet this season.</Card>
         ) : (
-          <Card className="overflow-x-auto p-0">
-            <table className="w-full min-w-[560px] text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-dim">
-                  <th className="px-4 py-3 font-medium">Date</th>
-                  <th className="px-4 py-3 font-medium">Opponent</th>
-                  <th className="px-4 py-3 font-medium">Result</th>
-                  <th className="px-4 py-3 font-medium">Score</th>
-                  <th className="px-4 py-3 font-medium"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {results.map((g) => (
-                  <tr key={g.id} className="border-b border-border/60 last:border-0">
-                    <td className="px-4 py-3 text-text-dim">{formatDateLong(g.game_date)}</td>
-                    <td className="px-4 py-3 font-medium">
-                      <span className="flex items-center gap-2">
-                        <TeamLogo name={g.opponent} url={g.opponent_logo_url} size="sm" />
-                        <span>
-                          {g.home_away === "A" ? "at " : "vs "}
-                          <TeamLink seo={g.opponent_seo}>{g.opponent}</TeamLink>
-                        </span>
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${resultBadgeClass(g.status)}`}>
-                        {g.status ?? "—"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-text-dim">
-                      {g.team_score != null && g.opponent_score != null ? `${g.team_score}–${g.opponent_score}` : "—"}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right">
-                      {g.ncaa_game_id && (
-                        <Link to={gamePath(g.ncaa_game_id)} className="mr-3 text-xs font-medium text-owl-red-light hover:underline">
-                          Match stats ›
-                        </Link>
-                      )}
-                      {g.boxscore_url && (
-                        <a
-                          href={g.boxscore_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-xs text-teal hover:underline"
-                        >
-                          Box Score ↗
-                        </a>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
+          <ResultsTable results={results} />
         )}
       </section>
     </div>
+  );
+}
+
+const RESULT_ORDER: Record<string, number> = { W: 2, T: 1, L: 0 };
+
+/** Previous results. Click a column to sort it highest to lowest (click again to flip); wins sort ahead of ties and losses. */
+function ResultsTable({ results }: { results: ScheduleGame[] }) {
+  const { rows, sort, onSort } = useTableSort(results, {
+    date: (g) => g.game_date,
+    opponent: (g) => g.opponent,
+    result: (g) => (g.status ? RESULT_ORDER[g.status] : null),
+    // The score as shown, our goals first (goal difference breaks ties), so the numbers read in order.
+    score: (g) => (g.team_score != null && g.opponent_score != null ? g.team_score * 100 + (g.team_score - g.opponent_score) : null),
+  });
+  return (
+    <Card className="overflow-x-auto p-0">
+      <table className="w-full min-w-[560px] text-sm">
+        <thead>
+          <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-dim">
+            <SortTh col="date" sort={sort} onSort={onSort}>
+              Date
+            </SortTh>
+            <SortTh col="opponent" sort={sort} onSort={onSort}>
+              Opponent
+            </SortTh>
+            <SortTh col="result" sort={sort} onSort={onSort}>
+              Result
+            </SortTh>
+            <SortTh col="score" sort={sort} onSort={onSort}>
+              Score
+            </SortTh>
+            <th className="px-4 py-3 font-medium"></th>
+          </tr>
+        </thead>
+          <tbody>
+            {rows.map((g) => (
+              <tr key={g.id} className="border-b border-border/60 last:border-0">
+                <td className="px-4 py-3 text-text-dim">{formatDateLong(g.game_date)}</td>
+                <td className="px-4 py-3 font-medium">
+                  <span className="flex items-center gap-2">
+                    <TeamLogo name={g.opponent} url={g.opponent_logo_url} size="sm" />
+                    <span>
+                      {g.home_away === "A" ? "at " : "vs "}
+                      <TeamLink seo={g.opponent_seo}>{g.opponent}</TeamLink>
+                    </span>
+                  </span>
+                </td>
+                <td className="px-4 py-3">
+                  <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${resultBadgeClass(g.status)}`}>
+                    {g.status ?? "—"}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-text-dim">
+                  {g.team_score != null && g.opponent_score != null ? `${g.team_score}–${g.opponent_score}` : "—"}
+                </td>
+                <td className="whitespace-nowrap px-4 py-3 text-right">
+                  {g.ncaa_game_id && (
+                    <Link to={gamePath(g.ncaa_game_id)} className="mr-3 text-xs font-medium text-owl-red-light hover:underline">
+                      Match stats ›
+                    </Link>
+                  )}
+                  {g.boxscore_url && (
+                    <a
+                      href={g.boxscore_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs text-teal hover:underline"
+                    >
+                      Box Score ↗
+                    </a>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+      </table>
+    </Card>
   );
 }
 

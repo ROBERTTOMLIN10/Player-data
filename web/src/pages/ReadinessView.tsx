@@ -3,6 +3,8 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useSquadReadiness } from "../api/client";
 import { BodyMap, SeverityLegend } from "../components/BodyMap";
 import { Card, SectionHeading } from "../components/Card";
+import { SortTh } from "../components/SortTh";
+import { useTableSort } from "../lib/useTableSort";
 import { regionLabel, SEVERITY_STYLE } from "../lib/bodyRegions";
 import { formatDateLong } from "../lib/format";
 import { positionGroup } from "../lib/positions";
@@ -36,6 +38,14 @@ export default function ReadinessView() {
     if (filter === "missing") return list.filter((p) => p.status === "missing");
     return list;
   }, [data, filter]);
+
+  // Watch list order until a column is clicked; then highest to lowest (click again to flip). Players not in sink to the bottom.
+  const { rows: sortedPlayers, sort, onSort } = useTableSort(players, {
+    player: (p) => p.name,
+    score: (p) => p.entry?.readiness_score,
+    sleep: (p) => p.entry?.sleep_quality,
+    ...Object.fromEntries(WELLNESS_QUESTIONS.slice(1).map((q) => [q.key, (p: SquadReadinessPlayer) => (p.entry ? p.entry[q.key] : null)])),
+  });
 
   // Squad heatmap: each region coloured by the worst severity reported today.
   const { heat, heatTitles } = useMemo(() => {
@@ -145,19 +155,25 @@ export default function ReadinessView() {
             <table className="w-full min-w-[760px] text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-dim">
-                  <th className="px-3 py-3 font-medium">Player</th>
-                  <th className="px-3 py-3 font-medium">Score</th>
-                  <th className="px-3 py-3 font-medium">Sleep</th>
+                  <SortTh col="player" sort={sort} onSort={onSort} className="px-3 py-3">
+                    Player
+                  </SortTh>
+                  <SortTh col="score" sort={sort} onSort={onSort} className="px-3 py-3">
+                    Score
+                  </SortTh>
+                  <SortTh col="sleep" sort={sort} onSort={onSort} className="px-3 py-3">
+                    Sleep
+                  </SortTh>
                   {WELLNESS_QUESTIONS.slice(1).map((q) => (
-                    <th key={q.key} className="px-2 py-3 text-center font-medium">
+                    <SortTh key={q.key} col={q.key} sort={sort} onSort={onSort} className="px-2 py-3 text-center">
                       {q.short}
-                    </th>
+                    </SortTh>
                   ))}
                   <th className="px-3 py-3 font-medium">Body / Notes</th>
                 </tr>
               </thead>
               <tbody>
-                {players.map((p) => (
+                {sortedPlayers.map((p) => (
                   <PlayerRow key={p.player_id} p={p} />
                 ))}
                 {players.length === 0 && (

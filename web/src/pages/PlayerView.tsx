@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { usePlayerDetail, usePlayerReadiness, usePlayerRpe, usePlayers, useMetrics, useTeamFitness, useTeamSummary } from "../api/client";
 import { GameByGameSection, Segmented, SeasonStatsSection, SessionTable, type SeasonView } from "../components/SeasonStats";
 import { FitnessCard } from "../components/Fitness";
+import { MatchStatsTable } from "../components/MatchStatsTable";
 import { Card, SectionHeading } from "../components/Card";
 import { TeamLogo } from "../components/TeamLogo";
 import { RangePicker, ReadinessHistory } from "../components/ReadinessHistory";
@@ -185,58 +186,7 @@ export default function PlayerView() {
               </Card>
             ))}
           </div>
-          <Card className="overflow-x-auto p-0">
-            <table className="w-full min-w-[640px] text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-dim">
-                  <th className="px-4 py-3 font-medium">Date</th>
-                  <th className="px-4 py-3 font-medium">Opponent</th>
-                  <th className="px-4 py-3 font-medium">Result</th>
-                  <th className="px-4 py-3 font-medium">Min</th>
-                  <th className="px-4 py-3 font-medium">G</th>
-                  <th className="px-4 py-3 font-medium">A</th>
-                  <th className="px-4 py-3 font-medium">Pts</th>
-                  <th className="px-4 py-3 font-medium">Sh</th>
-                  <th className="px-4 py-3 font-medium">SOG</th>
-                  <th className="px-4 py-3 font-medium">Cards</th>
-                </tr>
-              </thead>
-              <tbody>
-                {detail.gameStats.map((g) => (
-                  <tr key={g.id} className="border-b border-border/60 last:border-0">
-                    <td className="px-4 py-3 text-text-dim">{formatDate(g.game_date)}</td>
-                    <td className="px-4 py-3 font-medium">
-                      <span className="flex items-center gap-2">
-                        <TeamLogo name={g.opponent} url={g.opponent_logo_url} size="sm" />
-                        <OpponentLink date={g.game_date}>{g.opponent}</OpponentLink>
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-text-dim">
-                      {g.status ? `${g.status} ${g.team_score}-${g.opponent_score}` : "—"}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3">
-                      {g.minutes ? `${g.minutes}'` : <span className="text-text-dim">DNP</span>}
-                      {g.started === 1 && <span className="ml-1.5 text-[10px] uppercase tracking-wide text-teal">GS</span>}
-                    </td>
-                    <td className="px-4 py-3">{g.goals}</td>
-                    <td className="px-4 py-3">{g.assists}</td>
-                    <td className="px-4 py-3">{g.points}</td>
-                    <td className="px-4 py-3 text-text-dim">{g.shots}</td>
-                    <td className="px-4 py-3 text-text-dim">{g.shots_on_goal}</td>
-                    <td className="px-4 py-3">
-                      {g.yellow_cards > 0 && (
-                        <span className="mr-1 inline-block h-3 w-2.5 rounded-sm bg-gold" title={`${g.yellow_cards} yellow`} />
-                      )}
-                      {g.red_cards > 0 && (
-                        <span className="inline-block h-3 w-2.5 rounded-sm bg-owl-red" title={`${g.red_cards} red`} />
-                      )}
-                      {g.yellow_cards === 0 && g.red_cards === 0 && <span className="text-text-dim">—</span>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
+          <MatchStatsTable games={detail.gameStats} />
         </section>
       )}
         </>
