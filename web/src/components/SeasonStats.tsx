@@ -1,5 +1,7 @@
 import { useMemo, type ReactNode } from "react";
 import { Card, SectionHeading } from "./Card";
+import { SortTh } from "./SortTh";
+import { useTableSort } from "../lib/useTableSort";
 import { GameByGameChart, type GameBar } from "./GameByGameChart";
 import { useOpponentLogos } from "./DateLogoTick";
 import { MinutesCell } from "./Fitness";
@@ -262,23 +264,37 @@ export function GameByGameSection({
 /** Every tracked game with all stats; flag tags and Fitness minutes. */
 export function SessionTable({ sessions, metrics }: { sessions: GpsSession[]; metrics: MetricDef[] }) {
   const logoFor = useOpponentLogos();
+  // Newest first until a column is clicked; then highest to lowest (click again to flip).
+  const newestFirst = useMemo(() => [...sessions].reverse(), [sessions]);
+  const { rows, sort, onSort } = useTableSort(newestFirst, {
+    date: (s) => s.game_date,
+    opponent: (s) => s.opponent,
+    minutes: (s) => s.minutes_played,
+    ...Object.fromEntries(metrics.map((m) => [m.key, (s: GpsSession) => (s as unknown as Record<string, number | null>)[m.key]])),
+  });
   return (
     <Card className="overflow-x-auto p-0">
       <table className="w-full min-w-[560px] text-sm">
         <thead>
           <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-dim">
-            <th className="px-4 py-3 font-medium">Date</th>
-            <th className="px-4 py-3 font-medium">Opponent</th>
-            <th className="px-4 py-3 font-medium">Min</th>
+            <SortTh col="date" sort={sort} onSort={onSort}>
+              Date
+            </SortTh>
+            <SortTh col="opponent" sort={sort} onSort={onSort}>
+              Opponent
+            </SortTh>
+            <SortTh col="minutes" sort={sort} onSort={onSort}>
+              Min
+            </SortTh>
             {metrics.map((m) => (
-              <th key={m.key} className="whitespace-nowrap px-4 py-3 font-medium">
+              <SortTh key={m.key} col={m.key} sort={sort} onSort={onSort}>
                 {m.label}
-              </th>
+              </SortTh>
             ))}
           </tr>
         </thead>
         <tbody>
-          {[...sessions].reverse().map((s) => (
+          {rows.map((s) => (
             <tr key={s.id} className="border-b border-border/60 last:border-0">
               <td className="whitespace-nowrap px-4 py-3 text-text-dim">{formatDate(s.game_date!)}</td>
               <td className="whitespace-nowrap px-4 py-3 font-medium">

@@ -1,6 +1,8 @@
 import { useNavigate } from "react-router-dom";
 import { windowLabel } from "../lib/windows";
+import { useTableSort } from "../lib/useTableSort";
 import { Card, SectionHeading } from "./Card";
+import { SortTh } from "./SortTh";
 import type { FitnessStatus, FitnessWindow, GpsSession, PlayerFitness, TeamFitness } from "../types";
 
 /**
@@ -47,6 +49,12 @@ export function MinutesCell({ s }: { s: GpsSession }) {
 /** Coaches: the whole squad, furthest behind first. */
 export function SquadFitnessTable({ data }: { data: TeamFitness }) {
   const navigate = useNavigate();
+  // Furthest behind first until a column is clicked; then highest to lowest (click again to flip).
+  const { rows, sort, onSort } = useTableSort(data.players, {
+    player: (p) => p.name,
+    games: (p) => p.gamesPlayed,
+    ...Object.fromEntries((data.players[0]?.windows ?? []).map((w) => [`w${w.days}`, (p: PlayerFitness) => p.windows.find((x) => x.days === w.days)?.pct ?? null])),
+  });
   if (!data.players.length) return null;
   return (
     <section>
@@ -58,17 +66,21 @@ export function SquadFitnessTable({ data }: { data: TeamFitness }) {
         <table className="w-full min-w-[560px] text-sm tabular-nums">
           <thead>
             <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-dim">
-              <th className="px-4 py-3 font-medium">Player</th>
-              <th className="px-4 py-3 font-medium">Games</th>
+              <SortTh col="player" sort={sort} onSort={onSort}>
+                Player
+              </SortTh>
+              <SortTh col="games" sort={sort} onSort={onSort}>
+                Games
+              </SortTh>
               {data.players[0].windows.map((w) => (
-                <th key={w.days} className="px-4 py-3 text-right font-medium">
+                <SortTh key={w.days} col={`w${w.days}`} sort={sort} onSort={onSort} className="px-4 py-3 text-right">
                   {windowLabel(w.days)}
-                </th>
+                </SortTh>
               ))}
             </tr>
           </thead>
           <tbody>
-            {data.players.map((p) => {
+            {rows.map((p) => {
               const status = p.windows[p.windows.length - 1].status;
               return (
                 <tr

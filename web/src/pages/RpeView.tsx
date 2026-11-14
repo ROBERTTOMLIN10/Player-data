@@ -5,6 +5,8 @@ import { saveRpe, submitRpeSession, useRpeSession, useRpeSessions, useRpeTrends,
 import { Card, SectionHeading } from "../components/Card";
 import { RpePill, sessionLabel } from "../components/RpeHistory";
 import { Segmented } from "../components/SeasonStats";
+import { SortTh } from "../components/SortTh";
+import { useTableSort } from "../lib/useTableSort";
 import { TrendChart } from "../components/TrendChart";
 import { formatDate, formatDateLong } from "../lib/format";
 import { STATUS_STYLE } from "../lib/readiness";
@@ -456,54 +458,7 @@ function Trends({ open, onOpen }: { open: { date: string; session: number } | nu
           <h3 className="font-display text-sm font-semibold uppercase tracking-wide text-text">Sessions</h3>
           <span className="text-xs text-text-dim">tap a session to see every player's score</span>
         </div>
-        <Card className="overflow-x-auto p-0">
-          <table className="w-full min-w-0 text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-dim">
-                <th className="px-3 py-3 sm:px-4 font-medium">Date</th>
-                <th className="px-3 py-3 sm:px-4 font-medium">Avg RPE</th>
-                <th className="px-3 py-3 sm:px-4 font-medium">Keepers</th>
-                <th className="px-3 py-3 sm:px-4 font-medium">Flags</th>
-                <th className="hidden px-3 py-3 sm:table-cell sm:px-4" />
-              </tr>
-            </thead>
-            <tbody>
-              {(list?.sessions ?? []).map((x) => (
-                <tr
-                  key={`${x.date}#${x.session}`}
-                  onClick={() => onOpen({ date: x.date, session: x.session })}
-                  className="cursor-pointer border-b border-border/60 transition-colors last:border-0 hover:bg-surface-raised"
-                >
-                  <td className="px-3 py-3 sm:px-4">
-                    <div className="font-medium">
-                      <span className="sm:hidden">{sessionLabel({ session_date: x.date, session: x.session })}</span>
-                      <span className="hidden sm:inline">{sessionLabel({ session_date: x.date, session: x.session }, true)}</span>
-                    </div>
-                    <div className="text-xs text-text-dim">
-                      {x.logged + x.keepersLogged} logged{x.na ? ` · ${x.na} N/A` : ""}
-                      {!x.submitted && <span className="ml-1 text-gold">· not submitted</span>}
-                    </div>
-                  </td>
-                  <td className="px-3 py-3 sm:px-4 font-semibold" style={{ color: bandHex(x.average) }}>
-                    {formatRpe(x.average)}
-                  </td>
-                  <td className="px-3 py-3 sm:px-4" style={{ color: bandHex(x.keeperAverage) }}>
-                    {formatRpe(x.keeperAverage)}
-                  </td>
-                  <td className="px-3 py-3 sm:px-4">{x.flagged ? <span className="text-gold">{x.flagged} flagged</span> : <span className="text-text-dim">—</span>}</td>
-                  <td className="hidden px-3 py-3 text-right text-text-dim sm:table-cell sm:px-4">›</td>
-                </tr>
-              ))}
-              {list && list.sessions.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-text-dim">
-                    No sessions logged yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </Card>
+        <SessionsTable list={list} onOpen={onOpen} />
       </section>
     </div>
   );
@@ -550,6 +505,76 @@ function SessionDetail({ date, session, onBack }: { date: string; session: numbe
   );
 }
 
+type RpeSessionList = ReturnType<typeof useRpeSessions>["data"];
+
+/** Every logged session. Click a column to sort it highest to lowest (click again to flip); click a row to open it. */
+function SessionsTable({ list, onOpen }: { list: RpeSessionList; onOpen: (s: { date: string; session: number }) => void }) {
+  const { rows, sort, onSort } = useTableSort(list?.sessions ?? [], {
+    date: (x) => `${x.date}#${x.session}`,
+    average: (x) => x.average,
+    keepers: (x) => x.keeperAverage,
+    flags: (x) => x.flagged,
+  });
+  return (
+    <Card className="overflow-x-auto p-0">
+      <table className="w-full min-w-0 text-sm">
+        <thead>
+          <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-dim">
+            <SortTh col="date" sort={sort} onSort={onSort} className="px-3 py-3 sm:px-4">
+              Date
+            </SortTh>
+            <SortTh col="average" sort={sort} onSort={onSort} className="px-3 py-3 sm:px-4">
+              Avg RPE
+            </SortTh>
+            <SortTh col="keepers" sort={sort} onSort={onSort} className="px-3 py-3 sm:px-4">
+              Keepers
+            </SortTh>
+            <SortTh col="flags" sort={sort} onSort={onSort} className="px-3 py-3 sm:px-4">
+              Flags
+            </SortTh>
+            <th className="hidden px-3 py-3 sm:table-cell sm:px-4" />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((x) => (
+            <tr
+              key={`${x.date}#${x.session}`}
+              onClick={() => onOpen({ date: x.date, session: x.session })}
+              className="cursor-pointer border-b border-border/60 transition-colors last:border-0 hover:bg-surface-raised"
+            >
+              <td className="px-3 py-3 sm:px-4">
+                <div className="font-medium">
+                  <span className="sm:hidden">{sessionLabel({ session_date: x.date, session: x.session })}</span>
+                  <span className="hidden sm:inline">{sessionLabel({ session_date: x.date, session: x.session }, true)}</span>
+                </div>
+                <div className="text-xs text-text-dim">
+                  {x.logged + x.keepersLogged} logged{x.na ? ` · ${x.na} N/A` : ""}
+                  {!x.submitted && <span className="ml-1 text-gold">· not submitted</span>}
+                </div>
+              </td>
+              <td className="px-3 py-3 sm:px-4 font-semibold" style={{ color: bandHex(x.average) }}>
+                {formatRpe(x.average)}
+              </td>
+              <td className="px-3 py-3 sm:px-4" style={{ color: bandHex(x.keeperAverage) }}>
+                {formatRpe(x.keeperAverage)}
+              </td>
+              <td className="px-3 py-3 sm:px-4">{x.flagged ? <span className="text-gold">{x.flagged} flagged</span> : <span className="text-text-dim">—</span>}</td>
+              <td className="hidden px-3 py-3 text-right text-text-dim sm:table-cell sm:px-4">›</td>
+            </tr>
+          ))}
+          {list && list.sessions.length === 0 && (
+            <tr>
+              <td colSpan={5} className="px-4 py-6 text-center text-text-dim">
+                No sessions logged yet.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </Card>
+  );
+}
+
 function ScoreTable({
   title,
   subtitle,
@@ -564,6 +589,14 @@ function ScoreTable({
   // Player pages are for coaches; the athletic trainer sees plain names.
   const { data: me } = useMe();
   link = link && me?.role === "coach";
+  const { rows: sorted, sort, onSort } = useTableSort(rows, {
+    player: (p) => p.name,
+    rpe: (p) => p.rpe,
+    week: (p) => p.averages.week,
+    month: (p) => p.averages.month,
+    sessions: (p) => p.averages.monthSessions,
+    flags: (p) => p.flags.length,
+  });
   return (
     <section>
       <div className="mb-2 flex items-baseline gap-2">
@@ -574,16 +607,28 @@ function ScoreTable({
         <table className="w-full min-w-[600px] text-sm">
           <thead>
             <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-dim">
-              <th className="px-4 py-3 font-medium">{title === "Goalkeepers" ? "Goalkeeper" : "Player"}</th>
-              <th className="px-4 py-3 font-medium">RPE</th>
-              <th className="px-4 py-3 font-medium">7-day</th>
-              <th className="px-4 py-3 font-medium">Last Month</th>
-              <th className="px-4 py-3 font-medium">Sessions</th>
-              <th className="px-4 py-3 font-medium">Flags</th>
+              <SortTh col="player" sort={sort} onSort={onSort}>
+                {title === "Goalkeepers" ? "Goalkeeper" : "Player"}
+              </SortTh>
+              <SortTh col="rpe" sort={sort} onSort={onSort}>
+                RPE
+              </SortTh>
+              <SortTh col="week" sort={sort} onSort={onSort}>
+                7-day
+              </SortTh>
+              <SortTh col="month" sort={sort} onSort={onSort}>
+                Last Month
+              </SortTh>
+              <SortTh col="sessions" sort={sort} onSort={onSort}>
+                Sessions
+              </SortTh>
+              <SortTh col="flags" sort={sort} onSort={onSort}>
+                Flags
+              </SortTh>
             </tr>
           </thead>
           <tbody>
-            {rows.map((p) => (
+            {sorted.map((p) => (
               <tr key={"player_id" in p ? p.player_id : p.name} className="border-b border-border/60 last:border-0">
                 <td className="whitespace-nowrap px-4 py-3 font-medium">
                   {link && "player_id" in p ? (

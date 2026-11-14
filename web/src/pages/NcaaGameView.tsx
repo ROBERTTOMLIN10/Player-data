@@ -7,6 +7,8 @@ import { gamePath, NationalRank, playerPath, Rpi, TeamLink } from "../components
 import { PlayerPhoto } from "../components/PlayerPhoto";
 import { TeamLogo } from "../components/TeamLogo";
 import { formatDate, formatDateLong, kickoffTime } from "../lib/format";
+import { SortTh } from "../components/SortTh";
+import { useTableSort } from "../lib/useTableSort";
 import type { NcaaFormPlayer, NcaaGameDetail, NcaaGamePlayer, NcaaGameTeamStats, NcaaTeamForm } from "../types";
 
 type Team = NcaaGameDetail["teams"][number];
@@ -450,6 +452,16 @@ function StatBar({ label, away, home }: { label: string; away: number | null; ho
 function Lineup({ team, name, live }: { team: Team; name: string; live: boolean }) {
   const played = [...team.players].sort((x, y) => Number(y.starter) - Number(x.starter) || (y.minutes ?? 0) - (x.minutes ?? 0));
   const keepers = played.filter((p) => p.saves !== null);
+  // Starters first, then by minutes, until a column is clicked; then highest to lowest (click again to flip).
+  const { rows, sort, onSort } = useTableSort(played, {
+    player: (p) => p.name,
+    min: (p) => p.minutes,
+    g: (p) => p.goals,
+    a: (p) => p.assists,
+    sh: (p) => (p.shots !== null && p.shots >= p.shotsOnGoal ? p.shots : null),
+    sog: (p) => p.shotsOnGoal,
+    cards: (p) => p.redCards * 10 + p.yellowCards,
+  });
   return (
     <section>
       <div className="mb-3">
@@ -465,18 +477,32 @@ function Lineup({ team, name, live }: { team: Team; name: string; live: boolean 
         <table className="w-full min-w-[520px] text-sm tabular-nums">
           <thead>
             <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-text-dim">
-              <th className="px-3 py-2.5 font-medium">Player</th>
-              <th className="px-2 py-2.5 text-center font-medium">Min</th>
-              <th className="px-2 py-2.5 text-center font-medium">G</th>
-              <th className="px-2 py-2.5 text-center font-medium">A</th>
-              <th className="px-2 py-2.5 text-center font-medium">Sh</th>
-              <th className="px-2 py-2.5 text-center font-medium">SOG</th>
-              <th className="px-2 py-2.5 text-center font-medium">Cards</th>
+              <SortTh col="player" sort={sort} onSort={onSort} className="px-3 py-2.5">
+                Player
+              </SortTh>
+              <SortTh col="min" sort={sort} onSort={onSort} className="px-2 py-2.5 text-center">
+                Min
+              </SortTh>
+              <SortTh col="g" sort={sort} onSort={onSort} className="px-2 py-2.5 text-center">
+                G
+              </SortTh>
+              <SortTh col="a" sort={sort} onSort={onSort} className="px-2 py-2.5 text-center">
+                A
+              </SortTh>
+              <SortTh col="sh" sort={sort} onSort={onSort} className="px-2 py-2.5 text-center">
+                Sh
+              </SortTh>
+              <SortTh col="sog" sort={sort} onSort={onSort} className="px-2 py-2.5 text-center">
+                SOG
+              </SortTh>
+              <SortTh col="cards" sort={sort} onSort={onSort} className="px-2 py-2.5 text-center">
+                Cards
+              </SortTh>
             </tr>
           </thead>
           <tbody>
-            {played.map((p, i) => (
-              <tr key={`${p.name}-${i}`} className={`border-b border-border/60 last:border-0 ${!p.starter && i > 0 && played[i - 1].starter ? "border-t-2 border-t-border" : ""}`}>
+            {rows.map((p, i) => (
+              <tr key={`${p.name}-${i}`} className={`border-b border-border/60 last:border-0 ${!sort && !p.starter && i > 0 && rows[i - 1].starter ? "border-t-2 border-t-border" : ""}`}>
                 <td className="px-3 py-2">
                   <PlayerName team={team.seo} p={p} />
                 </td>
